@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 
@@ -12,246 +13,300 @@ export function LandingPageClient() {
     setMounted(true)
   }, [])
 
-  // ローディング表示（Clerkのhookが使えるようになるまで）
+  // ローディング表示
   if (!mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin"></div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header />
+    <div className="min-h-screen flex flex-col bg-white">
+      <Header variant="transparent" />
 
       {/* Hero Section */}
-      <section className="flex-grow flex flex-col items-center justify-center px-4 py-20 bg-gradient-to-b from-blue-50 to-white">
-        <div className="max-w-4xl mx-auto text-center">
-          {/* Hero Image Placeholder */}
-          <div className="w-64 h-64 mx-auto mb-8 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center">
-            <div className="text-6xl">
-              <span className="block transform transition-all hover:scale-110">
-                AI
-              </span>
-            </div>
+      <section className="relative min-h-screen flex items-center justify-center pt-20">
+        {/* Background - Gradient with optional image */}
+        <div className="absolute inset-0 z-0">
+          <div className="relative w-full h-full bg-gradient-to-br from-primary-50 via-white to-neutral-50">
+            {/* Hero image - optional */}
+            <Image
+              src="/images/hero/hero-main.jpg"
+              alt="理想の自分へ"
+              fill
+              className="object-cover object-center opacity-80"
+              priority
+              onError={(e) => {
+                // Hide if image not found - gradient background will show
+                const target = e.target as HTMLImageElement
+                target.style.display = 'none'
+              }}
+            />
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/50 to-white"></div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
+          <div className="opacity-0 animate-fade-in-up">
+            <p className="text-sm tracking-[0.3em] text-primary-600 uppercase mb-6">
+              AI Face Simulation
+            </p>
           </div>
 
-          {/* Headline */}
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
-            理想の自分を、
-            <br className="md:hidden" />
-            AIでシミュレーション。
+          <h1 className="opacity-0 animate-fade-in-up animation-delay-100">
+            <span className="block font-serif text-display-2 md:text-display-1 text-neutral-900 mb-4">
+              理想の自分を、
+            </span>
+            <span className="block font-serif text-display-3 md:text-display-2 text-primary-700">
+              AIでシミュレーション
+            </span>
           </h1>
 
-          <p className="text-lg md:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          <p className="opacity-0 animate-fade-in-up animation-delay-200 mt-8 text-lg md:text-xl text-neutral-600 max-w-2xl mx-auto leading-relaxed">
             あなたの顔写真と理想の顔を組み合わせて、
+            <br className="hidden md:block" />
             段階的な変化をシミュレーションできます。
           </p>
 
-          {/* CTA Button */}
-          <Link
-            href="/simulate"
-            className="inline-block px-8 py-4 text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors shadow-lg hover:shadow-xl"
-          >
-            今すぐ無料で試す
-          </Link>
+          <div className="opacity-0 animate-fade-in-up animation-delay-300 mt-12 flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/simulate" className="btn-primary">
+              無料で試す
+            </Link>
+            <a href="#how-it-works" className="btn-secondary">
+              詳しく見る
+            </a>
+          </div>
+        </div>
+
+        {/* Scroll Indicator */}
+        <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 opacity-0 animate-fade-in animation-delay-600">
+          <a href="#how-it-works" className="flex flex-col items-center text-neutral-400 hover:text-primary-600 transition-colors duration-300">
+            <span className="text-xs tracking-widest uppercase mb-2">Scroll</span>
+            <svg className="w-5 h-5 animate-bounce-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </a>
         </div>
       </section>
 
       {/* How It Works Section */}
-      <section className="py-20 px-4 bg-white">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            使い方
-          </h2>
+      <section id="how-it-works" className="section-padding bg-white">
+        <div className="container-narrow text-center">
+          <p className="text-sm tracking-[0.2em] text-primary-600 uppercase mb-4">How it works</p>
+          <h2 className="font-serif text-display-3 text-neutral-900 mb-16">使い方</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 gap-16">
             {/* Step 1 */}
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl font-bold text-blue-600">1</span>
+            <div className="flex flex-col md:flex-row items-center gap-8 text-left">
+              <div className="flex-shrink-0 w-20 h-20 flex items-center justify-center">
+                <span className="font-serif text-6xl text-primary-200">01</span>
               </div>
-              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-lg flex items-center justify-center">
-                <svg
-                  className="w-12 h-12 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
+              <div className="flex-1">
+                <h3 className="font-serif text-2xl text-neutral-900 mb-3">
+                  現在の顔をアップロード
+                </h3>
+                <p className="text-neutral-500 leading-relaxed">
+                  正面を向いた明るい写真をアップロードしてください。
+                  <br />
+                  顔がはっきり写っている写真が最適です。
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                現在の顔をアップロード
-              </h3>
-              <p className="text-gray-600">
-                正面を向いた明るい写真をアップロード
-              </p>
             </div>
+
+            {/* Divider */}
+            <div className="w-px h-12 bg-neutral-200 mx-auto"></div>
 
             {/* Step 2 */}
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl font-bold text-blue-600">2</span>
+            <div className="flex flex-col md:flex-row items-center gap-8 text-left">
+              <div className="flex-shrink-0 w-20 h-20 flex items-center justify-center">
+                <span className="font-serif text-6xl text-primary-200">02</span>
               </div>
-              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-lg flex items-center justify-center">
-                <svg
-                  className="w-12 h-12 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                  />
-                </svg>
+              <div className="flex-1">
+                <h3 className="font-serif text-2xl text-neutral-900 mb-3">
+                  理想の顔をアップロード
+                </h3>
+                <p className="text-neutral-500 leading-relaxed">
+                  なりたい顔の写真をアップロードしてください。
+                  <br />
+                  芸能人やモデルの写真でも構いません。
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                理想の顔をアップロード
-              </h3>
-              <p className="text-gray-600">
-                なりたい顔の写真をアップロード
-              </p>
             </div>
 
+            {/* Divider */}
+            <div className="w-px h-12 bg-neutral-200 mx-auto"></div>
+
             {/* Step 3 */}
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-2xl font-bold text-blue-600">3</span>
+            <div className="flex flex-col md:flex-row items-center gap-8 text-left">
+              <div className="flex-shrink-0 w-20 h-20 flex items-center justify-center">
+                <span className="font-serif text-6xl text-primary-200">03</span>
               </div>
-              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-lg flex items-center justify-center">
-                <svg
-                  className="w-12 h-12 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+              <div className="flex-1">
+                <h3 className="font-serif text-2xl text-neutral-900 mb-3">
+                  結果を確認
+                </h3>
+                <p className="text-neutral-500 leading-relaxed">
+                  スライダーで変化度を調整して確認できます。
+                  <br />
+                  「この程度の変化が理想」という希望を視覚化します。
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                結果を確認
-              </h3>
-              <p className="text-gray-600">
-                スライダーで変化度を調整して確認
-              </p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4 bg-gray-50">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            特徴
-          </h2>
+      <section className="section-padding bg-neutral-50">
+        <div className="container-wide">
+          <div className="text-center mb-16">
+            <p className="text-sm tracking-[0.2em] text-primary-600 uppercase mb-4">Features</p>
+            <h2 className="font-serif text-display-3 text-neutral-900">特徴</h2>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Feature 1 */}
-            <div className="bg-white p-6 rounded-xl shadow-sm">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
-                  />
+            <div className="bg-white p-10 shadow-elegant">
+              <div className="w-14 h-14 bg-primary-50 flex items-center justify-center mb-6">
+                <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="font-serif text-xl text-neutral-900 mb-4">
                 段階的な変化を確認
               </h3>
-              <p className="text-gray-600">
+              <p className="text-neutral-500 text-sm leading-relaxed">
                 0%から100%まで、5段階で徐々に変化する様子を確認できます。
+                小さな変化から大きな変化まで、理想の程度を見つけられます。
               </p>
             </div>
 
             {/* Feature 2 */}
-            <div className="bg-white p-6 rounded-xl shadow-sm">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                  />
+            <div className="bg-white p-10 shadow-elegant">
+              <div className="w-14 h-14 bg-primary-50 flex items-center justify-center mb-6">
+                <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="font-serif text-xl text-neutral-900 mb-4">
                 スライダーで自由に調整
               </h3>
-              <p className="text-gray-600">
+              <p className="text-neutral-500 text-sm leading-relaxed">
                 好みの変化度をスライダーで簡単に選べます。
+                直感的な操作で、あなたの理想を見つけてください。
               </p>
             </div>
 
             {/* Feature 3 */}
-            <div className="bg-white p-6 rounded-xl shadow-sm">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <svg
-                  className="w-6 h-6 text-blue-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                  />
+            <div className="bg-white p-10 shadow-elegant">
+              <div className="w-14 h-14 bg-primary-50 flex items-center justify-center mb-6">
+                <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              <h3 className="font-serif text-xl text-neutral-900 mb-4">
                 施術者と画像で共有
               </h3>
-              <p className="text-gray-600">
+              <p className="text-neutral-500 text-sm leading-relaxed">
                 結果をURLで共有して、施術者との相談に活用できます。
+                「この程度の変化を希望」と具体的に伝えられます。
               </p>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Before/After Section */}
+      <section className="section-padding bg-white">
+        <div className="container-wide">
+          <div className="text-center mb-16">
+            <p className="text-sm tracking-[0.2em] text-primary-600 uppercase mb-4">Result</p>
+            <h2 className="font-serif text-display-3 text-neutral-900">シミュレーション例</h2>
+          </div>
+
+          <div className="max-w-4xl mx-auto">
+            <div className="grid grid-cols-2 gap-4 md:gap-8">
+              {/* Before */}
+              <div className="relative group">
+                <div className="aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-elegant overflow-hidden">
+                  <Image
+                    src="/images/hero/before.jpg"
+                    alt="Before"
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.style.display = 'none'
+                    }}
+                  />
+                  {/* Placeholder when no image */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center text-neutral-400">
+                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-sm">Sample Image</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="absolute bottom-4 left-4 text-sm font-medium text-neutral-700 bg-white/80 px-4 py-2 backdrop-blur-sm shadow-sm">
+                  Before
+                </p>
+              </div>
+
+              {/* After */}
+              <div className="relative group">
+                <div className="aspect-[3/4] bg-gradient-to-br from-primary-50 to-primary-100 shadow-elegant overflow-hidden">
+                  <Image
+                    src="/images/hero/after.jpg"
+                    alt="After"
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      target.style.display = 'none'
+                    }}
+                  />
+                  {/* Placeholder when no image */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center text-primary-400">
+                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-sm">Sample Image</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="absolute bottom-4 left-4 text-sm font-medium text-primary-700 bg-white/80 px-4 py-2 backdrop-blur-sm shadow-sm">
+                  After
+                </p>
+              </div>
+            </div>
+            <p className="text-center text-sm text-neutral-400 mt-8">
+              ※ シミュレーション結果はイメージです
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
-      <section className="py-20 px-4 bg-blue-600">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-6">
+      <section className="section-padding bg-primary-700">
+        <div className="container-narrow text-center">
+          <h2 className="font-serif text-display-3 text-white mb-6">
             さあ、始めましょう
           </h2>
-          <p className="text-lg text-blue-100 mb-8">
+          <p className="text-primary-200 text-lg mb-10 leading-relaxed">
             無料でシミュレーションを体験できます
+            <br />
+            理想の自分を見つけてみませんか？
           </p>
           <Link
             href="/simulate"
-            className="inline-block px-8 py-4 text-lg font-semibold text-blue-600 bg-white rounded-xl hover:bg-gray-100 transition-colors shadow-lg"
+            className="inline-flex items-center justify-center px-10 py-4 text-base font-medium text-primary-700 bg-white hover:bg-neutral-50 transition-all duration-300 shadow-elegant"
           >
             今すぐ無料で試す
           </Link>

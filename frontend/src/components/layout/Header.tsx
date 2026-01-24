@@ -59,7 +59,7 @@ function HeaderAuthSection() {
     return (
       <Link
         href="/sign-in"
-        className="text-gray-600 hover:text-gray-900 transition-colors"
+        className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
       >
         ログイン
       </Link>
@@ -74,7 +74,7 @@ function HeaderAuthSection() {
         <>
           <Link
             href="/mypage"
-            className="text-gray-600 hover:text-gray-900 transition-colors"
+            className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
           >
             マイページ
           </Link>
@@ -82,7 +82,7 @@ function HeaderAuthSection() {
         </>
       ) : (
         <SignInButton mode="modal">
-          <button className="text-gray-600 hover:text-gray-900 transition-colors">
+          <button className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300">
             ログイン
           </button>
         </SignInButton>
@@ -93,31 +93,44 @@ function HeaderAuthSection() {
 
 export function Header({ variant = 'default' }: HeaderProps) {
   const [mounted, setMounted] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 50)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
   const headerClasses =
     variant === 'transparent'
-      ? 'absolute top-0 left-0 right-0 z-10'
-      : 'bg-white shadow-sm'
+      ? `fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+          scrolled ? 'bg-white/95 backdrop-blur-sm shadow-elegant' : 'bg-transparent'
+        }`
+      : 'bg-white border-b border-neutral-100'
 
   return (
     <header className={headerClasses}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-6xl mx-auto px-6">
+        <div className="flex items-center justify-between h-20">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold text-blue-600">
+          <Link
+            href="/"
+            className="font-serif text-3xl font-medium text-primary-700 tracking-tight hover:text-primary-800 transition-colors duration-300"
+          >
             Cao
           </Link>
 
           {/* Navigation */}
-          <nav className="flex items-center gap-4">
+          <nav className="flex items-center gap-8">
             {mounted && <HeaderAuthSection />}
             <Link
               href="/simulate"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              className="btn-primary text-sm px-6 py-3"
             >
               今すぐ試す
             </Link>
