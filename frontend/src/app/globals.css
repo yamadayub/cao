@@ -78,7 +78,7 @@ a {
 /* Premium button styles */
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center px-8 py-4 text-base font-medium text-white bg-primary-700 border border-transparent transition-all duration-300;
+    @apply inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-white bg-primary-700 border border-transparent rounded-full transition-all duration-300;
   }
 
   .btn-primary:hover {
@@ -86,7 +86,7 @@ a {
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center px-8 py-4 text-base font-medium text-primary-700 bg-transparent border border-primary-700 transition-all duration-300;
+    @apply inline-flex items-center justify-center px-6 py-3 text-sm font-medium text-primary-700 bg-transparent border border-primary-700 rounded-full transition-all duration-300;
   }
 
   .btn-secondary:hover {
@@ -95,7 +95,7 @@ a {
 
   /* Section styling */
   .section-padding {
-    @apply py-20 md:py-30;
+    @apply py-16 md:py-24;
   }
 
   .container-narrow {

@@ -47,9 +47,14 @@ module.exports = {
         sans: ['Noto Sans JP', 'sans-serif'],
       },
       fontSize: {
-        'display-1': ['5rem', { lineHeight: '1.1', letterSpacing: '-0.02em' }],
-        'display-2': ['4rem', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
-        'display-3': ['3rem', { lineHeight: '1.2', letterSpacing: '-0.01em' }],
+        // Mobile-first display sizes
+        'display-1': ['2.5rem', { lineHeight: '1.2', letterSpacing: '-0.02em' }],
+        'display-2': ['2rem', { lineHeight: '1.25', letterSpacing: '-0.02em' }],
+        'display-3': ['1.5rem', { lineHeight: '1.3', letterSpacing: '-0.01em' }],
+        // Desktop display sizes (use with md: prefix)
+        'display-1-lg': ['3.5rem', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
+        'display-2-lg': ['2.75rem', { lineHeight: '1.2', letterSpacing: '-0.02em' }],
+        'display-3-lg': ['2rem', { lineHeight: '1.25', letterSpacing: '-0.01em' }],
       },
       spacing: {
         '18': '4.5rem',
