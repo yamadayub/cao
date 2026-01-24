@@ -8,6 +8,13 @@ import cv2
 import numpy as np
 from PIL import Image
 
+# Register HEIF/HEIC support with Pillow (for iPhone images)
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass  # pillow-heif not installed, HEIC support disabled
+
 from app.config import get_settings
 
 settings = get_settings()
@@ -17,6 +24,9 @@ JPEG_MAGIC = b"\xff\xd8\xff"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 WEBP_MAGIC = b"RIFF"
 WEBP_MAGIC2 = b"WEBP"
+# HEIC/HEIF uses ISO Base Media File Format with ftyp box
+HEIC_FTYP = b"ftyp"
+HEIC_BRANDS = (b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1")
 
 
 class ImageValidationError(Exception):
@@ -29,7 +39,7 @@ class ImageValidationError(Exception):
         super().__init__(message)
 
 
-def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png", "webp"]:
+def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png", "webp", "heic"]:
     """
     Validate image format by checking magic bytes.
 
@@ -37,7 +47,7 @@ def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png", "webp"]:
         data: Raw image data bytes
 
     Returns:
-        Image format ('jpeg', 'png', or 'webp')
+        Image format ('jpeg', 'png', 'webp', or 'heic')
 
     Raises:
         ImageValidationError: If format is not supported
@@ -48,10 +58,12 @@ def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png", "webp"]:
         return "png"
     elif data.startswith(WEBP_MAGIC) and len(data) > 11 and data[8:12] == WEBP_MAGIC2:
         return "webp"
+    elif len(data) > 12 and data[4:8] == HEIC_FTYP and data[8:12] in HEIC_BRANDS:
+        return "heic"
     else:
         raise ImageValidationError(
             code="INVALID_IMAGE_FORMAT",
-            message="Only JPEG, PNG, and WebP formats are supported",
+            message="Only JPEG, PNG, WebP, and HEIC formats are supported",
         )
 
 
@@ -205,7 +217,7 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
             if pil_format not in ("JPEG", "PNG", "WEBP", "GIF", "BMP", "HEIC", "HEIF"):
                 raise ImageValidationError(
                     code="INVALID_IMAGE_FORMAT",
-                    message="Only JPEG, PNG, and WebP formats are supported",
+                    message="Only JPEG, PNG, WebP, and HEIC formats are supported",
                 )
             # Convert to RGB if needed
             if pil_img.mode in ("RGBA", "LA", "P"):
@@ -220,12 +232,12 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
         except Exception as e:
             raise ImageValidationError(
                 code="INVALID_IMAGE_FORMAT",
-                message="Only JPEG, PNG, and WebP formats are supported",
+                message="Only JPEG, PNG, WebP, and HEIC formats are supported",
                 details={"error": str(e)},
             )
 
-    # If WebP, convert to PNG for OpenCV compatibility
-    if format == "webp":
+    # If WebP or HEIC, convert to PNG for OpenCV compatibility
+    if format in ("webp", "heic"):
         try:
             pil_img = Image.open(io.BytesIO(data))
             if pil_img.mode in ("RGBA", "LA", "P"):
@@ -239,7 +251,7 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
         except Exception as e:
             raise ImageValidationError(
                 code="INVALID_IMAGE_FORMAT",
-                message="Failed to process WebP image",
+                message=f"Failed to process {format.upper()} image",
                 details={"error": str(e)},
             )
 
