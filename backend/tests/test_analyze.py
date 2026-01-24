@@ -47,7 +47,7 @@ class TestAnalyzeEndpoint:
         data = response.json()
         assert data["success"] is False
         assert data["error"]["code"] == "INVALID_IMAGE_FORMAT"
-        assert "JPEG and PNG" in data["error"]["message"]
+        assert "JPEG" in data["error"]["message"] and "PNG" in data["error"]["message"]
 
     def test_analyze_error_response_format(self, client, api_base_url):
         """Error response should follow standard format."""

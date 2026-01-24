@@ -15,6 +15,8 @@ settings = get_settings()
 # Magic bytes for supported formats
 JPEG_MAGIC = b"\xff\xd8\xff"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+WEBP_MAGIC = b"RIFF"
+WEBP_MAGIC2 = b"WEBP"
 
 
 class ImageValidationError(Exception):
@@ -27,7 +29,7 @@ class ImageValidationError(Exception):
         super().__init__(message)
 
 
-def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png"]:
+def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png", "webp"]:
     """
     Validate image format by checking magic bytes.
 
@@ -35,7 +37,7 @@ def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png"]:
         data: Raw image data bytes
 
     Returns:
-        Image format ('jpeg' or 'png')
+        Image format ('jpeg', 'png', or 'webp')
 
     Raises:
         ImageValidationError: If format is not supported
@@ -44,10 +46,12 @@ def validate_magic_bytes(data: bytes) -> Literal["jpeg", "png"]:
         return "jpeg"
     elif data.startswith(PNG_MAGIC):
         return "png"
+    elif data.startswith(WEBP_MAGIC) and len(data) > 11 and data[8:12] == WEBP_MAGIC2:
+        return "webp"
     else:
         raise ImageValidationError(
             code="INVALID_IMAGE_FORMAT",
-            message="Only JPEG and PNG formats are supported",
+            message="Only JPEG, PNG, and WebP formats are supported",
         )
 
 
@@ -189,8 +193,55 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
     # Check size
     validate_image_size(data)
 
-    # Check format
-    format = validate_magic_bytes(data)
+    # Try to detect format by magic bytes first
+    try:
+        format = validate_magic_bytes(data)
+    except ImageValidationError:
+        # If magic bytes don't match, try to open with PIL
+        # This handles cases like HEIC, BMP, or other formats
+        try:
+            pil_img = Image.open(io.BytesIO(data))
+            pil_format = pil_img.format
+            if pil_format not in ("JPEG", "PNG", "WEBP", "GIF", "BMP", "HEIC", "HEIF"):
+                raise ImageValidationError(
+                    code="INVALID_IMAGE_FORMAT",
+                    message="Only JPEG, PNG, and WebP formats are supported",
+                )
+            # Convert to RGB if needed
+            if pil_img.mode in ("RGBA", "LA", "P"):
+                pil_img = pil_img.convert("RGBA")
+            elif pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            # Convert to PNG for consistency
+            output = io.BytesIO()
+            pil_img.save(output, format="PNG")
+            data = output.getvalue()
+            format = "png"
+        except Exception as e:
+            raise ImageValidationError(
+                code="INVALID_IMAGE_FORMAT",
+                message="Only JPEG, PNG, and WebP formats are supported",
+                details={"error": str(e)},
+            )
+
+    # If WebP, convert to PNG for OpenCV compatibility
+    if format == "webp":
+        try:
+            pil_img = Image.open(io.BytesIO(data))
+            if pil_img.mode in ("RGBA", "LA", "P"):
+                pil_img = pil_img.convert("RGBA")
+            elif pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            output = io.BytesIO()
+            pil_img.save(output, format="PNG")
+            data = output.getvalue()
+            format = "png"
+        except Exception as e:
+            raise ImageValidationError(
+                code="INVALID_IMAGE_FORMAT",
+                message="Failed to process WebP image",
+                details={"error": str(e)},
+            )
 
     # Load image
     img = bytes_to_cv2(data)
