@@ -38,8 +38,8 @@ export default defineConfig({
 
   // 共通設定
   use: {
-    // ベースURL
-    baseURL: 'http://localhost:3000',
+    // ベースURL（環境変数で上書き可能）
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
 
     // トレース（テスト失敗時に収集）
     trace: 'on-first-retry',
@@ -74,12 +74,14 @@ export default defineConfig({
       : []),
   ],
 
-  // 開発サーバー設定
-  webServer: {
-    command: 'pnpm dev',
-    port: 3000,
-    // テスト時は常に新しいサーバーを起動（正しい環境変数が読み込まれるように）
-    reuseExistingServer: false,
-    timeout: 120 * 1000,
-  },
+  // 開発サーバー設定（外部URLを使用する場合は無効化）
+  webServer: process.env.PLAYWRIGHT_BASE_URL
+    ? undefined
+    : {
+        command: 'pnpm dev',
+        port: 3000,
+        // テスト時は常に新しいサーバーを起動（正しい環境変数が読み込まれるように）
+        reuseExistingServer: false,
+        timeout: 120 * 1000,
+      },
 })
