@@ -57,14 +57,14 @@ export default defineConfig({
     locale: 'ja-JP',
   },
 
-  // テスト対象ブラウザ
+  // テスト対象ブラウザ（CIではChromiumのみ、ローカルでは全ブラウザ）
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    // Safari（CI環境のみ、または明示的に有効化）
-    ...(process.env.CI
+    // Safari/Firefox（ローカル環境のみ）
+    ...(!process.env.CI
       ? [
           {
             name: 'webkit',
