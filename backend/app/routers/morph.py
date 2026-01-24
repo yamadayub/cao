@@ -349,7 +349,9 @@ async def morph_stages(
         )
 
     except Exception as e:
+        import traceback
         print(f"Morph stages error: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
 
         return JSONResponse(
             status_code=500,
@@ -357,6 +359,7 @@ async def morph_stages(
                 error=ErrorDetail(
                     code=ErrorCodes.PROCESSING_ERROR,
                     message="Failed to generate morphed images",
+                    details={"error": str(e)},
                 )
             ).model_dump(),
         )
