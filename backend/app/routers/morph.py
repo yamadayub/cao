@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -17,9 +17,9 @@ from app.models.schemas import (
     MorphData,
     MorphResponse,
     ResponseMeta,
-    StageImage,
     StagedMorphData,
     StagedMorphResponse,
+    StageImage,
 )
 from app.services.morphing import get_morphing_service
 from app.utils.image import ImageValidationError, cv2_to_base64, validate_image

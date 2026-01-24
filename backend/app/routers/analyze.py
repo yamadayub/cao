@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, Union
+from typing import Optional
 
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import JSONResponse

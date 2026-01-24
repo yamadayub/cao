@@ -8,7 +8,6 @@ import cv2
 import numpy as np
 
 from app.services.face_detection import get_face_detection_service
-from app.utils.image import ImageValidationError
 
 
 def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int) -> List[Tuple[int, int, int]]:

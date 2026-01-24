@@ -33,6 +33,8 @@ build-backend = "hatchling.build"
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -43,6 +45,8 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "B008",  # allow function calls in argument defaults (FastAPI File, Form, etc.)
+    "B905",  # allow zip() without strict= (not needed for same-length iteration)
 ]
 
 [tool.pytest.ini_options]

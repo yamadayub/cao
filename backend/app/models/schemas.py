@@ -1,7 +1,7 @@
 """Pydantic models for API request/response schemas."""
 
 from datetime import datetime
-from typing import Any, Generic, List, Literal, Optional, TypeVar
+from typing import Generic, List, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
