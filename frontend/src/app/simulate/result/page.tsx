@@ -76,7 +76,53 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
  * Clerk認証が有効な場合のコンポーネント
  */
 function SimulationResultWithClerk() {
-  // Clerkフックを条件付きでインポート（このコンポーネントはClerk有効時のみ使用）
+  const [mounted, setMounted] = useState(false)
+  const [clerkState, setClerkState] = useState<{
+    isSignedIn: boolean
+    user: unknown
+    getToken: () => Promise<string | null>
+  } | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted && typeof window !== 'undefined') {
+      // Clerkフックを条件付きでインポート（クライアントサイドのみ）
+      try {
+        const { useUser, useAuth } = require('@clerk/nextjs')
+        // Note: これはReactのルールに違反しますが、Clerk未設定環境での
+        // ビルドエラーを回避するための意図的な実装です
+        const ClerkHooksWrapper = () => {
+          const userHook = useUser()
+          const authHook = useAuth()
+          return { userHook, authHook }
+        }
+        // この時点ではフックは呼ばれません - 実際の呼び出しは下のレンダリングで行われます
+      } catch {
+        // Clerkが利用できない場合
+      }
+    }
+  }, [mounted])
+
+  // マウント前はローディング表示
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    )
+  }
+
+  // マウント後、Clerkフックを使用するコンポーネントをレンダリング
+  return <SimulationResultWithClerkInner />
+}
+
+/**
+ * Clerk認証フックを使用する内部コンポーネント（マウント後のみレンダリング）
+ */
+function SimulationResultWithClerkInner() {
   const { useUser, useAuth } = require('@clerk/nextjs')
   const { isSignedIn, user } = useUser()
   const { getToken } = useAuth()
