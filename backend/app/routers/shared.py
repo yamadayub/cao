@@ -33,11 +33,10 @@ async def get_shared_simulation(
             .select("result_images, created_at, is_public")
             .eq("share_token", token)
             .eq("is_public", True)
-            .single()
             .execute()
         )
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             return JSONResponse(
                 status_code=404,
                 content=ErrorResponse(
@@ -48,7 +47,7 @@ async def get_shared_simulation(
                 ).model_dump(),
             )
 
-        sim = result.data
+        sim = result.data[0]
         return SharedSimulationResponse(
             data=SharedSimulationData(
                 result_images=[

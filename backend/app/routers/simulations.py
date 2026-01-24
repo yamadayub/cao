@@ -229,11 +229,10 @@ async def get_simulation(
             .select("*")
             .eq("id", simulation_id)
             .eq("user_id", user_id)
-            .single()
             .execute()
         )
 
-        if not result.data:
+        if not result.data or len(result.data) == 0:
             return JSONResponse(
                 status_code=404,
                 content=ErrorResponse(
@@ -244,7 +243,7 @@ async def get_simulation(
                 ).model_dump(),
             )
 
-        sim = result.data
+        sim = result.data[0]
         return SimulationResponse(
             data=SimulationData(
                 id=sim["id"],
@@ -292,11 +291,10 @@ async def delete_simulation(
             .select("id")
             .eq("id", simulation_id)
             .eq("user_id", user_id)
-            .single()
             .execute()
         )
 
-        if not check_result.data:
+        if not check_result.data or len(check_result.data) == 0:
             return JSONResponse(
                 status_code=404,
                 content=ErrorResponse(
@@ -346,11 +344,10 @@ async def share_simulation(
             .select("id, share_token")
             .eq("id", simulation_id)
             .eq("user_id", user_id)
-            .single()
             .execute()
         )
 
-        if not check_result.data:
+        if not check_result.data or len(check_result.data) == 0:
             return JSONResponse(
                 status_code=404,
                 content=ErrorResponse(
@@ -362,7 +359,7 @@ async def share_simulation(
             )
 
         # Use existing token or generate new one
-        share_token = check_result.data.get("share_token")
+        share_token = check_result.data[0].get("share_token")
         if not share_token:
             share_token = secrets.token_urlsafe(16)
 
