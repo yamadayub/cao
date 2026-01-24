@@ -162,6 +162,131 @@ class StagedMorphResponse(SuccessResponse[StagedMorphData]):
 # ============================================
 
 
+# ============================================
+# Simulation Schemas
+# ============================================
+
+
+class ResultImageItem(BaseModel):
+    """Result image with progress."""
+
+    progress: float = Field(..., ge=0, le=1, description="Progress value (0.0 - 1.0)")
+    image: str = Field(..., description="Base64 encoded image or URL")
+
+
+class SimulationSettings(BaseModel):
+    """Simulation settings."""
+
+    selected_progress: Optional[float] = Field(None, ge=0, le=1, description="User selected progress")
+    notes: Optional[str] = Field(None, description="User notes")
+
+
+class CreateSimulationRequest(BaseModel):
+    """Request to create a simulation."""
+
+    current_image: str = Field(..., description="Base64 encoded current face image")
+    ideal_image: str = Field(..., description="Base64 encoded ideal face image")
+    result_images: List[ResultImageItem] = Field(..., description="List of result images")
+    settings: Optional[SimulationSettings] = Field(None, description="Optional settings")
+
+
+class SimulationData(BaseModel):
+    """Full simulation data."""
+
+    id: str = Field(..., description="Simulation UUID")
+    user_id: str = Field(..., description="User ID")
+    current_image_url: str = Field(..., description="URL to current face image")
+    ideal_image_url: str = Field(..., description="URL to ideal face image")
+    result_images: List[ResultImageItem] = Field(..., description="Result images")
+    settings: dict = Field(default_factory=dict, description="Simulation settings")
+    share_token: Optional[str] = Field(None, description="Share token if public")
+    is_public: bool = Field(False, description="Whether simulation is publicly shared")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    updated_at: datetime = Field(..., description="Last update timestamp")
+
+
+class SimulationResponse(SuccessResponse[SimulationData]):
+    """Simulation response."""
+
+    pass
+
+
+class SimulationSummary(BaseModel):
+    """Simulation summary for list view."""
+
+    id: str = Field(..., description="Simulation UUID")
+    thumbnail_url: str = Field(..., description="Thumbnail URL (50% progress)")
+    created_at: datetime = Field(..., description="Creation timestamp")
+    is_public: bool = Field(False, description="Whether simulation is publicly shared")
+
+
+class PaginationInfo(BaseModel):
+    """Pagination information."""
+
+    total: int = Field(..., ge=0, description="Total count")
+    limit: int = Field(..., ge=1, description="Page size")
+    offset: int = Field(..., ge=0, description="Offset")
+    has_more: bool = Field(..., description="Whether there are more results")
+
+
+class SimulationListData(BaseModel):
+    """Simulation list data."""
+
+    simulations: List[SimulationSummary] = Field(..., description="List of simulations")
+    pagination: PaginationInfo = Field(..., description="Pagination info")
+
+
+class SimulationListResponse(SuccessResponse[SimulationListData]):
+    """Simulation list response."""
+
+    pass
+
+
+class DeletedData(BaseModel):
+    """Delete response data."""
+
+    deleted: bool = Field(True, description="Whether deletion succeeded")
+    id: str = Field(..., description="Deleted resource ID")
+
+
+class DeleteResponse(SuccessResponse[DeletedData]):
+    """Delete response."""
+
+    pass
+
+
+class ShareData(BaseModel):
+    """Share URL data."""
+
+    share_token: str = Field(..., description="Share token")
+    share_url: str = Field(..., description="Full share URL")
+    expires_at: Optional[datetime] = Field(None, description="Expiration (null for no expiry)")
+
+
+class ShareResponse(SuccessResponse[ShareData]):
+    """Share response."""
+
+    pass
+
+
+class SharedSimulationData(BaseModel):
+    """Shared simulation data (public view)."""
+
+    result_images: List[ResultImageItem] = Field(..., description="Result images")
+    created_at: datetime = Field(..., description="Creation timestamp")
+
+
+class SharedSimulationResponse(SuccessResponse[SharedSimulationData]):
+    """Shared simulation response."""
+
+    pass
+
+
+# ============================================
+# Error Code Constants
+# ============================================
+
+
 class ErrorCodes:
     """Error code constants."""
 
