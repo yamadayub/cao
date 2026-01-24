@@ -56,7 +56,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Only deploy if secrets are configured
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.HEROKU_ENABLED == 'true'
 
     steps:
       - uses: actions/checkout@v4

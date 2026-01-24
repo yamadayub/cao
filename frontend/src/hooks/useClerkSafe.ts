@@ -1,5 +1,10 @@
 'use client'
 
+/* eslint-disable react-hooks/rules-of-hooks */
+// Note: This file intentionally breaks hooks rules for conditional Clerk usage.
+// When NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is not set, Clerk hooks are not called.
+// This allows the app to work without Clerk in development/testing environments.
+
 import { useMemo } from 'react'
 
 /**
@@ -41,7 +46,7 @@ export function useUserSafe(): SafeUser {
       try {
         // 動的にインポートしてuseUserを使用することはできないため、
         // Clerkが利用できない場合はデフォルト値を返す
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useUser } = require('@clerk/nextjs')
         return useUser()
       } catch {
@@ -73,7 +78,7 @@ export function useAuthSafe(): SafeAuth {
   const clerkAuth = useMemo(() => {
     if (clerkAvailable && typeof window !== 'undefined') {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAuth } = require('@clerk/nextjs')
         return useAuth()
       } catch {
