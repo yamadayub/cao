@@ -10,8 +10,11 @@ import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { ApiError } from '@/lib/api/client'
 import type { StageImage } from '@/lib/api/types'
 
-// Clerkが利用可能かどうかを判定
-const isClerkAvailable = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+// Clerkの型定義
+interface ClerkInstance {
+  user?: { primaryEmailAddress?: { emailAddress: string } | null } | null
+  session?: { getToken: () => Promise<string | null> } | null
+}
 
 /**
  * 画像データの型
@@ -73,80 +76,52 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 }
 
 /**
- * Clerk認証が有効な場合のコンポーネント
+ * Clerkの状態を安全に取得するカスタムフック
  */
-function SimulationResultWithClerk() {
-  const [mounted, setMounted] = useState(false)
+function useClerkState() {
   const [clerkState, setClerkState] = useState<{
     isSignedIn: boolean
-    user: unknown
+    user: { primaryEmailAddress?: { emailAddress: string } | null } | null
     getToken: () => Promise<string | null>
-  } | null>(null)
+  }>({
+    isSignedIn: false,
+    user: null,
+    getToken: async () => null,
+  })
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (mounted && typeof window !== 'undefined') {
-      // Clerkフックを条件付きでインポート（クライアントサイドのみ）
-      try {
-        const { useUser, useAuth } = require('@clerk/nextjs')
-        // Note: これはReactのルールに違反しますが、Clerk未設定環境での
-        // ビルドエラーを回避するための意図的な実装です
-        const ClerkHooksWrapper = () => {
-          const userHook = useUser()
-          const authHook = useAuth()
-          return { userHook, authHook }
-        }
-        // この時点ではフックは呼ばれません - 実際の呼び出しは下のレンダリングで行われます
-      } catch {
-        // Clerkが利用できない場合
+    const checkClerk = () => {
+      const win = window as unknown as { Clerk?: ClerkInstance }
+      if (win.Clerk) {
+        const clerk = win.Clerk
+        setClerkState({
+          isSignedIn: !!clerk.user,
+          user: clerk.user || null,
+          getToken: async () => {
+            try {
+              return clerk.session?.getToken() || null
+            } catch {
+              return null
+            }
+          },
+        })
       }
     }
-  }, [mounted])
 
-  // マウント前はローディング表示
-  if (!mounted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-      </div>
-    )
-  }
+    // 初回チェック
+    checkClerk()
 
-  // マウント後、Clerkフックを使用するコンポーネントをレンダリング
-  return <SimulationResultWithClerkInner />
-}
+    // Clerkがまだロードされていない場合は少し待って再試行
+    const timer = setTimeout(checkClerk, 500)
+    const timer2 = setTimeout(checkClerk, 1500)
 
-/**
- * Clerk認証フックを使用する内部コンポーネント（マウント後のみレンダリング）
- */
-function SimulationResultWithClerkInner() {
-  const { useUser, useAuth } = require('@clerk/nextjs')
-  const { isSignedIn, user } = useUser()
-  const { getToken } = useAuth()
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(timer2)
+    }
+  }, [])
 
-  return (
-    <SimulationResultContent
-      isSignedIn={isSignedIn || false}
-      user={user}
-      getToken={getToken}
-    />
-  )
-}
-
-/**
- * Clerk認証が無効な場合のコンポーネント
- */
-function SimulationResultWithoutClerk() {
-  return (
-    <SimulationResultContent
-      isSignedIn={false}
-      user={null}
-      getToken={async () => null}
-    />
-  )
+  return clerkState
 }
 
 /**
@@ -757,9 +732,13 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
  * 参照: business-spec.md UC-004, UC-005, UC-006, UC-007
  */
 export default function SimulationResultPage() {
-  // Clerkが利用可能かどうかでコンポーネントを切り替え
-  if (isClerkAvailable) {
-    return <SimulationResultWithClerk />
-  }
-  return <SimulationResultWithoutClerk />
+  const { isSignedIn, user, getToken } = useClerkState()
+
+  return (
+    <SimulationResultContent
+      isSignedIn={isSignedIn}
+      user={user}
+      getToken={getToken}
+    />
+  )
 }
