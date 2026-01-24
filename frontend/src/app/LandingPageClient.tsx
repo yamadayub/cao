@@ -28,24 +28,14 @@ export function LandingPageClient() {
 
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center pt-20">
-        {/* Background - Gradient with optional image */}
+        {/* Background - Elegant gradient */}
         <div className="absolute inset-0 z-0">
           <div className="relative w-full h-full bg-gradient-to-br from-primary-50 via-white to-neutral-50">
-            {/* Hero image - optional */}
-            <Image
-              src="/images/hero/hero-main.jpg"
-              alt="理想の自分へ"
-              fill
-              className="object-cover object-center opacity-80"
-              priority
-              onError={(e) => {
-                // Hide if image not found - gradient background will show
-                const target = e.target as HTMLImageElement
-                target.style.display = 'none'
-              }}
-            />
+            {/* Decorative elements */}
+            <div className="absolute top-20 right-10 w-72 h-72 bg-primary-100/30 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-40 left-10 w-96 h-96 bg-primary-50/40 rounded-full blur-3xl"></div>
             {/* Gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/70 via-white/50 to-white"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-white"></div>
           </div>
         </div>
 
@@ -232,56 +222,30 @@ export function LandingPageClient() {
             <div className="grid grid-cols-2 gap-4 md:gap-8">
               {/* Before */}
               <div className="relative group">
-                <div className="aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-elegant overflow-hidden">
+                <div className="aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-elegant overflow-hidden relative">
                   <Image
-                    src="/images/hero/before.jpg"
+                    src="/images/hero/before.png"
                     alt="Before"
                     fill
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.style.display = 'none'
-                    }}
+                    className="object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                   />
-                  {/* Placeholder when no image */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center text-neutral-400">
-                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span className="text-sm">Sample Image</span>
-                    </div>
-                  </div>
                 </div>
-                <p className="absolute bottom-4 left-4 text-sm font-medium text-neutral-700 bg-white/80 px-4 py-2 backdrop-blur-sm shadow-sm">
+                <p className="absolute bottom-4 left-4 z-20 text-sm font-medium text-neutral-700 bg-white/90 px-4 py-2 backdrop-blur-sm shadow-sm">
                   Before
                 </p>
               </div>
 
               {/* After */}
               <div className="relative group">
-                <div className="aspect-[3/4] bg-gradient-to-br from-primary-50 to-primary-100 shadow-elegant overflow-hidden">
+                <div className="aspect-[3/4] bg-gradient-to-br from-primary-50 to-primary-100 shadow-elegant overflow-hidden relative">
                   <Image
-                    src="/images/hero/after.jpg"
+                    src="/images/hero/after.png"
                     alt="After"
                     fill
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      target.style.display = 'none'
-                    }}
+                    className="object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                   />
-                  {/* Placeholder when no image */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-center text-primary-400">
-                      <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span className="text-sm">Sample Image</span>
-                    </div>
-                  </div>
                 </div>
-                <p className="absolute bottom-4 left-4 text-sm font-medium text-primary-700 bg-white/80 px-4 py-2 backdrop-blur-sm shadow-sm">
+                <p className="absolute bottom-4 left-4 z-20 text-sm font-medium text-primary-700 bg-white/90 px-4 py-2 backdrop-blur-sm shadow-sm">
                   After
                 </p>
               </div>
