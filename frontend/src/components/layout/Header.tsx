@@ -59,7 +59,7 @@ function HeaderAuthSection() {
     return (
       <Link
         href="/sign-in"
-        className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
+        className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
       >
         ログイン
       </Link>
@@ -74,7 +74,7 @@ function HeaderAuthSection() {
         <>
           <Link
             href="/mypage"
-            className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
+            className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
           >
             マイページ
           </Link>
@@ -82,7 +82,7 @@ function HeaderAuthSection() {
         </>
       ) : (
         <SignInButton mode="modal">
-          <button className="text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300">
+          <button className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300">
             ログイン
           </button>
         </SignInButton>
@@ -115,22 +115,22 @@ export function Header({ variant = 'default' }: HeaderProps) {
 
   return (
     <header className={headerClasses}>
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="flex items-center justify-between h-20">
+      <div className="max-w-6xl mx-auto px-4 md:px-6">
+        <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link
             href="/"
-            className="font-serif text-3xl font-medium text-primary-700 tracking-tight hover:text-primary-800 transition-colors duration-300"
+            className="font-serif text-2xl md:text-3xl font-medium text-primary-700 tracking-tight hover:text-primary-800 transition-colors duration-300"
           >
             Cao
           </Link>
 
           {/* Navigation */}
-          <nav className="flex items-center gap-8">
+          <nav className="flex items-center gap-3 md:gap-8">
             {mounted && <HeaderAuthSection />}
             <Link
               href="/simulate"
-              className="btn-primary text-sm px-6 py-3"
+              className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
             >
               今すぐ試す
             </Link>

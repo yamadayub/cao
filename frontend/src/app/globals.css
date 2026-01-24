@@ -13,6 +13,7 @@
 /* Remove dark mode for premium aesthetic */
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
@@ -21,6 +22,7 @@ body {
   font-family: 'Noto Sans JP', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 /* Premium typography */
@@ -99,11 +101,11 @@ a {
   }
 
   .container-narrow {
-    @apply max-w-2xl mx-auto px-6;
+    @apply max-w-2xl mx-auto px-4 md:px-6;
   }
 
   .container-wide {
-    @apply max-w-6xl mx-auto px-6;
+    @apply max-w-6xl mx-auto px-4 md:px-6;
   }
 }
 

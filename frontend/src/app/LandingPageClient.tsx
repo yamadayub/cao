@@ -23,24 +23,24 @@ export function LandingPageClient() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-white overflow-x-hidden">
       <Header variant="transparent" />
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-20">
+      <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
         {/* Background - Elegant gradient */}
-        <div className="absolute inset-0 z-0">
+        <div className="absolute inset-0 z-0 overflow-hidden">
           <div className="relative w-full h-full bg-gradient-to-br from-primary-50 via-white to-neutral-50">
-            {/* Decorative elements */}
-            <div className="absolute top-20 right-10 w-72 h-72 bg-primary-100/30 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-40 left-10 w-96 h-96 bg-primary-50/40 rounded-full blur-3xl"></div>
+            {/* Decorative elements - hidden on mobile */}
+            <div className="hidden md:block absolute top-20 right-0 w-72 h-72 bg-primary-100/30 rounded-full blur-3xl"></div>
+            <div className="hidden md:block absolute bottom-40 left-0 w-72 h-72 bg-primary-50/40 rounded-full blur-3xl"></div>
             {/* Gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-b from-white/30 via-transparent to-white"></div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
+        <div className="relative z-10 max-w-4xl mx-auto px-4 md:px-6 text-center">
           <div className="opacity-0 animate-fade-in-up">
             <p className="text-sm tracking-[0.3em] text-primary-600 uppercase mb-6">
               AI Face Simulation
@@ -210,10 +210,10 @@ export function LandingPageClient() {
           </div>
 
           <div className="max-w-4xl mx-auto">
-            <div className="grid grid-cols-2 gap-4 md:gap-8">
+            <div className="grid grid-cols-2 gap-3 md:gap-8">
               {/* Before */}
               <div className="relative group">
-                <div className="aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-elegant overflow-hidden relative">
+                <div className="aspect-[3/4] bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-elegant overflow-hidden relative rounded-lg md:rounded-xl">
                   <Image
                     src="/images/hero/before.png"
                     alt="Before"
@@ -221,14 +221,14 @@ export function LandingPageClient() {
                     className="object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                   />
                 </div>
-                <p className="absolute bottom-4 left-4 z-20 text-sm font-medium text-neutral-700 bg-white/90 px-4 py-2 backdrop-blur-sm shadow-sm">
+                <p className="absolute bottom-2 left-2 md:bottom-4 md:left-4 z-20 text-xs md:text-sm font-medium text-neutral-700 bg-white/90 px-2 py-1 md:px-4 md:py-2 rounded backdrop-blur-sm shadow-sm">
                   Before
                 </p>
               </div>
 
               {/* After */}
               <div className="relative group">
-                <div className="aspect-[3/4] bg-gradient-to-br from-primary-50 to-primary-100 shadow-elegant overflow-hidden relative">
+                <div className="aspect-[3/4] bg-gradient-to-br from-primary-50 to-primary-100 shadow-elegant overflow-hidden relative rounded-lg md:rounded-xl">
                   <Image
                     src="/images/hero/after.png"
                     alt="After"
@@ -236,7 +236,7 @@ export function LandingPageClient() {
                     className="object-cover transition-transform duration-500 group-hover:scale-105 z-10"
                   />
                 </div>
-                <p className="absolute bottom-4 left-4 z-20 text-sm font-medium text-primary-700 bg-white/90 px-4 py-2 backdrop-blur-sm shadow-sm">
+                <p className="absolute bottom-2 left-2 md:bottom-4 md:left-4 z-20 text-xs md:text-sm font-medium text-primary-700 bg-white/90 px-2 py-1 md:px-4 md:py-2 rounded backdrop-blur-sm shadow-sm">
                   After
                 </p>
               </div>
