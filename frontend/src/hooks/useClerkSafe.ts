@@ -46,7 +46,6 @@ export function useUserSafe(): SafeUser {
       try {
         // 動的にインポートしてuseUserを使用することはできないため、
         // Clerkが利用できない場合はデフォルト値を返す
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useUser } = require('@clerk/nextjs')
         return useUser()
       } catch {
@@ -78,7 +77,6 @@ export function useAuthSafe(): SafeAuth {
   const clerkAuth = useMemo(() => {
     if (clerkAvailable && typeof window !== 'undefined') {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAuth } = require('@clerk/nextjs')
         return useAuth()
       } catch {
