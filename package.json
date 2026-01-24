@@ -1,0 +1,27 @@
+{
+  "name": "cao",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter frontend dev",
+    "build": "pnpm --filter frontend build",
+    "lint": "pnpm --filter frontend lint",
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:unit": "pnpm --filter frontend test:unit",
+    "test:integration": "pnpm --filter frontend test:integration",
+    "test:e2e": "pnpm --filter frontend test:e2e",
+    "backend:dev": "cd backend && source .venv/bin/activate && uvicorn app.main:app --reload",
+    "backend:test": "cd backend && source .venv/bin/activate && python -m pytest tests/ -v"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}
