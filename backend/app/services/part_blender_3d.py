@@ -882,38 +882,42 @@ class PartBlender3D:
         part_name: str,
     ) -> np.ndarray:
         """
-        Compute aligned 2D points for nose using eye-center, centerline, and yaw alignment.
+        Compute aligned 2D points for nose using DIRECT LANDMARK MAPPING.
 
-        This method:
-        1. Estimates face yaw angles for both source and destination
-        2. Positions the nose center at the midpoint between both eyes
-        3. Aligns the nose centerline with the target face centerline
-        4. Applies horizontal shear/scale based on yaw difference
-        5. Scales the nose appropriately based on inter-eye distance
+        Key insight: Instead of trying to transform/deform the source nose to match
+        the target's pose, we directly use the TARGET's landmark positions as
+        warp destinations. The target landmarks already encode the correct
+        pose/orientation of the target face.
+
+        This approach:
+        1. Uses target landmark positions directly as warp destinations
+        2. Applies slight shape preservation from source for natural appearance
+        3. The RBF warping will smoothly deform the source nose texture
+           to fit the target's nose shape/position
 
         Args:
             src_2d: Source nose 2D landmarks
-            dst_2d: Destination nose 2D landmarks
+            dst_2d: Destination nose 2D landmarks (target positions)
             src_landmarks: All source face landmarks
             dst_landmarks: All destination face landmarks
             part_name: Name of the part for logging
 
         Returns:
-            Aligned 2D points for the nose
+            Aligned 2D points that map to target landmark positions
         """
         try:
-            # Estimate yaw angles for both faces
+            # Estimate yaw angles for logging purposes
             src_yaw = self._estimate_face_yaw(src_landmarks)
             dst_yaw = self._estimate_face_yaw(dst_landmarks)
             yaw_diff = dst_yaw - src_yaw
 
-            # Get eye center landmarks
+            # Get eye landmarks for scale calculation
             left_eye_inner_idx = EYE_CENTER_LANDMARKS["left_eye_inner"]
             left_eye_outer_idx = EYE_CENTER_LANDMARKS["left_eye_outer"]
             right_eye_inner_idx = EYE_CENTER_LANDMARKS["right_eye_inner"]
             right_eye_outer_idx = EYE_CENTER_LANDMARKS["right_eye_outer"]
 
-            # Compute eye centers for source
+            # Compute inter-eye distances for scale reference
             src_left_eye = (
                 np.array(src_landmarks[left_eye_inner_idx]) +
                 np.array(src_landmarks[left_eye_outer_idx])
@@ -924,7 +928,6 @@ class PartBlender3D:
             ) / 2
             src_inter_eye_dist = np.linalg.norm(src_right_eye - src_left_eye)
 
-            # Compute eye centers for destination
             dst_left_eye = (
                 np.array(dst_landmarks[left_eye_inner_idx]) +
                 np.array(dst_landmarks[left_eye_outer_idx])
@@ -933,106 +936,50 @@ class PartBlender3D:
                 np.array(dst_landmarks[right_eye_inner_idx]) +
                 np.array(dst_landmarks[right_eye_outer_idx])
             ) / 2
-            dst_eyes_center = (dst_left_eye + dst_right_eye) / 2
             dst_inter_eye_dist = np.linalg.norm(dst_right_eye - dst_left_eye)
 
-            # Get nose centerline landmarks
-            nose_tip_idx = NOSE_ALIGNMENT_LANDMARKS["nose_tip"]
-            nose_bridge_idx = NOSE_ALIGNMENT_LANDMARKS["nose_bridge_top"]
-            left_alar_idx = NOSE_ALIGNMENT_LANDMARKS["left_alar"]
-            right_alar_idx = NOSE_ALIGNMENT_LANDMARKS["right_alar"]
+            # Compute scale factor based on inter-eye distance
+            scale_factor = dst_inter_eye_dist / max(src_inter_eye_dist, 1e-6)
+            scale_factor = np.clip(scale_factor, 0.7, 1.4)
 
-            # Compute source nose geometry
-            src_nose_tip = np.array(src_landmarks[nose_tip_idx])
-            src_nose_bridge = np.array(src_landmarks[nose_bridge_idx])
-            src_left_alar = np.array(src_landmarks[left_alar_idx])
-            src_right_alar = np.array(src_landmarks[right_alar_idx])
-            src_nose_center = (src_left_alar + src_right_alar) / 2
+            # ===== DIRECT LANDMARK MAPPING =====
+            # The key insight: dst_2d already contains the target nose landmarks
+            # which naturally encode the target face's pose/orientation.
+            # We use these directly as our warp destinations.
 
-            # Source nose centerline vector (from bridge to tip)
-            src_centerline = src_nose_tip - src_nose_bridge
-            src_centerline_angle = np.arctan2(src_centerline[1], src_centerline[0])
+            # Compute centroids for blending
+            src_centroid = np.mean(src_2d, axis=0)
+            dst_centroid = np.mean(dst_2d, axis=0)
 
-            # Compute destination nose geometry
-            dst_nose_tip = np.array(dst_landmarks[nose_tip_idx])
-            dst_nose_bridge = np.array(dst_landmarks[nose_bridge_idx])
-            dst_left_alar = np.array(dst_landmarks[left_alar_idx])
-            dst_right_alar = np.array(dst_landmarks[right_alar_idx])
-            dst_nose_center = (dst_left_alar + dst_right_alar) / 2
+            # Shape preservation factor: how much to preserve source nose shape
+            # vs. fully mapping to target landmarks
+            # Lower value = more target shape (better pose matching)
+            # Higher value = more source shape preservation
+            shape_preservation = 0.15  # 15% source shape, 85% target shape
 
-            # Destination nose centerline vector
-            dst_centerline = dst_nose_tip - dst_nose_bridge
-            dst_centerline_angle = np.arctan2(dst_centerline[1], dst_centerline[0])
+            # Compute the blended result:
+            # 1. Scale and translate source points to roughly match target position
+            src_centered = src_2d - src_centroid
+            src_scaled = src_centered * scale_factor + dst_centroid
 
-            # Compute rotation angle to align centerlines
-            rotation_angle = dst_centerline_angle - src_centerline_angle
+            # 2. Blend between scaled source and target landmarks
+            # This preserves some source nose characteristics while adopting target pose
+            aligned = (1 - shape_preservation) * dst_2d + shape_preservation * src_scaled
 
-            # Compute scale based on inter-eye distance
-            scale = dst_inter_eye_dist / max(src_inter_eye_dist, 1e-6)
-            scale = np.clip(scale, 0.7, 1.4)
-
-            # Create rotation matrix
-            cos_a = np.cos(rotation_angle)
-            sin_a = np.sin(rotation_angle)
-            R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
-
-            # Target position: position nose center under the eye center
-            dst_vertical_offset = dst_nose_center[1] - dst_eyes_center[1]
-            target_center = np.array([
-                dst_eyes_center[0],
-                dst_eyes_center[1] + dst_vertical_offset
-            ])
-
-            # ===== YAW-BASED DEFORMATION =====
-            # When faces have different yaw angles, we need to adjust the nose shape
-            # to match the perspective of the target face
-
-            # Compute horizontal scale factors for left and right sides
-            # Positive yaw_diff means target is more to the right
-            # This makes the right side of nose appear larger, left side smaller
-            yaw_factor = np.sin(yaw_diff) * 0.5  # Scale influence of yaw
-            left_scale = 1.0 - yaw_factor  # Left side scale
-            right_scale = 1.0 + yaw_factor  # Right side scale
-
-            # Clamp scale factors
-            left_scale = np.clip(left_scale, 0.7, 1.3)
-            right_scale = np.clip(right_scale, 0.7, 1.3)
-
-            # Apply transformation:
-            # 1. Center source nose points around source nose center
-            src_centered = src_2d - src_nose_center
-
-            # 2. Apply yaw-based horizontal scaling (different for left/right side)
-            # Determine left/right based on X coordinate relative to center
-            src_yaw_adjusted = src_centered.copy()
-            for i in range(len(src_yaw_adjusted)):
-                if src_centered[i, 0] < 0:  # Left side of nose
-                    src_yaw_adjusted[i, 0] *= left_scale
-                else:  # Right side of nose
-                    src_yaw_adjusted[i, 0] *= right_scale
-
-            # 3. Apply rotation to align centerlines
-            src_rotated = (src_yaw_adjusted @ R.T)
-
-            # 4. Apply scale
-            src_scaled = src_rotated * scale
-
-            # 5. Translate to target position
-            aligned = src_scaled + target_center
-
-            logger.info(f"Nose alignment: rotation={np.degrees(rotation_angle):.1f}°, "
-                        f"scale={scale:.3f}, "
+            logger.info(f"Nose alignment (direct mapping): "
                         f"src_yaw={np.degrees(src_yaw):.1f}°, "
                         f"dst_yaw={np.degrees(dst_yaw):.1f}°, "
                         f"yaw_diff={np.degrees(yaw_diff):.1f}°, "
-                        f"left_scale={left_scale:.2f}, right_scale={right_scale:.2f}")
+                        f"scale={scale_factor:.3f}, "
+                        f"shape_preservation={shape_preservation:.0%}")
 
             return aligned.astype(np.float32)
 
         except (IndexError, KeyError, TypeError) as e:
-            logger.warning(f"Nose-specific alignment failed: {e}, "
-                          f"falling back to similarity transform")
-            return self._compute_similarity_aligned_points(src_2d, dst_2d, part_name)
+            logger.warning(f"Direct landmark mapping failed: {e}, "
+                          f"falling back to destination landmarks directly")
+            # Ultimate fallback: just use destination landmarks directly
+            return dst_2d.astype(np.float32)
 
     def _project_3d_to_2d(
         self,
