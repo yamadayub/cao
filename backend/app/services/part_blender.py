@@ -52,22 +52,25 @@ FACIAL_PART_LANDMARKS: Dict[str, List[int]] = {
         # Additional points for fuller coverage
         383, 265, 353, 372, 340, 346, 347, 348, 349, 350,
     ],
-    # Nose
+    # Nose - more precise definition focusing on core nose structure
     "nose": [
-        # Nose bridge
-        6, 168, 197, 195, 5,
-        # Nose tip
-        4, 1, 19, 94, 2,
-        # Left nostril
-        98, 97, 99, 100, 240, 235, 129, 64, 48, 115,
-        # Right nostril
-        327, 326, 328, 329, 460, 455, 358, 294, 278, 344,
-        # Nose sides
-        131, 134, 102, 49, 238, 20, 242,
-        360, 363, 331, 279, 458, 250, 462,
-        # Additional nose contour
-        75, 76, 77, 78, 79, 80, 81, 82,
-        305, 306, 307, 308, 309, 310, 311, 312,
+        # Nose bridge (top to bottom center line)
+        6, 168, 197, 195, 5, 4,
+        # Nose tip center
+        1, 2, 98, 327,
+        # Nose tip and bottom
+        19, 94, 141, 370,
+        # Left nostril outline
+        239, 238, 20, 79, 218, 237,
+        # Right nostril outline
+        459, 458, 250, 309, 438, 457,
+        # Nose wing left
+        129, 49, 131, 134, 51, 45,
+        # Nose wing right
+        358, 279, 360, 363, 281, 275,
+        # Alar base (nostril base)
+        48, 115, 220, 64,
+        278, 344, 440, 294,
     ],
     # Lips/Mouth
     "lips": [
@@ -138,6 +141,71 @@ PART_CONTEXT_LANDMARKS: Dict[str, List[int]] = {
 PART_EXCLUSION_LANDMARKS: Dict[str, List[int]] = {
     "left_eyebrow": FACIAL_PART_LANDMARKS["left_eye"],  # Exclude left eye from eyebrow
     "right_eyebrow": FACIAL_PART_LANDMARKS["right_eye"],  # Exclude right eye from eyebrow
+}
+
+# Key alignment landmarks for precise positioning of each part
+# These are the most stable reference points for calculating centroid and angle
+PART_ALIGNMENT_LANDMARKS: Dict[str, List[int]] = {
+    "nose": [
+        # Nose bridge top (between eyes)
+        6,
+        # Nose tip
+        4, 1,
+        # Nose bottom center
+        2,
+        # Left and right alar base (nostril sides) - for width/angle
+        129, 358,
+        # Left and right nose wing tips
+        48, 278,
+    ],
+    "lips": [
+        # Upper lip center
+        0,
+        # Lower lip center
+        17,
+        # Left corner
+        61,
+        # Right corner
+        291,
+        # Cupid's bow points
+        37, 267,
+    ],
+    "left_eye": [
+        # Inner corner
+        133,
+        # Outer corner
+        33,
+        # Upper lid center
+        159,
+        # Lower lid center
+        145,
+    ],
+    "right_eye": [
+        # Inner corner
+        362,
+        # Outer corner
+        263,
+        # Upper lid center
+        386,
+        # Lower lid center
+        374,
+    ],
+    "left_eyebrow": [
+        # Inner point
+        107,
+        # Outer point
+        70,
+        # Center top
+        105,
+    ],
+    "right_eyebrow": [
+        # Inner point
+        336,
+        # Outer point
+        300,
+        # Center top
+        334,
+    ],
 }
 
 
@@ -279,12 +347,15 @@ class PartBlender:
         """
         w, h = img_size
 
-        # Calculate centroid and angle for alignment
+        # Use alignment landmarks if available (more stable reference points)
+        alignment_indices = PART_ALIGNMENT_LANDMARKS.get(part_name, part_indices)
+
+        # Calculate centroid and angle for alignment using key landmarks
         src_centroid, src_angle, src_scale = self._calculate_part_geometry(
-            src_landmarks, part_indices
+            src_landmarks, alignment_indices, part_name
         )
         dst_centroid, dst_angle, dst_scale = self._calculate_part_geometry(
-            base_landmarks, part_indices
+            base_landmarks, alignment_indices, part_name
         )
 
         if src_centroid is None or dst_centroid is None:
@@ -352,6 +423,7 @@ class PartBlender:
         self,
         landmarks: List[Tuple[float, float]],
         part_indices: List[int],
+        part_name: str = "",
     ) -> Tuple[Optional[np.ndarray], float, float]:
         """
         Calculate centroid, principal angle, and scale of a facial part.
@@ -371,6 +443,10 @@ class PartBlender:
 
         points = np.array(points, dtype=np.float32)
 
+        # Special handling for nose - use specific reference points
+        if part_name == "nose":
+            return self._calculate_nose_geometry(landmarks)
+
         # Calculate centroid
         centroid = np.mean(points, axis=0)
 
@@ -389,6 +465,57 @@ class PartBlender:
         distances = np.linalg.norm(centered, axis=1)
         scale = np.mean(distances) if len(distances) > 0 else 1.0
         scale = max(scale, 1.0)  # Prevent division by zero
+
+        return centroid, angle, scale
+
+    def _calculate_nose_geometry(
+        self,
+        landmarks: List[Tuple[float, float]],
+    ) -> Tuple[Optional[np.ndarray], float, float]:
+        """
+        Calculate nose geometry using precise anatomical reference points.
+
+        Uses:
+        - Bridge top (6) and tip (4) for vertical axis/angle
+        - Nostril sides (129, 358) for width/scale
+        - Nose tip (1) for centroid
+        """
+        # Key nose landmarks
+        NOSE_BRIDGE_TOP = 6      # Top of nose bridge (between eyes)
+        NOSE_TIP = 4             # Nose tip (prónasale)
+        NOSE_TIP_CENTER = 1     # Nose tip center
+        NOSE_BOTTOM = 2          # Bottom of nose (subnasale)
+        LEFT_ALAR = 129          # Left nostril wing
+        RIGHT_ALAR = 358         # Right nostril wing
+
+        try:
+            bridge_top = np.array(landmarks[NOSE_BRIDGE_TOP], dtype=np.float32)
+            nose_tip = np.array(landmarks[NOSE_TIP], dtype=np.float32)
+            nose_tip_center = np.array(landmarks[NOSE_TIP_CENTER], dtype=np.float32)
+            nose_bottom = np.array(landmarks[NOSE_BOTTOM], dtype=np.float32)
+            left_alar = np.array(landmarks[LEFT_ALAR], dtype=np.float32)
+            right_alar = np.array(landmarks[RIGHT_ALAR], dtype=np.float32)
+        except (IndexError, TypeError):
+            return None, 0.0, 1.0
+
+        # Centroid: weighted center focusing on tip area
+        # Use nose tip center as the main reference, slightly adjusted toward bridge
+        centroid = nose_tip_center * 0.6 + nose_tip * 0.2 + nose_bottom * 0.2
+
+        # Angle: from bridge top to nose tip (should be roughly vertical)
+        nose_axis = nose_tip - bridge_top
+        # Calculate angle from vertical (not horizontal)
+        # A perfectly vertical nose has angle = pi/2 from horizontal
+        angle = np.arctan2(nose_axis[1], nose_axis[0])
+
+        # Scale: combination of length and width
+        # Nose length: bridge to tip
+        length = np.linalg.norm(nose_tip - bridge_top)
+        # Nose width: left to right alar
+        width = np.linalg.norm(right_alar - left_alar)
+        # Use geometric mean for balanced scale
+        scale = np.sqrt(length * width)
+        scale = max(scale, 1.0)
 
         return centroid, angle, scale
 
