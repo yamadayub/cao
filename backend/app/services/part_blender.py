@@ -103,16 +103,16 @@ PART_CONTEXT_LANDMARKS: Dict[str, List[int]] = {
         6, 168,
     ],
     "left_eyebrow": [
-        # Forehead nearby
-        109, 10, 338, 297, 332,
-        # Eye nearby
-        33, 133, 246, 161,
+        # Forehead nearby - upper area only
+        109, 10, 67, 69, 104, 68, 71, 139,
+        # Temple area
+        21, 54, 103, 108,
     ],
     "right_eyebrow": [
-        # Forehead nearby
-        109, 10, 338, 297, 332,
-        # Eye nearby
-        263, 362, 466, 388,
+        # Forehead nearby - upper area only
+        109, 10, 338, 297, 332, 299, 301, 368,
+        # Temple area
+        251, 284, 332, 337,
     ],
     "nose": [
         # Between eyes
@@ -127,9 +127,17 @@ PART_CONTEXT_LANDMARKS: Dict[str, List[int]] = {
         152, 175, 199, 200, 18, 400, 428, 369,
         # Nose bottom
         2, 164, 0,
-        # Cheeks
-        187, 207, 411, 427,
+        # Cheeks - extended for better blending
+        187, 207, 411, 427, 205, 425, 32, 262,
+        # Lower face contour
+        149, 150, 136, 172, 378, 379, 365, 397,
     ],
+}
+
+# Exclusion masks: landmarks that should be EXCLUDED from the mask
+PART_EXCLUSION_LANDMARKS: Dict[str, List[int]] = {
+    "left_eyebrow": FACIAL_PART_LANDMARKS["left_eye"],  # Exclude left eye from eyebrow
+    "right_eyebrow": FACIAL_PART_LANDMARKS["right_eye"],  # Exclude right eye from eyebrow
 }
 
 
@@ -244,6 +252,7 @@ class PartBlender:
                     part_indices,
                     context_indices,
                     (out_w, out_h),
+                    part_name,
                 )
             except Exception as e:
                 # Log error but continue with other parts
@@ -261,13 +270,25 @@ class PartBlender:
         part_indices: List[int],
         context_indices: List[int],
         img_size: Tuple[int, int],
+        part_name: str = "",
     ) -> np.ndarray:
         """
         Blend a single facial part from source to base image.
 
-        Uses RBF-based warping for natural shape adaptation.
+        Uses centroid/angle alignment + RBF-based warping for natural shape adaptation.
         """
         w, h = img_size
+
+        # Calculate centroid and angle for alignment
+        src_centroid, src_angle, src_scale = self._calculate_part_geometry(
+            src_landmarks, part_indices
+        )
+        dst_centroid, dst_angle, dst_scale = self._calculate_part_geometry(
+            base_landmarks, part_indices
+        )
+
+        if src_centroid is None or dst_centroid is None:
+            return base_img
 
         # Combine part and context indices for warping
         all_indices = list(set(part_indices + context_indices))
@@ -286,22 +307,175 @@ class PartBlender:
         src_points = np.array(src_points, dtype=np.float32)
         dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Warp the source image to match the base face structure
-        warped_src = self._rbf_warp(src_img, src_points, dst_points, (w, h))
+        # First, apply centroid-based alignment transform
+        aligned_src = self._align_by_centroid_and_angle(
+            src_img,
+            src_centroid, src_angle, src_scale,
+            dst_centroid, dst_angle, dst_scale,
+            (w, h)
+        )
 
-        # Create soft mask for the part
-        mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
+        # Adjust source points to match the alignment transform
+        aligned_src_points = self._transform_points(
+            src_points,
+            src_centroid, src_angle, src_scale,
+            dst_centroid, dst_angle, dst_scale
+        )
+
+        # Warp the aligned source image for fine-grained adjustment
+        warped_src = self._rbf_warp(aligned_src, aligned_src_points, dst_points, (w, h))
+
+        # Create soft mask for the part (with exclusions if applicable)
+        exclusion_indices = PART_EXCLUSION_LANDMARKS.get(part_name, [])
+        mask = self._create_soft_mask_with_exclusion(
+            base_landmarks, part_indices, exclusion_indices, (h, w)
+        )
 
         if mask.sum() == 0:
             return base_img
+
+        # Apply extra feathering for lips to blend better with surrounding skin
+        if part_name == "lips":
+            mask = self._feather_mask(mask, iterations=3, blur_size=31, erode_size=7)
 
         # Apply color correction to match skin tones
         warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
 
         # Multi-band blend for natural transition
-        result = self._multiband_blend(base_img, warped_src, mask)
+        # Use more levels for lips for smoother blending
+        num_levels = 5 if part_name == "lips" else 4
+        result = self._multiband_blend(base_img, warped_src, mask, num_levels=num_levels)
 
         return result
+
+    def _calculate_part_geometry(
+        self,
+        landmarks: List[Tuple[float, float]],
+        part_indices: List[int],
+    ) -> Tuple[Optional[np.ndarray], float, float]:
+        """
+        Calculate centroid, principal angle, and scale of a facial part.
+
+        Returns:
+            centroid: (x, y) center point
+            angle: rotation angle in radians
+            scale: approximate size (mean distance from centroid)
+        """
+        points = []
+        for idx in part_indices:
+            if idx < len(landmarks):
+                points.append(landmarks[idx])
+
+        if len(points) < 3:
+            return None, 0.0, 1.0
+
+        points = np.array(points, dtype=np.float32)
+
+        # Calculate centroid
+        centroid = np.mean(points, axis=0)
+
+        # Calculate principal angle using PCA
+        centered = points - centroid
+        cov = np.cov(centered.T)
+        if cov.shape == (2, 2):
+            eigenvalues, eigenvectors = np.linalg.eigh(cov)
+            # Principal axis is the eigenvector with largest eigenvalue
+            principal_axis = eigenvectors[:, np.argmax(eigenvalues)]
+            angle = np.arctan2(principal_axis[1], principal_axis[0])
+        else:
+            angle = 0.0
+
+        # Calculate scale as mean distance from centroid
+        distances = np.linalg.norm(centered, axis=1)
+        scale = np.mean(distances) if len(distances) > 0 else 1.0
+        scale = max(scale, 1.0)  # Prevent division by zero
+
+        return centroid, angle, scale
+
+    def _align_by_centroid_and_angle(
+        self,
+        img: np.ndarray,
+        src_centroid: np.ndarray,
+        src_angle: float,
+        src_scale: float,
+        dst_centroid: np.ndarray,
+        dst_angle: float,
+        dst_scale: float,
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Align source image by matching centroid, angle, and scale.
+        """
+        w, h = output_size
+
+        # Calculate rotation angle difference
+        angle_diff = dst_angle - src_angle
+
+        # Calculate scale ratio (with limits to prevent extreme scaling)
+        scale_ratio = np.clip(dst_scale / src_scale, 0.7, 1.4)
+
+        # Build transformation matrix
+        # 1. Translate to origin
+        # 2. Scale
+        # 3. Rotate
+        # 4. Translate to destination
+        cos_a = np.cos(angle_diff)
+        sin_a = np.sin(angle_diff)
+
+        # Combined transform matrix
+        transform = np.array([
+            [scale_ratio * cos_a, -scale_ratio * sin_a,
+             dst_centroid[0] - scale_ratio * (cos_a * src_centroid[0] - sin_a * src_centroid[1])],
+            [scale_ratio * sin_a, scale_ratio * cos_a,
+             dst_centroid[1] - scale_ratio * (sin_a * src_centroid[0] + cos_a * src_centroid[1])],
+        ], dtype=np.float32)
+
+        # Apply transformation
+        aligned = cv2.warpAffine(
+            img, transform, (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+
+        return aligned
+
+    def _transform_points(
+        self,
+        points: np.ndarray,
+        src_centroid: np.ndarray,
+        src_angle: float,
+        src_scale: float,
+        dst_centroid: np.ndarray,
+        dst_angle: float,
+        dst_scale: float,
+    ) -> np.ndarray:
+        """
+        Transform points using the same centroid/angle/scale alignment.
+        """
+        angle_diff = dst_angle - src_angle
+        scale_ratio = np.clip(dst_scale / src_scale, 0.7, 1.4)
+
+        cos_a = np.cos(angle_diff)
+        sin_a = np.sin(angle_diff)
+
+        # Transform each point
+        transformed = []
+        for pt in points:
+            # Translate to origin
+            x = pt[0] - src_centroid[0]
+            y = pt[1] - src_centroid[1]
+
+            # Scale and rotate
+            new_x = scale_ratio * (cos_a * x - sin_a * y)
+            new_y = scale_ratio * (sin_a * x + cos_a * y)
+
+            # Translate to destination
+            new_x += dst_centroid[0]
+            new_y += dst_centroid[1]
+
+            transformed.append([new_x, new_y])
+
+        return np.array(transformed, dtype=np.float32)
 
     def _rbf_warp(
         self,
@@ -385,6 +559,24 @@ class PartBlender:
         """
         Create a soft-edged mask for natural blending.
         """
+        return self._create_soft_mask_with_exclusion(landmarks, part_indices, [], img_shape)
+
+    def _create_soft_mask_with_exclusion(
+        self,
+        landmarks: List[Tuple[float, float]],
+        part_indices: List[int],
+        exclusion_indices: List[int],
+        img_shape: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Create a soft-edged mask for natural blending, with exclusion regions.
+
+        Args:
+            landmarks: Face landmarks
+            part_indices: Indices for the part to include
+            exclusion_indices: Indices for areas to exclude (e.g., eyes from eyebrow)
+            img_shape: (height, width)
+        """
         h, w = img_shape
         mask = np.zeros((h, w), dtype=np.uint8)
 
@@ -404,6 +596,28 @@ class PartBlender:
         hull = cv2.convexHull(points)
         cv2.fillConvexPoly(mask, hull, 255)
 
+        # Create exclusion mask if needed
+        if exclusion_indices:
+            exclusion_mask = np.zeros((h, w), dtype=np.uint8)
+            exclusion_points = []
+            for idx in exclusion_indices:
+                if idx < len(landmarks):
+                    x, y = landmarks[idx]
+                    exclusion_points.append([int(x), int(y)])
+
+            if len(exclusion_points) >= 3:
+                exclusion_points = np.array(exclusion_points, dtype=np.int32)
+                exclusion_hull = cv2.convexHull(exclusion_points)
+                cv2.fillConvexPoly(exclusion_mask, exclusion_hull, 255)
+
+                # Expand exclusion area slightly with blur for soft edge
+                kernel = np.ones((11, 11), np.uint8)
+                exclusion_mask = cv2.dilate(exclusion_mask, kernel, iterations=2)
+                exclusion_mask = cv2.GaussianBlur(exclusion_mask, (21, 21), 0)
+
+                # Subtract exclusion from main mask
+                mask = cv2.subtract(mask, exclusion_mask)
+
         # Expand mask slightly
         kernel = np.ones((7, 7), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=1)
@@ -412,18 +626,24 @@ class PartBlender:
         mask = cv2.GaussianBlur(mask, (31, 31), 0)
 
         # Apply additional feathering at edges
-        mask = self._feather_mask(mask, iterations=2)
+        mask = self._feather_mask(mask, iterations=2, blur_size=21, erode_size=5)
 
         return mask
 
-    def _feather_mask(self, mask: np.ndarray, iterations: int = 1) -> np.ndarray:
+    def _feather_mask(
+        self,
+        mask: np.ndarray,
+        iterations: int = 1,
+        blur_size: int = 21,
+        erode_size: int = 5,
+    ) -> np.ndarray:
         """Apply feathering to mask edges for smoother blending."""
         result = mask.astype(np.float32)
 
         for _ in range(iterations):
             # Erode and blur
-            eroded = cv2.erode(mask, np.ones((5, 5), np.uint8), iterations=1)
-            blurred = cv2.GaussianBlur(result, (21, 21), 0)
+            eroded = cv2.erode(mask, np.ones((erode_size, erode_size), np.uint8), iterations=1)
+            blurred = cv2.GaussianBlur(result, (blur_size, blur_size), 0)
 
             # Combine: keep center, use blurred for edges
             center_mask = eroded.astype(np.float32) / 255.0
