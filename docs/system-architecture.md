@@ -483,13 +483,24 @@ Push to main
     │   ├── pnpm lint
     │   ├── pnpm test:unit
     │   ├── pnpm build
-    │   └── Deploy to Vercel (自動)
+    │   └── Deploy to Vercel (自動 - Vercel GitHub連携)
     │
     └─► Backend CI (GitHub Actions)
         ├── pip install
         ├── ruff check (lint)
         ├── pytest tests/
-        └── Deploy to Heroku (手動: git subtree push)
+        └── Deploy to Heroku (自動 - GitHub Actions)
+```
+
+**GitHub Secrets/Variables（自動デプロイに必要）:**
+```bash
+# Secrets（GitHub Repository Settings > Secrets and variables > Actions）
+HEROKU_API_KEY      # heroku auth:token で取得
+HEROKU_APP_NAME     # cao-api-dev
+HEROKU_EMAIL        # Herokuアカウントのメールアドレス
+
+# Variables
+HEROKU_ENABLED      # true（これがないとHerokuデプロイはスキップされる）
 ```
 
 **完全なデプロイフロー:**
@@ -498,11 +509,20 @@ Push to main
 git add .
 git commit -m "Your commit message"
 
-# 2. GitHubにプッシュ（CI実行、Vercel自動デプロイ）
+# 2. GitHubにプッシュ（CI実行、両方自動デプロイ）
 git push origin main
 
-# 3. Herokuにデプロイ（backendのみ）
+# ※ Vercel: GitHub連携で自動デプロイ
+# ※ Heroku: GitHub Actions (backend-ci.yml) で自動デプロイ
+```
+
+**手動デプロイ（緊急時のみ）:**
+```bash
+# Herokuへ手動デプロイ
 git subtree push --prefix backend heroku main
+
+# 強制プッシュが必要な場合（履歴の不一致時）
+git push heroku `git subtree split --prefix backend main`:main --force
 ```
 
 ---
