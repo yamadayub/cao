@@ -65,6 +65,13 @@ EYE_CENTER_LANDMARKS = {
     "right_eye_outer": 263,
 }
 
+# Additional face landmarks for yaw estimation
+FACE_CONTOUR_LANDMARKS = {
+    "left_cheek": 234,    # Left cheekbone
+    "right_cheek": 454,   # Right cheekbone
+    "chin_center": 152,   # Center of chin
+}
+
 # Canonical 3D coordinates for key landmarks (from MediaPipe canonical_face_model.obj)
 # Units are in centimeters, Y-down, Z toward camera
 CANONICAL_LANDMARKS_3D = {
@@ -803,6 +810,69 @@ class PartBlender3D:
             # Fallback: use destination landmarks directly
             return dst_2d.astype(np.float32)
 
+    def _estimate_face_yaw(
+        self,
+        landmarks: np.ndarray,
+    ) -> float:
+        """
+        Estimate face yaw angle (left-right rotation) from 2D landmarks.
+
+        Uses multiple cues:
+        1. Ratio of left/right eye widths (eyes appear narrower on far side)
+        2. Nose tip offset from face center
+        3. Ratio of left/right alar widths
+
+        Returns:
+            Estimated yaw angle in radians (positive = looking right, negative = looking left)
+        """
+        try:
+            # Get eye landmarks
+            left_eye_inner = np.array(landmarks[EYE_CENTER_LANDMARKS["left_eye_inner"]])
+            left_eye_outer = np.array(landmarks[EYE_CENTER_LANDMARKS["left_eye_outer"]])
+            right_eye_inner = np.array(landmarks[EYE_CENTER_LANDMARKS["right_eye_inner"]])
+            right_eye_outer = np.array(landmarks[EYE_CENTER_LANDMARKS["right_eye_outer"]])
+
+            # Get nose landmarks
+            nose_tip = np.array(landmarks[NOSE_ALIGNMENT_LANDMARKS["nose_tip"]])
+            left_alar = np.array(landmarks[NOSE_ALIGNMENT_LANDMARKS["left_alar"]])
+            right_alar = np.array(landmarks[NOSE_ALIGNMENT_LANDMARKS["right_alar"]])
+
+            # Method 1: Eye width ratio
+            left_eye_width = np.linalg.norm(left_eye_outer - left_eye_inner)
+            right_eye_width = np.linalg.norm(right_eye_outer - right_eye_inner)
+            eye_ratio = left_eye_width / max(right_eye_width, 1e-6)
+
+            # Method 2: Nose tip offset from eye center
+            eyes_center = (left_eye_inner + left_eye_outer + right_eye_inner + right_eye_outer) / 4
+            inter_eye_dist = np.linalg.norm(
+                (left_eye_inner + left_eye_outer) / 2 -
+                (right_eye_inner + right_eye_outer) / 2
+            )
+            nose_offset_ratio = (nose_tip[0] - eyes_center[0]) / max(inter_eye_dist, 1e-6)
+
+            # Method 3: Alar width ratio (distance from nose tip to each alar)
+            left_alar_dist = np.linalg.norm(left_alar - nose_tip)
+            right_alar_dist = np.linalg.norm(right_alar - nose_tip)
+            alar_ratio = left_alar_dist / max(right_alar_dist, 1e-6)
+
+            # Combine cues to estimate yaw
+            # Eye ratio: >1 means looking left, <1 means looking right
+            yaw_from_eyes = np.arctan((eye_ratio - 1.0) * 2.0)
+
+            # Nose offset: positive = looking right
+            yaw_from_nose = np.arctan(nose_offset_ratio * 1.5)
+
+            # Alar ratio: >1 means looking right (left side more visible)
+            yaw_from_alar = np.arctan((alar_ratio - 1.0) * 1.5)
+
+            # Weight the estimates (nose offset is most reliable)
+            yaw = 0.3 * yaw_from_eyes + 0.4 * yaw_from_nose + 0.3 * yaw_from_alar
+
+            return float(yaw)
+
+        except (IndexError, KeyError, TypeError):
+            return 0.0
+
     def _compute_nose_aligned_points(
         self,
         src_2d: np.ndarray,
@@ -812,12 +882,14 @@ class PartBlender3D:
         part_name: str,
     ) -> np.ndarray:
         """
-        Compute aligned 2D points for nose using eye-center and centerline alignment.
+        Compute aligned 2D points for nose using eye-center, centerline, and yaw alignment.
 
         This method:
-        1. Positions the nose center at the midpoint between both eyes
-        2. Aligns the nose centerline (from bridge to tip) with the target face centerline
-        3. Scales the nose appropriately based on inter-eye distance
+        1. Estimates face yaw angles for both source and destination
+        2. Positions the nose center at the midpoint between both eyes
+        3. Aligns the nose centerline with the target face centerline
+        4. Applies horizontal shear/scale based on yaw difference
+        5. Scales the nose appropriately based on inter-eye distance
 
         Args:
             src_2d: Source nose 2D landmarks
@@ -830,6 +902,11 @@ class PartBlender3D:
             Aligned 2D points for the nose
         """
         try:
+            # Estimate yaw angles for both faces
+            src_yaw = self._estimate_face_yaw(src_landmarks)
+            dst_yaw = self._estimate_face_yaw(dst_landmarks)
+            yaw_diff = dst_yaw - src_yaw
+
             # Get eye center landmarks
             left_eye_inner_idx = EYE_CENTER_LANDMARKS["left_eye_inner"]
             left_eye_outer_idx = EYE_CENTER_LANDMARKS["left_eye_outer"]
@@ -865,26 +942,22 @@ class PartBlender3D:
             left_alar_idx = NOSE_ALIGNMENT_LANDMARKS["left_alar"]
             right_alar_idx = NOSE_ALIGNMENT_LANDMARKS["right_alar"]
 
-            # Compute source nose centerline
+            # Compute source nose geometry
             src_nose_tip = np.array(src_landmarks[nose_tip_idx])
             src_nose_bridge = np.array(src_landmarks[nose_bridge_idx])
             src_left_alar = np.array(src_landmarks[left_alar_idx])
             src_right_alar = np.array(src_landmarks[right_alar_idx])
-
-            # Source nose center (midpoint of alars)
             src_nose_center = (src_left_alar + src_right_alar) / 2
 
             # Source nose centerline vector (from bridge to tip)
             src_centerline = src_nose_tip - src_nose_bridge
             src_centerline_angle = np.arctan2(src_centerline[1], src_centerline[0])
 
-            # Compute destination nose centerline
+            # Compute destination nose geometry
             dst_nose_tip = np.array(dst_landmarks[nose_tip_idx])
             dst_nose_bridge = np.array(dst_landmarks[nose_bridge_idx])
             dst_left_alar = np.array(dst_landmarks[left_alar_idx])
             dst_right_alar = np.array(dst_landmarks[right_alar_idx])
-
-            # Destination nose center (midpoint of alars)
             dst_nose_center = (dst_left_alar + dst_right_alar) / 2
 
             # Destination nose centerline vector
@@ -904,33 +977,55 @@ class PartBlender3D:
             R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
 
             # Target position: position nose center under the eye center
-            # Use destination eye center's X coordinate and destination nose center's Y relationship
             dst_vertical_offset = dst_nose_center[1] - dst_eyes_center[1]
-
-            # Target position: X aligned with destination eye center, Y based on destination proportions
             target_center = np.array([
-                dst_eyes_center[0],  # X: centered under eyes
-                dst_eyes_center[1] + dst_vertical_offset  # Y: proper vertical position
+                dst_eyes_center[0],
+                dst_eyes_center[1] + dst_vertical_offset
             ])
+
+            # ===== YAW-BASED DEFORMATION =====
+            # When faces have different yaw angles, we need to adjust the nose shape
+            # to match the perspective of the target face
+
+            # Compute horizontal scale factors for left and right sides
+            # Positive yaw_diff means target is more to the right
+            # This makes the right side of nose appear larger, left side smaller
+            yaw_factor = np.sin(yaw_diff) * 0.5  # Scale influence of yaw
+            left_scale = 1.0 - yaw_factor  # Left side scale
+            right_scale = 1.0 + yaw_factor  # Right side scale
+
+            # Clamp scale factors
+            left_scale = np.clip(left_scale, 0.7, 1.3)
+            right_scale = np.clip(right_scale, 0.7, 1.3)
 
             # Apply transformation:
             # 1. Center source nose points around source nose center
             src_centered = src_2d - src_nose_center
 
-            # 2. Apply rotation to align centerlines
-            src_rotated = (src_centered @ R.T)
+            # 2. Apply yaw-based horizontal scaling (different for left/right side)
+            # Determine left/right based on X coordinate relative to center
+            src_yaw_adjusted = src_centered.copy()
+            for i in range(len(src_yaw_adjusted)):
+                if src_centered[i, 0] < 0:  # Left side of nose
+                    src_yaw_adjusted[i, 0] *= left_scale
+                else:  # Right side of nose
+                    src_yaw_adjusted[i, 0] *= right_scale
 
-            # 3. Apply scale
+            # 3. Apply rotation to align centerlines
+            src_rotated = (src_yaw_adjusted @ R.T)
+
+            # 4. Apply scale
             src_scaled = src_rotated * scale
 
-            # 4. Translate to target position
+            # 5. Translate to target position
             aligned = src_scaled + target_center
 
             logger.info(f"Nose alignment: rotation={np.degrees(rotation_angle):.1f}°, "
                         f"scale={scale:.3f}, "
-                        f"src_eye_dist={src_inter_eye_dist:.1f}, "
-                        f"dst_eye_dist={dst_inter_eye_dist:.1f}, "
-                        f"target_center=({target_center[0]:.1f}, {target_center[1]:.1f})")
+                        f"src_yaw={np.degrees(src_yaw):.1f}°, "
+                        f"dst_yaw={np.degrees(dst_yaw):.1f}°, "
+                        f"yaw_diff={np.degrees(yaw_diff):.1f}°, "
+                        f"left_scale={left_scale:.2f}, right_scale={right_scale:.2f}")
 
             return aligned.astype(np.float32)
 

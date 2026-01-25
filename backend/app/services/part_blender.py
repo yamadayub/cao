@@ -431,6 +431,76 @@ class PartBlender:
 
         return result
 
+    def _estimate_face_yaw_2d(
+        self,
+        landmarks: List[Tuple[float, float]],
+    ) -> float:
+        """
+        Estimate face yaw angle (left-right rotation) from 2D landmarks.
+
+        Uses multiple cues:
+        1. Ratio of left/right eye widths
+        2. Nose tip offset from face center
+        3. Ratio of left/right alar widths
+
+        Returns:
+            Estimated yaw angle in radians (positive = looking right)
+        """
+        # Eye landmark indices
+        LEFT_EYE_INNER = 133
+        LEFT_EYE_OUTER = 33
+        RIGHT_EYE_INNER = 362
+        RIGHT_EYE_OUTER = 263
+
+        # Nose landmark indices
+        NOSE_TIP = 4
+        LEFT_ALAR = 129
+        RIGHT_ALAR = 358
+
+        try:
+            # Get eye landmarks
+            left_eye_inner = np.array(landmarks[LEFT_EYE_INNER])
+            left_eye_outer = np.array(landmarks[LEFT_EYE_OUTER])
+            right_eye_inner = np.array(landmarks[RIGHT_EYE_INNER])
+            right_eye_outer = np.array(landmarks[RIGHT_EYE_OUTER])
+
+            # Get nose landmarks
+            nose_tip = np.array(landmarks[NOSE_TIP])
+            left_alar = np.array(landmarks[LEFT_ALAR])
+            right_alar = np.array(landmarks[RIGHT_ALAR])
+
+            # Method 1: Eye width ratio
+            left_eye_width = np.linalg.norm(left_eye_outer - left_eye_inner)
+            right_eye_width = np.linalg.norm(right_eye_outer - right_eye_inner)
+            eye_ratio = left_eye_width / max(right_eye_width, 1e-6)
+
+            # Method 2: Nose tip offset from eye center
+            eyes_center = (left_eye_inner + left_eye_outer +
+                          right_eye_inner + right_eye_outer) / 4
+            inter_eye_dist = np.linalg.norm(
+                (left_eye_inner + left_eye_outer) / 2 -
+                (right_eye_inner + right_eye_outer) / 2
+            )
+            nose_offset_ratio = (nose_tip[0] - eyes_center[0]) / max(inter_eye_dist, 1e-6)
+
+            # Method 3: Alar width ratio
+            left_alar_dist = np.linalg.norm(left_alar - nose_tip)
+            right_alar_dist = np.linalg.norm(right_alar - nose_tip)
+            alar_ratio = left_alar_dist / max(right_alar_dist, 1e-6)
+
+            # Combine cues to estimate yaw
+            yaw_from_eyes = np.arctan((eye_ratio - 1.0) * 2.0)
+            yaw_from_nose = np.arctan(nose_offset_ratio * 1.5)
+            yaw_from_alar = np.arctan((alar_ratio - 1.0) * 1.5)
+
+            # Weight the estimates
+            yaw = 0.3 * yaw_from_eyes + 0.4 * yaw_from_nose + 0.3 * yaw_from_alar
+
+            return float(yaw)
+
+        except (IndexError, TypeError):
+            return 0.0
+
     def _blend_nose_with_pose_compensation(
         self,
         base_img: np.ndarray,
@@ -442,17 +512,24 @@ class PartBlender:
         img_size: Tuple[int, int],
     ) -> Optional[np.ndarray]:
         """
-        Blend nose with eye-center and centerline alignment.
+        Blend nose with eye-center, centerline, and yaw alignment.
 
         This method:
-        1. Positions the nose center at the midpoint between both eyes
-        2. Aligns the nose centerline (from bridge to tip) with the target face centerline
-        3. Scales the nose appropriately based on inter-eye distance
-        4. Applies color matching for natural blending
+        1. Estimates face yaw angles for both faces
+        2. Positions the nose center at the midpoint between both eyes
+        3. Aligns the nose centerline with the target face centerline
+        4. Applies horizontal shear/scale based on yaw difference
+        5. Scales the nose appropriately based on inter-eye distance
+        6. Applies color matching for natural blending
         """
         w, h = img_size
 
         try:
+            # Estimate yaw angles for both faces
+            src_yaw = self._estimate_face_yaw_2d(src_landmarks)
+            dst_yaw = self._estimate_face_yaw_2d(base_landmarks)
+            yaw_diff = dst_yaw - src_yaw
+
             # Eye landmark indices
             LEFT_EYE_INNER = 133
             LEFT_EYE_OUTER = 33
@@ -524,6 +601,12 @@ class PartBlender:
                 dst_eyes_center[1] + dst_vertical_offset
             ])
 
+            # ===== YAW-BASED DEFORMATION =====
+            # Compute horizontal scale factors for left and right sides
+            yaw_factor = np.sin(yaw_diff) * 0.5
+            left_scale = np.clip(1.0 - yaw_factor, 0.7, 1.3)
+            right_scale = np.clip(1.0 + yaw_factor, 0.7, 1.3)
+
             # Combine part and context indices for warping
             all_indices = list(set(part_indices + context_indices))
 
@@ -546,23 +629,37 @@ class PartBlender:
             sin_a = np.sin(rotation_angle)
             R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
 
-            # Transform source points:
+            # Transform source points with yaw-based deformation:
             # 1. Center around source nose center
             src_centered = src_points - src_nose_center
-            # 2. Rotate to align centerlines
-            src_rotated = (src_centered @ R.T)
-            # 3. Scale
+
+            # 2. Apply yaw-based horizontal scaling
+            src_yaw_adjusted = src_centered.copy()
+            for i in range(len(src_yaw_adjusted)):
+                if src_centered[i, 0] < 0:  # Left side
+                    src_yaw_adjusted[i, 0] *= left_scale
+                else:  # Right side
+                    src_yaw_adjusted[i, 0] *= right_scale
+
+            # 3. Rotate to align centerlines
+            src_rotated = (src_yaw_adjusted @ R.T)
+
+            # 4. Scale
             src_scaled = src_rotated * scale
-            # 4. Translate to target position
+
+            # 5. Translate to target position
             aligned_src_points = src_scaled + target_center
 
-            # Apply same transformation to source image
+            # Apply transformation to source image using affine warp
+            # For yaw correction, we use a perspective transform with shear
+            # Create source and destination quadrilateral for perspective warp
+
+            # First apply basic rotation and scale
             M = cv2.getRotationMatrix2D(
                 (float(src_nose_center[0]), float(src_nose_center[1])),
                 np.degrees(-rotation_angle),
                 scale
             )
-            # Adjust translation to move to target center
             M[0, 2] += target_center[0] - src_nose_center[0] * scale * cos_a - \
                        src_nose_center[1] * scale * (-sin_a)
             M[1, 2] += target_center[1] - src_nose_center[0] * scale * sin_a - \
@@ -574,7 +671,7 @@ class PartBlender:
                 borderMode=cv2.BORDER_REPLICATE
             )
 
-            # Warp for fine-grained adjustment
+            # Warp for fine-grained adjustment including yaw correction
             warped_src = self._rbf_warp(
                 aligned_src,
                 aligned_src_points.astype(np.float32),
