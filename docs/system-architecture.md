@@ -402,6 +402,9 @@ MAX_IMAGE_DIMENSION=2048
 ## Deployment
 
 ### Frontend (Vercel)
+
+Vercelは自動デプロイが有効。mainブランチへのpushで自動的にデプロイされる。
+
 ```yaml
 # vercel.json
 {
@@ -411,24 +414,64 @@ MAX_IMAGE_DIMENSION=2048
 }
 ```
 
+**手動デプロイ:**
+```bash
+# Vercel CLIを使用
+cd frontend
+vercel --prod
+```
+
 ### Backend (Heroku)
+
+このプロジェクトはモノレポ構成のため、`git subtree push`を使用してbackendディレクトリのみをHerokuにデプロイする。
+
+**初回セットアップ:**
+```bash
+# Heroku CLIでログイン
+heroku login
+
+# アプリを作成（既存の場合はスキップ）
+heroku create cao-api-dev
+
+# Herokuリモートを追加
+heroku git:remote -a cao-api-dev
+
+# ビルドパックを設定
+heroku buildpacks:add heroku-community/apt
+heroku buildpacks:add heroku/python
 ```
-# Procfile
+
+**デプロイコマンド:**
+```bash
+# backendディレクトリをHerokuにプッシュ
+git subtree push --prefix backend heroku main
+
+# 強制プッシュが必要な場合（履歴の不一致時）
+git push heroku `git subtree split --prefix backend main`:main --force
+```
+
+**Herokuの設定ファイル（backend/内）:**
+```
+# backend/Procfile
 web: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+# backend/runtime.txt
+python-3.11.11
+
+# backend/Aptfile (OpenCV依存ライブラリ)
+libgl1
+libglib2.0-0
+libsm6
+libxrender1
+libxext6
 ```
-```yaml
-# app.json
-{
-  "name": "cao-api",
-  "stack": "heroku-24",
-  "buildpacks": [
-    { "url": "heroku/python" }
-  ],
-  "addons": [],
-  "env": {
-    "APP_ENV": "production"
-  }
-}
+
+**環境変数の設定:**
+```bash
+heroku config:set APP_ENV=production
+heroku config:set CORS_ORIGINS=https://cao.app,https://cao-coral.vercel.app
+heroku config:set SUPABASE_URL=https://xxx.supabase.co
+heroku config:set SUPABASE_SERVICE_KEY=xxx
 ```
 
 ### CI/CD Pipeline
@@ -440,13 +483,26 @@ Push to main
     │   ├── pnpm lint
     │   ├── pnpm test:unit
     │   ├── pnpm build
-    │   └── Deploy to Vercel (auto)
+    │   └── Deploy to Vercel (自動)
     │
     └─► Backend CI (GitHub Actions)
         ├── pip install
-        ├── pytest tests/unit
-        ├── pytest tests/integration
-        └── Deploy to Heroku (git push)
+        ├── ruff check (lint)
+        ├── pytest tests/
+        └── Deploy to Heroku (手動: git subtree push)
+```
+
+**完全なデプロイフロー:**
+```bash
+# 1. コードをコミット
+git add .
+git commit -m "Your commit message"
+
+# 2. GitHubにプッシュ（CI実行、Vercel自動デプロイ）
+git push origin main
+
+# 3. Herokuにデプロイ（backendのみ）
+git subtree push --prefix backend heroku main
 ```
 
 ---
