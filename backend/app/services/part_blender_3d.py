@@ -436,7 +436,16 @@ class PartBlender3D:
         self.canonical_model = CanonicalFaceModel()
 
     def is_depth_available(self) -> bool:
-        """Check if depth estimation is available."""
+        """
+        Check if 3D blending is available.
+
+        Always returns True since canonical model fitting works without depth.
+        Depth estimation enhances results but is optional.
+        """
+        return True
+
+    def has_depth_model(self) -> bool:
+        """Check if depth estimation model is available (optional enhancement)."""
         if self._depth_available is None:
             model, processor = get_depth_model()
             self._depth_available = model is not None
@@ -473,16 +482,16 @@ class PartBlender3D:
                 (x * out_w / i_w, y * out_h / i_h) for x, y in ideal_landmarks
             ]
 
-        # Estimate depth for both images
+        # Estimate depth for both images (optional - works without depth too)
         current_depth = self._estimate_depth(current_img)
         ideal_depth = self._estimate_depth(ideal_img)
 
-        if current_depth is None or ideal_depth is None:
-            logger.warning("Depth estimation failed, falling back to 2D method")
-            from app.services.part_blender import get_part_blender_service
-            return get_part_blender_service().blend(
-                current_img, ideal_img, parts, current_label, ideal_label
-            )
+        # If depth is not available, use dummy depth maps (canonical model still works)
+        if current_depth is None:
+            logger.info("Depth estimation not available, using canonical model only")
+            current_depth = np.ones((out_h, out_w), dtype=np.float32) * 0.5
+        if ideal_depth is None:
+            ideal_depth = np.ones((out_h, out_w), dtype=np.float32) * 0.5
 
         # Create 3D face meshes with canonical model fitting
         current_mesh = FaceMesh3D(
