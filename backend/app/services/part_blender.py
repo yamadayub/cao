@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 from pydantic import BaseModel
+from scipy.interpolate import RBFInterpolator
 
 from app.services.face_detection import get_face_detection_service
 
@@ -80,6 +81,54 @@ FACIAL_PART_LANDMARKS: Dict[str, List[int]] = {
         324, 318, 402, 317, 14, 87, 178, 88, 95,
         # Additional lip contour
         62, 96, 89, 179, 86, 15, 316, 403, 319, 325, 292,
+    ],
+}
+
+# Extended landmark indices for warping context (surrounding area)
+PART_CONTEXT_LANDMARKS: Dict[str, List[int]] = {
+    "left_eye": [
+        # Eyebrow nearby
+        70, 63, 105, 66, 107,
+        # Cheek nearby
+        116, 123, 147, 213, 192,
+        # Nose bridge
+        6, 168,
+    ],
+    "right_eye": [
+        # Eyebrow nearby
+        300, 293, 334, 296, 336,
+        # Cheek nearby
+        345, 352, 376, 433, 416,
+        # Nose bridge
+        6, 168,
+    ],
+    "left_eyebrow": [
+        # Forehead nearby
+        109, 10, 338, 297, 332,
+        # Eye nearby
+        33, 133, 246, 161,
+    ],
+    "right_eyebrow": [
+        # Forehead nearby
+        109, 10, 338, 297, 332,
+        # Eye nearby
+        263, 362, 466, 388,
+    ],
+    "nose": [
+        # Between eyes
+        6, 168, 197,
+        # Cheeks
+        116, 123, 345, 352,
+        # Upper lip
+        164, 167, 393, 391,
+    ],
+    "lips": [
+        # Chin
+        152, 175, 199, 200, 18, 400, 428, 369,
+        # Nose bottom
+        2, 164, 0,
+        # Cheeks
+        187, 207, 411, 427,
     ],
 }
 
@@ -184,6 +233,7 @@ class PartBlender:
         selected_parts = parts.get_selected_parts()
         for part_name in selected_parts:
             part_indices = FACIAL_PART_LANDMARKS[part_name]
+            context_indices = PART_CONTEXT_LANDMARKS.get(part_name, [])
 
             try:
                 result = self._blend_part(
@@ -192,10 +242,12 @@ class PartBlender:
                     current_landmarks,
                     ideal_landmarks,
                     part_indices,
+                    context_indices,
                     (out_w, out_h),
                 )
-            except Exception:
-                # Skip parts that fail to blend
+            except Exception as e:
+                # Log error but continue with other parts
+                print(f"Warning: Failed to blend {part_name}: {e}")
                 continue
 
         return result
@@ -207,81 +259,131 @@ class PartBlender:
         base_landmarks: List[Tuple[float, float]],
         src_landmarks: List[Tuple[float, float]],
         part_indices: List[int],
+        context_indices: List[int],
         img_size: Tuple[int, int],
     ) -> np.ndarray:
         """
         Blend a single facial part from source to base image.
 
-        Args:
-            base_img: Base image to blend onto
-            src_img: Source image to extract part from
-            base_landmarks: Landmarks of base face
-            src_landmarks: Landmarks of source face
-            part_indices: Landmark indices defining the part
-            img_size: (width, height) of images
-
-        Returns:
-            Image with blended part
+        Uses RBF-based warping for natural shape adaptation.
         """
         w, h = img_size
 
-        # Extract part region from source
-        src_region, src_mask, src_center = self._extract_part_region(
-            src_img, src_landmarks, part_indices
-        )
+        # Combine part and context indices for warping
+        all_indices = list(set(part_indices + context_indices))
 
-        if src_region is None or src_mask is None:
+        # Get source and destination points for warping
+        src_points = []
+        dst_points = []
+        for idx in all_indices:
+            if idx < len(src_landmarks) and idx < len(base_landmarks):
+                src_points.append(src_landmarks[idx])
+                dst_points.append(base_landmarks[idx])
+
+        if len(src_points) < 4:
             return base_img
 
-        # Calculate transformation from source to base
-        transform = self._calculate_part_transform(
-            src_landmarks, base_landmarks, part_indices
-        )
+        src_points = np.array(src_points, dtype=np.float32)
+        dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Warp source part to base position
-        warped_region = cv2.warpAffine(
-            src_region,
-            transform,
-            (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE,
-        )
-        warped_mask = cv2.warpAffine(
-            src_mask,
-            transform,
-            (w, h),
-            flags=cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
+        # Warp the source image to match the base face structure
+        warped_src = self._rbf_warp(src_img, src_points, dst_points, (w, h))
 
-        # Find center for seamless cloning
-        base_center = self._get_part_center(base_landmarks, part_indices, (w, h))
+        # Create soft mask for the part
+        mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
 
-        # Apply color transfer to match skin tones
-        warped_region = self._color_transfer(warped_region, base_img, warped_mask)
+        if mask.sum() == 0:
+            return base_img
 
-        # Seamless blend
-        result = self._seamless_blend(base_img, warped_region, warped_mask, base_center)
+        # Apply color correction to match skin tones
+        warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
+
+        # Multi-band blend for natural transition
+        result = self._multiband_blend(base_img, warped_src, mask)
 
         return result
 
-    def _extract_part_mask(
+    def _rbf_warp(
+        self,
+        img: np.ndarray,
+        src_points: np.ndarray,
+        dst_points: np.ndarray,
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Warp image using RBF (Radial Basis Function) interpolation.
+
+        This provides smooth, natural warping that preserves local structure.
+        """
+        w, h = output_size
+        out_h, out_w = img.shape[:2]
+
+        # Add corner points for stability
+        corners_src = np.array([
+            [0, 0], [out_w-1, 0], [0, out_h-1], [out_w-1, out_h-1],
+            [out_w//2, 0], [out_w//2, out_h-1], [0, out_h//2], [out_w-1, out_h//2],
+        ], dtype=np.float32)
+        corners_dst = np.array([
+            [0, 0], [w-1, 0], [0, h-1], [w-1, h-1],
+            [w//2, 0], [w//2, h-1], [0, h//2], [w-1, h//2],
+        ], dtype=np.float32)
+
+        all_src = np.vstack([src_points, corners_src])
+        all_dst = np.vstack([dst_points, corners_dst])
+
+        # Create RBF interpolator for x and y coordinates
+        try:
+            rbf_x = RBFInterpolator(all_dst, all_src[:, 0], kernel='thin_plate_spline', smoothing=1.0)
+            rbf_y = RBFInterpolator(all_dst, all_src[:, 1], kernel='thin_plate_spline', smoothing=1.0)
+        except Exception:
+            # Fallback to affine transform if RBF fails
+            return self._affine_warp(img, src_points, dst_points, output_size)
+
+        # Create output grid
+        grid_y, grid_x = np.mgrid[0:h, 0:w]
+        grid_points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+
+        # Compute source coordinates
+        src_x = rbf_x(grid_points).reshape(h, w).astype(np.float32)
+        src_y = rbf_y(grid_points).reshape(h, w).astype(np.float32)
+
+        # Remap the image
+        warped = cv2.remap(img, src_x, src_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+
+        return warped
+
+    def _affine_warp(
+        self,
+        img: np.ndarray,
+        src_points: np.ndarray,
+        dst_points: np.ndarray,
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """Fallback affine warping when RBF fails."""
+        w, h = output_size
+
+        # Use affine transform
+        transform, _ = cv2.estimateAffinePartial2D(
+            src_points, dst_points, method=cv2.RANSAC
+        )
+
+        if transform is None:
+            return cv2.resize(img, (w, h))
+
+        return cv2.warpAffine(
+            img, transform, (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+
+    def _create_soft_mask(
         self,
         landmarks: List[Tuple[float, float]],
         part_indices: List[int],
         img_shape: Tuple[int, int],
     ) -> np.ndarray:
         """
-        Create a mask for a facial part.
-
-        Args:
-            landmarks: Face landmarks
-            part_indices: Indices of landmarks defining the part
-            img_shape: (height, width) of image
-
-        Returns:
-            Binary mask (uint8)
+        Create a soft-edged mask for natural blending.
         """
         h, w = img_shape
         mask = np.zeros((h, w), dtype=np.uint8)
@@ -298,18 +400,174 @@ class PartBlender:
 
         points = np.array(points, dtype=np.int32)
 
-        # Create convex hull for the part
+        # Create convex hull
         hull = cv2.convexHull(points)
         cv2.fillConvexPoly(mask, hull, 255)
 
-        # Dilate mask slightly for better coverage
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.dilate(mask, kernel, iterations=2)
+        # Expand mask slightly
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=1)
 
-        # Smooth edges
-        mask = cv2.GaussianBlur(mask, (7, 7), 0)
+        # Apply strong Gaussian blur for soft edges
+        mask = cv2.GaussianBlur(mask, (31, 31), 0)
+
+        # Apply additional feathering at edges
+        mask = self._feather_mask(mask, iterations=2)
 
         return mask
+
+    def _feather_mask(self, mask: np.ndarray, iterations: int = 1) -> np.ndarray:
+        """Apply feathering to mask edges for smoother blending."""
+        result = mask.astype(np.float32)
+
+        for _ in range(iterations):
+            # Erode and blur
+            eroded = cv2.erode(mask, np.ones((5, 5), np.uint8), iterations=1)
+            blurred = cv2.GaussianBlur(result, (21, 21), 0)
+
+            # Combine: keep center, use blurred for edges
+            center_mask = eroded.astype(np.float32) / 255.0
+            result = center_mask * result + (1 - center_mask) * blurred
+
+        return result.astype(np.uint8)
+
+    def _advanced_color_transfer(
+        self,
+        src: np.ndarray,
+        tgt: np.ndarray,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Advanced color transfer using local statistics.
+        """
+        if mask.sum() == 0:
+            return src
+
+        result = src.copy()
+
+        # Convert to LAB color space
+        src_lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB).astype(np.float32)
+        tgt_lab = cv2.cvtColor(tgt, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+        # Create mask for statistics (use a dilated version for context)
+        kernel = np.ones((15, 15), np.uint8)
+        stat_mask = cv2.dilate(mask, kernel, iterations=2)
+        mask_bool = stat_mask > 127
+
+        if not np.any(mask_bool):
+            return src
+
+        # Transfer each channel
+        for i in range(3):
+            src_channel = src_lab[:, :, i]
+            tgt_channel = tgt_lab[:, :, i]
+
+            src_masked = src_channel[mask_bool]
+            tgt_masked = tgt_channel[mask_bool]
+
+            if len(src_masked) == 0 or len(tgt_masked) == 0:
+                continue
+
+            # Robust statistics (use median and percentile range)
+            src_median = np.median(src_masked)
+            src_p25, src_p75 = np.percentile(src_masked, [25, 75])
+            src_iqr = max(src_p75 - src_p25, 1.0)
+
+            tgt_median = np.median(tgt_masked)
+            tgt_p25, tgt_p75 = np.percentile(tgt_masked, [25, 75])
+            tgt_iqr = max(tgt_p75 - tgt_p25, 1.0)
+
+            # Apply transfer with blending factor
+            scale = tgt_iqr / src_iqr
+            # Limit scale to prevent extreme changes
+            scale = np.clip(scale, 0.5, 2.0)
+
+            transferred = (src_channel - src_median) * scale + tgt_median
+
+            # Blend with original based on mask intensity
+            blend_mask = mask.astype(np.float32) / 255.0
+            src_lab[:, :, i] = src_channel * (1 - blend_mask) + transferred * blend_mask
+
+        # Clip and convert back
+        src_lab = np.clip(src_lab, 0, 255).astype(np.uint8)
+        result = cv2.cvtColor(src_lab, cv2.COLOR_LAB2BGR)
+
+        return result
+
+    def _multiband_blend(
+        self,
+        base: np.ndarray,
+        src: np.ndarray,
+        mask: np.ndarray,
+        num_levels: int = 4,
+    ) -> np.ndarray:
+        """
+        Multi-band blending (Laplacian pyramid blending) for seamless transitions.
+        """
+        # Ensure images are same size
+        if base.shape != src.shape:
+            src = cv2.resize(src, (base.shape[1], base.shape[0]))
+
+        # Normalize mask to float
+        mask_float = mask.astype(np.float32) / 255.0
+        mask_3ch = np.dstack([mask_float, mask_float, mask_float])
+
+        # Build Gaussian pyramid for mask
+        mask_pyramid = [mask_3ch]
+        current_mask = mask_3ch
+        for _ in range(num_levels):
+            current_mask = cv2.pyrDown(current_mask)
+            mask_pyramid.append(current_mask)
+
+        # Build Laplacian pyramid for base
+        base_lap = []
+        current = base.astype(np.float32)
+        for _ in range(num_levels):
+            down = cv2.pyrDown(current)
+            up = cv2.pyrUp(down, dstsize=(current.shape[1], current.shape[0]))
+            lap = current - up
+            base_lap.append(lap)
+            current = down
+        base_lap.append(current)
+
+        # Build Laplacian pyramid for source
+        src_lap = []
+        current = src.astype(np.float32)
+        for _ in range(num_levels):
+            down = cv2.pyrDown(current)
+            up = cv2.pyrUp(down, dstsize=(current.shape[1], current.shape[0]))
+            lap = current - up
+            src_lap.append(lap)
+            current = down
+        src_lap.append(current)
+
+        # Blend pyramids
+        blended_lap = []
+        for i in range(num_levels + 1):
+            m = mask_pyramid[min(i, len(mask_pyramid) - 1)]
+            # Resize mask if needed
+            if m.shape[:2] != base_lap[i].shape[:2]:
+                m = cv2.resize(m, (base_lap[i].shape[1], base_lap[i].shape[0]))
+            blended = src_lap[i] * m + base_lap[i] * (1 - m)
+            blended_lap.append(blended)
+
+        # Reconstruct
+        result = blended_lap[-1]
+        for i in range(num_levels - 1, -1, -1):
+            result = cv2.pyrUp(result, dstsize=(blended_lap[i].shape[1], blended_lap[i].shape[0]))
+            result = result + blended_lap[i]
+
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    # Keep legacy methods for backward compatibility
+    def _extract_part_mask(
+        self,
+        landmarks: List[Tuple[float, float]],
+        part_indices: List[int],
+        img_shape: Tuple[int, int],
+    ) -> np.ndarray:
+        """Create a mask for a facial part (legacy method)."""
+        return self._create_soft_mask(landmarks, part_indices, img_shape)
 
     def _extract_part_region(
         self,
@@ -317,24 +575,13 @@ class PartBlender:
         landmarks: List[Tuple[float, float]],
         part_indices: List[int],
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-        """
-        Extract a facial part region with mask.
-
-        Args:
-            img: Source image
-            landmarks: Face landmarks
-            part_indices: Indices defining the part
-
-        Returns:
-            Tuple of (region image, mask, center point)
-        """
+        """Extract a facial part region with mask (legacy method)."""
         h, w = img.shape[:2]
-        mask = self._extract_part_mask(landmarks, part_indices, (h, w))
+        mask = self._create_soft_mask(landmarks, part_indices, (h, w))
 
         if mask.sum() == 0:
             return None, None, None
 
-        # Find center of mask
         moments = cv2.moments(mask)
         if moments["m00"] == 0:
             return None, None, None
@@ -350,18 +597,7 @@ class PartBlender:
         dst_landmarks: List[Tuple[float, float]],
         part_indices: List[int],
     ) -> np.ndarray:
-        """
-        Calculate affine transformation to map source part to destination.
-
-        Args:
-            src_landmarks: Source face landmarks
-            dst_landmarks: Destination face landmarks
-            part_indices: Indices of landmarks for the part
-
-        Returns:
-            2x3 affine transformation matrix
-        """
-        # Get corresponding points
+        """Calculate affine transformation (legacy method)."""
         src_points = []
         dst_points = []
 
@@ -371,19 +607,16 @@ class PartBlender:
                 dst_points.append(dst_landmarks[idx])
 
         if len(src_points) < 3:
-            # Return identity transform if not enough points
             return np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
 
         src_points = np.array(src_points, dtype=np.float32)
         dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Use estimateAffinePartial2D for robust estimation
         transform, _ = cv2.estimateAffinePartial2D(
             src_points, dst_points, method=cv2.RANSAC, ransacReprojThreshold=5.0
         )
 
         if transform is None:
-            # Fallback to identity
             return np.array([[1, 0, 0], [0, 1, 0]], dtype=np.float32)
 
         return transform
@@ -394,17 +627,7 @@ class PartBlender:
         part_indices: List[int],
         img_size: Tuple[int, int],
     ) -> Tuple[int, int]:
-        """
-        Get the center point of a facial part.
-
-        Args:
-            landmarks: Face landmarks
-            part_indices: Indices of landmarks for the part
-            img_size: (width, height) of image
-
-        Returns:
-            Center point (x, y)
-        """
+        """Get the center point of a facial part (legacy method)."""
         w, h = img_size
         points = []
 
@@ -420,7 +643,6 @@ class PartBlender:
         cx = int(np.mean(points[:, 0]))
         cy = int(np.mean(points[:, 1]))
 
-        # Clamp to image bounds
         cx = max(1, min(w - 2, cx))
         cy = max(1, min(h - 2, cy))
 
@@ -432,57 +654,8 @@ class PartBlender:
         tgt: np.ndarray,
         mask: np.ndarray,
     ) -> np.ndarray:
-        """
-        Transfer colors from source to match target using histogram matching.
-
-        Args:
-            src: Source image (part to be blended)
-            tgt: Target image (base image)
-            mask: Mask of the part region
-
-        Returns:
-            Color-adjusted source image
-        """
-        if mask.sum() == 0:
-            return src
-
-        result = src.copy()
-
-        # Convert to LAB color space for better color transfer
-        src_lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB).astype(np.float32)
-        tgt_lab = cv2.cvtColor(tgt, cv2.COLOR_BGR2LAB).astype(np.float32)
-
-        # Create expanded mask for statistics
-        mask_bool = mask > 127
-
-        # Calculate statistics for each channel
-        for i in range(3):
-            src_channel = src_lab[:, :, i]
-            tgt_channel = tgt_lab[:, :, i]
-
-            # Get masked values
-            src_masked = src_channel[mask_bool]
-            tgt_masked = tgt_channel[mask_bool]
-
-            if len(src_masked) == 0 or len(tgt_masked) == 0:
-                continue
-
-            # Calculate mean and std
-            src_mean = np.mean(src_masked)
-            src_std = np.std(src_masked) + 1e-6
-            tgt_mean = np.mean(tgt_masked)
-            tgt_std = np.std(tgt_masked) + 1e-6
-
-            # Apply transfer
-            src_lab[:, :, i] = (src_channel - src_mean) * (tgt_std / src_std) + tgt_mean
-
-        # Clip values
-        src_lab = np.clip(src_lab, 0, 255).astype(np.uint8)
-
-        # Convert back to BGR
-        result = cv2.cvtColor(src_lab, cv2.COLOR_LAB2BGR)
-
-        return result
+        """Color transfer (legacy method)."""
+        return self._advanced_color_transfer(src, tgt, mask)
 
     def _seamless_blend(
         self,
@@ -491,44 +664,8 @@ class PartBlender:
         mask: np.ndarray,
         center: Tuple[int, int],
     ) -> np.ndarray:
-        """
-        Seamlessly blend part into base image using Poisson blending.
-
-        Args:
-            base: Base image
-            part: Part image to blend
-            mask: Mask of the part
-            center: Center point for blending
-
-        Returns:
-            Blended image
-        """
-        h, w = base.shape[:2]
-
-        # Ensure center is within valid bounds
-        cx, cy = center
-        cx = max(1, min(w - 2, cx))
-        cy = max(1, min(h - 2, cy))
-
-        # Ensure mask has non-zero region
-        if mask.sum() == 0:
-            return base
-
-        # Use seamless cloning
-        try:
-            result = cv2.seamlessClone(
-                part,
-                base,
-                mask,
-                (cx, cy),
-                cv2.NORMAL_CLONE,
-            )
-        except cv2.error:
-            # Fallback to simple alpha blending if seamless clone fails
-            mask_3ch = cv2.merge([mask, mask, mask]).astype(np.float32) / 255.0
-            result = (part * mask_3ch + base * (1 - mask_3ch)).astype(np.uint8)
-
-        return result
+        """Seamless blend (legacy method)."""
+        return self._multiband_blend(base, part, mask)
 
 
 # Global instance
