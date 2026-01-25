@@ -767,8 +767,6 @@ class PartBlender3D:
         # Right eye center landmarks
         RIGHT_EYE_INNER = 362
         RIGHT_EYE_OUTER = 263
-        # Nose tip for reference
-        NOSE_TIP = 4
 
         try:
             # Compute eye centers for source face
