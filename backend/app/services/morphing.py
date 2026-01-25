@@ -35,6 +35,41 @@ HAIR_REGION_LANDMARKS = [
     10, 151, 9, 8, 168, 6, 197, 195, 5,
 ]
 
+# Landmarks that define the face outline (jaw, cheeks, temples)
+# These should NOT be morphed - keep current image's outline
+OUTLINE_LANDMARKS = {
+    # Jaw line
+    152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
+    162, 21, 54, 103, 67, 109, 10, 338, 297, 332, 284, 251,
+    389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377,
+    # Cheek contours
+    425, 205, 36, 142, 126, 217, 174, 138, 135, 169, 170, 140,
+    # Temple area
+    226, 247, 30, 29, 27, 28, 56, 190, 243, 112, 26, 22, 23, 24, 110,
+    # Side of face
+    35, 31, 228, 229, 230, 231, 232, 233, 244, 189, 221, 222, 223, 224, 225,
+}
+
+# Inner face landmarks that should be morphed (eyes, nose, mouth, eyebrows)
+# These are the features we want to blend
+INNER_FACE_LANDMARKS = {
+    # Left eye
+    33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246,
+    # Right eye
+    362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398,
+    # Left eyebrow
+    70, 63, 105, 66, 107, 55, 65, 52, 53, 46,
+    # Right eyebrow
+    300, 293, 334, 296, 336, 285, 295, 282, 283, 276,
+    # Nose
+    1, 2, 98, 327, 168, 5, 4, 195, 197, 6, 167, 164, 393, 391,
+    19, 94, 141, 125, 241, 238, 79, 166, 219, 59, 75, 60, 20,
+    # Upper lip
+    0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61, 185, 40, 39, 37,
+    # Lower lip
+    87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191, 78, 95,
+}
+
 
 def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int) -> List[Tuple[int, int, int]]:
     """
@@ -157,16 +192,18 @@ class MorphingService:
         """
         Morph between two face images.
 
-        Key approach:
-        1. Compute intermediate landmark positions (linear interpolation)
-        2. Warp the CURRENT image to intermediate positions (for hair/background)
-        3. Warp the IDEAL image to intermediate positions (for facial features)
-        4. Blend based on face region mask
-        5. Apply color correction for seamless blending
+        Key approach - PRESERVE OUTLINE:
+        1. Keep face outline (jaw, cheeks) from current image (img1)
+        2. Only morph inner face features (eyes, nose, mouth, eyebrows)
+        3. Warp ideal face features to current face's outline
+        4. Apply color correction for seamless blending
+
+        This prevents the "double outline" effect by keeping the current
+        face's contour intact.
 
         Args:
-            img1: Current image (BGR format) - hair will come from this
-            img2: Ideal image (BGR format) - face features will be warped toward this
+            img1: Current image (BGR format) - outline and hair from this
+            img2: Ideal image (BGR format) - inner features will be warped
             progress: Morphing progress (0.0 = img1, 1.0 = img2)
             img1_label: Label for img1 in error messages
             img2_label: Label for img2 in error messages
@@ -195,44 +232,48 @@ class MorphingService:
             (0, 0), (out_w - 1, 0), (out_w - 1, out_h - 1), (0, out_h - 1),
             (out_w // 2, 0), (out_w // 2, out_h - 1),
             (0, out_h // 2), (out_w - 1, out_h // 2),
-            # Additional edge points for better hair coverage
             (out_w // 4, 0), (3 * out_w // 4, 0),
             (0, out_h // 4), (out_w - 1, out_h // 4),
         ]
+        num_landmarks = len(points1)
         points1_full = list(points1) + corner_points
         points2_full = list(points2) + corner_points
 
-        # Compute intermediate positions
-        points_mid = [
-            ((1 - progress) * p1[0] + progress * p2[0],
-             (1 - progress) * p1[1] + progress * p2[1])
-            for p1, p2 in zip(points1_full, points2_full)
-        ]
+        # Compute target positions:
+        # - Outline landmarks stay at current (img1) positions
+        # - Inner face landmarks interpolate toward ideal (img2) positions
+        # - Corner/edge points stay at img1 positions
+        points_target = []
+        for i, (p1, p2) in enumerate(zip(points1_full, points2_full)):
+            if i >= num_landmarks:
+                # Corner/edge points - keep at current position
+                points_target.append(p1)
+            elif i in OUTLINE_LANDMARKS:
+                # Outline landmarks - keep at current position
+                points_target.append(p1)
+            else:
+                # Inner face landmarks - interpolate based on progress
+                x = (1 - progress) * p1[0] + progress * p2[0]
+                y = (1 - progress) * p1[1] + progress * p2[1]
+                points_target.append((x, y))
 
-        # Warp current image (img1) to intermediate positions
-        # This gives us the hair and background
-        img1_warped = self._warp_image_triangles(
-            img1, points1_full, points_mid, (out_w, out_h)
-        )
-
-        # Warp ideal image (img2) to intermediate positions
-        # This gives us the facial features at the target shape
+        # Warp ideal image (img2) to target positions
+        # This maps ideal face features into current face's outline
         img2_warped = self._warp_image_triangles(
-            img2, points2_full, points_mid, (out_w, out_h)
+            img2, points2_full, points_target, (out_w, out_h)
         )
 
-        # Create the morphed face mask at intermediate position
-        face_mask_mid = self._create_face_mask(points_mid[:len(points1)], (out_h, out_w))
+        # Create inner face mask (excludes outline region)
+        inner_mask = self._create_inner_face_mask(points1, (out_h, out_w))
 
-        # Apply color transfer from img1 to img2_warped within face region
+        # Apply color transfer within inner face region
         img2_color_matched = self._color_transfer_face(
-            img2_warped, img1_warped, face_mask_mid
+            img2_warped, img1, inner_mask
         )
 
-        # Blend: use img1_warped for hair/background, img2_color_matched for face
-        # The blend factor is controlled by progress
-        result = self._blend_with_mask(
-            img1_warped, img2_color_matched, face_mask_mid, progress
+        # Blend: current image for outline/hair, warped ideal for inner face
+        result = self._blend_inner_face(
+            img1, img2_color_matched, inner_mask, progress
         )
 
         return result
@@ -248,9 +289,11 @@ class MorphingService:
         """
         Generate multiple morphing stages.
 
+        Preserves current face outline, only morphs inner features.
+
         Args:
-            img1: First image (BGR format)
-            img2: Second image (BGR format)
+            img1: First image (BGR format) - outline preserved
+            img2: Second image (BGR format) - inner features morphed
             stages: List of progress values (0.0 - 1.0)
             img1_label: Label for img1 in error messages
             img2_label: Label for img2 in error messages
@@ -282,38 +325,47 @@ class MorphingService:
             (out_w // 4, 0), (3 * out_w // 4, 0),
             (0, out_h // 4), (out_w - 1, out_h // 4),
         ]
+        num_landmarks = len(points1)
         points1_full = list(points1) + corner_points
         points2_full = list(points2) + corner_points
+
+        # Create inner face mask once (based on current image landmarks)
+        inner_mask = self._create_inner_face_mask(points1, (out_h, out_w))
 
         results = []
         for progress in stages:
             logger.info(f"Generating morph stage: {progress:.0%}")
 
-            # Compute intermediate positions
-            points_mid = [
-                ((1 - progress) * p1[0] + progress * p2[0],
-                 (1 - progress) * p1[1] + progress * p2[1])
-                for p1, p2 in zip(points1_full, points2_full)
-            ]
+            # Compute target positions:
+            # - Outline landmarks stay at current (img1) positions
+            # - Inner face landmarks interpolate toward ideal (img2)
+            points_target = []
+            for i, (p1, p2) in enumerate(zip(points1_full, points2_full)):
+                if i >= num_landmarks:
+                    # Corner/edge points - keep at current position
+                    points_target.append(p1)
+                elif i in OUTLINE_LANDMARKS:
+                    # Outline landmarks - keep at current position
+                    points_target.append(p1)
+                else:
+                    # Inner face landmarks - interpolate
+                    x = (1 - progress) * p1[0] + progress * p2[0]
+                    y = (1 - progress) * p1[1] + progress * p2[1]
+                    points_target.append((x, y))
 
-            # Warp both images
-            img1_warped = self._warp_image_triangles(
-                img1, points1_full, points_mid, (out_w, out_h)
-            )
+            # Warp ideal image to target positions
             img2_warped = self._warp_image_triangles(
-                img2, points2_full, points_mid, (out_w, out_h)
+                img2, points2_full, points_target, (out_w, out_h)
             )
 
-            # Face mask at intermediate position
-            face_mask_mid = self._create_face_mask(points_mid[:len(points1)], (out_h, out_w))
-
-            # Color transfer and blend
+            # Color transfer within inner face region
             img2_color_matched = self._color_transfer_face(
-                img2_warped, img1_warped, face_mask_mid
+                img2_warped, img1, inner_mask
             )
 
-            result = self._blend_with_mask(
-                img1_warped, img2_color_matched, face_mask_mid, progress
+            # Blend: current for outline/hair, warped ideal for inner face
+            result = self._blend_inner_face(
+                img1, img2_color_matched, inner_mask, progress
             )
 
             results.append((progress, result))
@@ -359,6 +411,117 @@ class MorphingService:
         mask = cv2.GaussianBlur(mask, (31, 31), 0)
 
         return mask
+
+    def _create_inner_face_mask(
+        self,
+        landmarks: List[Tuple[float, float]],
+        img_shape: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Create a mask for inner face features only (eyes, nose, mouth, eyebrows).
+
+        This mask excludes the face outline/jaw to prevent double-outline effect.
+
+        Args:
+            landmarks: Face landmarks
+            img_shape: (height, width)
+
+        Returns:
+            Soft mask (0-255, uint8)
+        """
+        h, w = img_shape
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Collect inner face landmark points
+        inner_points = []
+        for idx in INNER_FACE_LANDMARKS:
+            if idx < len(landmarks):
+                x, y = landmarks[idx]
+                inner_points.append([int(x), int(y)])
+
+        if len(inner_points) < 3:
+            # Fallback: use a smaller face oval
+            return self._create_face_mask(landmarks, img_shape)
+
+        # Create convex hull of inner face points
+        inner_points = np.array(inner_points, dtype=np.int32)
+        hull = cv2.convexHull(inner_points)
+        cv2.fillConvexPoly(mask, hull, 255)
+
+        # Expand to cover the entire inner face region smoothly
+        kernel = np.ones((15, 15), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=3)
+
+        # Blur for soft edges
+        mask = cv2.GaussianBlur(mask, (51, 51), 0)
+
+        # Ensure the mask doesn't extend to the face outline
+        # Create a shrunk face oval mask
+        face_oval_mask = np.zeros((h, w), dtype=np.uint8)
+        oval_points = []
+        for idx in FACE_OVAL_LANDMARKS:
+            if idx < len(landmarks):
+                x, y = landmarks[idx]
+                oval_points.append([int(x), int(y)])
+
+        if len(oval_points) >= 3:
+            oval_points = np.array(oval_points, dtype=np.int32)
+            hull = cv2.convexHull(oval_points)
+            cv2.fillConvexPoly(face_oval_mask, hull, 255)
+
+            # Erode the face oval to create a boundary
+            kernel = np.ones((25, 25), np.uint8)
+            face_oval_eroded = cv2.erode(face_oval_mask, kernel, iterations=2)
+            face_oval_eroded = cv2.GaussianBlur(face_oval_eroded, (31, 31), 0)
+
+            # Inner mask should not exceed the eroded face oval
+            mask = cv2.min(mask, face_oval_eroded)
+
+        return mask
+
+    def _blend_inner_face(
+        self,
+        img_base: np.ndarray,
+        img_features: np.ndarray,
+        inner_mask: np.ndarray,
+        progress: float,
+    ) -> np.ndarray:
+        """
+        Blend inner face features onto base image.
+
+        Args:
+            img_base: Base image (current face with outline)
+            img_features: Features image (ideal face warped to current outline)
+            inner_mask: Mask for inner face region
+            progress: Morphing progress (0=base, 1=features)
+
+        Returns:
+            Blended result
+        """
+        # Normalize mask
+        mask_float = inner_mask.astype(np.float32) / 255.0
+        mask_3ch = np.dstack([mask_float, mask_float, mask_float])
+
+        # Apply progress to mask intensity
+        # At progress=0: use base image entirely
+        # At progress=1: use features image in inner region
+        effective_mask = mask_3ch * progress
+
+        # Convert to float
+        base_float = img_base.astype(np.float32)
+        features_float = img_features.astype(np.float32)
+
+        # Blend
+        result = base_float * (1 - effective_mask) + features_float * effective_mask
+
+        # Multi-band blending for smooth transitions
+        result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
+
+        # Apply scaled mask for multiband blend
+        scaled_mask = (inner_mask.astype(np.float32) * progress).astype(np.uint8)
+        result = self._multiband_blend(img_base, result_uint8, scaled_mask)
+
+        return result
 
     def _warp_image_triangles(
         self,
