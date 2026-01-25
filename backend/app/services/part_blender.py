@@ -9,8 +9,6 @@ import numpy as np
 from pydantic import BaseModel
 
 from app.services.face_detection import get_face_detection_service
-from app.utils.image import ImageValidationError
-
 
 # MediaPipe Face Mesh landmark indices for each facial part
 # Reference: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png

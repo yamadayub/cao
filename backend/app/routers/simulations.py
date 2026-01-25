@@ -67,7 +67,7 @@ def verify_token(authorization: Optional[str] = Header(None)) -> str:
                     message=f"Invalid token: {str(e)}",
                 )
             ).model_dump(),
-        )
+        ) from e
 
 
 @router.post("", response_model=SimulationResponse)

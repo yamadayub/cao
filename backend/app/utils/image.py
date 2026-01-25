@@ -234,7 +234,7 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
                 code="INVALID_IMAGE_FORMAT",
                 message="Only JPEG, PNG, WebP, and HEIC formats are supported",
                 details={"error": str(e)},
-            )
+            ) from e
 
     # If WebP or HEIC, convert to PNG for OpenCV compatibility
     if format in ("webp", "heic"):
@@ -253,7 +253,7 @@ def validate_image(data: bytes) -> Tuple[Literal["jpeg", "png"], np.ndarray]:
                 code="INVALID_IMAGE_FORMAT",
                 message=f"Failed to process {format.upper()} image",
                 details={"error": str(e)},
-            )
+            ) from e
 
     # Load image
     img = bytes_to_cv2(data)
