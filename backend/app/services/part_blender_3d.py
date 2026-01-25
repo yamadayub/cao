@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -83,11 +83,22 @@ class FaceMesh3D:
         # Create triangulation for mesh
         self.triangles = self._create_triangulation()
 
+        # Estimate face pose from 3D vertices
+        self.face_normal, self.face_center = self._estimate_face_pose()
+
     def _construct_3d_vertices(self) -> np.ndarray:
-        """Construct 3D vertices from 2D landmarks and depth map."""
+        """
+        Construct 3D vertices from 2D landmarks and depth map.
+
+        Uses pinhole camera model with focal length estimation.
+        """
         w, h = self.img_size
         n_landmarks = len(self.landmarks_2d)
         vertices = np.zeros((n_landmarks, 3), dtype=np.float32)
+
+        # Estimate focal length (typical for face images)
+        focal_length = max(w, h)
+        cx, cy = w / 2, h / 2
 
         for i, (x, y) in enumerate(self.landmarks_2d):
             # Clamp coordinates to image bounds
@@ -95,14 +106,24 @@ class FaceMesh3D:
             iy = int(np.clip(y, 0, h - 1))
 
             # Get depth value at landmark position
-            z = self.depth_map[iy, ix]
+            # Use area sampling for more stable depth
+            kernel_size = 3
+            x_start = max(0, ix - kernel_size)
+            x_end = min(w, ix + kernel_size + 1)
+            y_start = max(0, iy - kernel_size)
+            y_end = min(h, iy + kernel_size + 1)
+            z = np.median(self.depth_map[y_start:y_end, x_start:x_end])
 
-            # Normalize coordinates to [-1, 1] range
-            nx = (x / w) * 2 - 1
-            ny = (y / h) * 2 - 1
-            nz = z  # Depth is already normalized
+            # Convert depth to actual Z (depth map is inverted - closer = higher value)
+            # Scale to reasonable range (face depth ~40-60cm)
+            z_scaled = (1 - z) * 0.5 + 0.3  # Range [0.3, 0.8] meters
 
-            vertices[i] = [nx, ny, nz]
+            # Back-project to 3D using pinhole camera model
+            X = (x - cx) * z_scaled / focal_length
+            Y = (y - cy) * z_scaled / focal_length
+            Z = z_scaled
+
+            vertices[i] = [X, Y, Z]
 
         return vertices
 
@@ -112,8 +133,58 @@ class FaceMesh3D:
             tri = Delaunay(self.landmarks_2d)
             return tri.simplices
         except Exception:
-            # Fallback: create simple grid triangulation
             return np.array([], dtype=np.int32)
+
+    def _estimate_face_pose(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Estimate face normal and center from 3D vertices.
+
+        Uses key facial landmarks to compute face plane.
+        """
+        # Key landmarks for pose estimation
+        # Left eye outer, right eye outer, nose tip, chin
+        key_indices = [33, 263, 4, 152]
+
+        key_points = []
+        for idx in key_indices:
+            if idx < len(self.vertices_3d):
+                key_points.append(self.vertices_3d[idx])
+
+        if len(key_points) < 3:
+            return np.array([0, 0, 1], dtype=np.float32), np.zeros(3, dtype=np.float32)
+
+        key_points = np.array(key_points, dtype=np.float32)
+
+        # Compute face center
+        center = np.mean(key_points, axis=0)
+
+        # Compute face normal using cross product of two face vectors
+        # Vector from left eye to right eye
+        if len(key_points) >= 2:
+            v1 = key_points[1] - key_points[0]  # Right eye - Left eye
+        else:
+            v1 = np.array([1, 0, 0])
+
+        # Vector from eyes to nose
+        if len(key_points) >= 3:
+            eye_center = (key_points[0] + key_points[1]) / 2
+            v2 = key_points[2] - eye_center  # Nose - Eye center
+        else:
+            v2 = np.array([0, 1, 0])
+
+        # Normal is cross product (points outward from face)
+        normal = np.cross(v1, v2)
+        norm = np.linalg.norm(normal)
+        if norm > 1e-6:
+            normal = normal / norm
+        else:
+            normal = np.array([0, 0, 1], dtype=np.float32)
+
+        # Ensure normal points toward camera (positive Z)
+        if normal[2] < 0:
+            normal = -normal
+
+        return normal, center
 
     def get_part_vertices(self, part_indices: List[int]) -> Tuple[np.ndarray, np.ndarray]:
         """Get 3D vertices and 2D coordinates for a facial part."""
@@ -121,6 +192,34 @@ class FaceMesh3D:
         vertices_3d = self.vertices_3d[indices]
         vertices_2d = self.landmarks_2d[indices]
         return vertices_3d, vertices_2d
+
+    def get_yaw_pitch_roll(self) -> Tuple[float, float, float]:
+        """
+        Get face rotation angles from face normal.
+
+        Returns:
+            yaw: Left-right rotation (radians)
+            pitch: Up-down rotation (radians)
+            roll: Computed from eye line (radians)
+        """
+        nx, ny, nz = self.face_normal
+
+        # Yaw (left-right): angle between normal projection on XZ plane and Z axis
+        yaw = np.arctan2(nx, nz)
+
+        # Pitch (up-down): angle between normal and XZ plane
+        pitch = np.arcsin(np.clip(-ny, -1, 1))
+
+        # Roll: compute from eye landmarks
+        left_eye_idx = 33
+        right_eye_idx = 263
+        if left_eye_idx < len(self.landmarks_2d) and right_eye_idx < len(self.landmarks_2d):
+            eye_vec = self.landmarks_2d[right_eye_idx] - self.landmarks_2d[left_eye_idx]
+            roll = np.arctan2(eye_vec[1], eye_vec[0])
+        else:
+            roll = 0.0
+
+        return float(yaw), float(pitch), float(roll)
 
 
 class PartBlender3D:
@@ -148,16 +247,6 @@ class PartBlender3D:
     ) -> np.ndarray:
         """
         Blend selected facial parts using 3D reconstruction.
-
-        Args:
-            current_img: Current face image (BGR format) - base image
-            ideal_img: Ideal face image (BGR format) - source of parts
-            parts: Selection of which parts to blend
-            current_label: Label for current image in error messages
-            ideal_label: Label for ideal image in error messages
-
-        Returns:
-            Blended image (BGR format)
         """
         if not parts.has_any_selection():
             raise ValueError("At least one part must be selected")
@@ -204,6 +293,14 @@ class PartBlender3D:
             (out_w, out_h)
         )
 
+        # Log pose information for debugging
+        src_yaw, src_pitch, src_roll = ideal_mesh.get_yaw_pitch_roll()
+        dst_yaw, dst_pitch, dst_roll = current_mesh.get_yaw_pitch_roll()
+        logger.info(f"Source face pose: yaw={np.degrees(src_yaw):.1f}°, "
+                   f"pitch={np.degrees(src_pitch):.1f}°, roll={np.degrees(src_roll):.1f}°")
+        logger.info(f"Target face pose: yaw={np.degrees(dst_yaw):.1f}°, "
+                   f"pitch={np.degrees(dst_pitch):.1f}°, roll={np.degrees(dst_roll):.1f}°")
+
         # Start with current image as base
         result = current_img.copy()
 
@@ -232,12 +329,6 @@ class PartBlender3D:
     def _estimate_depth(self, img: np.ndarray) -> Optional[np.ndarray]:
         """
         Estimate depth map from image using Depth Anything.
-
-        Args:
-            img: BGR image
-
-        Returns:
-            Normalized depth map (H, W) with values in [0, 1]
         """
         model, processor = get_depth_model()
         if model is None or processor is None:
@@ -291,15 +382,26 @@ class PartBlender3D:
         part_name: str = "",
     ) -> np.ndarray:
         """
-        Blend a single facial part using 3D alignment.
+        Blend a single facial part using 3D-aware transformation.
 
-        The process:
-        1. Get 3D vertices for the part in both meshes
-        2. Compute 3D transformation (rotation, translation, scale) to align
-        3. Transform source texture according to 3D alignment
-        4. Project back to 2D and blend
+        Key improvements:
+        1. Compute view-normalized transformation
+        2. Apply depth-based parallax correction
+        3. Use 3D rotation to handle different face orientations
         """
         w, h = img_size
+
+        # Get face poses
+        src_yaw, src_pitch, src_roll = src_mesh.get_yaw_pitch_roll()
+        dst_yaw, dst_pitch, dst_roll = base_mesh.get_yaw_pitch_roll()
+
+        # Compute pose difference
+        yaw_diff = dst_yaw - src_yaw
+        pitch_diff = dst_pitch - src_pitch
+        roll_diff = dst_roll - src_roll
+
+        logger.info(f"Pose diff for {part_name}: yaw={np.degrees(yaw_diff):.1f}°, "
+                   f"pitch={np.degrees(pitch_diff):.1f}°, roll={np.degrees(roll_diff):.1f}°")
 
         # Get 3D and 2D vertices for the part
         src_3d, src_2d = src_mesh.get_part_vertices(part_indices)
@@ -308,33 +410,45 @@ class PartBlender3D:
         if len(src_3d) < 4 or len(dst_3d) < 4:
             return base_img
 
-        # Compute transformation to align source to destination in 3D
-        # Using Procrustes analysis for optimal rotation and scale
-        transform_3d = self._compute_3d_alignment(src_3d, dst_3d)
+        # Compute part centroids in 3D
+        src_center_3d = np.mean(src_3d, axis=0)
+        dst_center_3d = np.mean(dst_3d, axis=0)
 
-        # Transform source vertices to destination space
-        aligned_src_3d = self._apply_3d_transform(src_3d, transform_3d)
+        # Build 3D rotation matrix to align source pose to target pose
+        R = self._build_rotation_matrix(yaw_diff, pitch_diff, roll_diff)
 
-        # Project aligned 3D vertices back to 2D
-        aligned_src_2d = self._project_to_2d(aligned_src_3d, img_size)
+        # Transform source 3D points to match target pose
+        src_3d_centered = src_3d - src_center_3d
+        src_3d_rotated = (R @ src_3d_centered.T).T
 
-        # Include context for warping
-        all_indices = list(set(part_indices + context_indices))
+        # Compute scale from 3D point spread
+        src_spread = np.std(src_3d_centered)
+        dst_spread = np.std(dst_3d - dst_center_3d)
+        scale_3d = dst_spread / max(src_spread, 1e-6)
+        scale_3d = np.clip(scale_3d, 0.7, 1.4)
 
-        # Get all source points for RBF warping
+        # Apply scale and translate to target position
+        src_3d_transformed = src_3d_rotated * scale_3d + dst_center_3d
+
+        # Project transformed 3D points back to 2D
+        aligned_src_2d = self._project_3d_to_2d(
+            src_3d_transformed,
+            base_mesh.img_size,
+        )
+
+        # Compute 2D transformation for the entire source image
         src_points = []
         dst_points = []
-        for idx in all_indices:
+
+        for i, _idx in enumerate(part_indices):
+            if i < len(aligned_src_2d):
+                src_points.append(src_2d[i])
+                dst_points.append(aligned_src_2d[i])
+
+        # Add context points (use original positions with offset)
+        for idx in context_indices:
             if idx < len(src_mesh.landmarks_2d) and idx < len(base_mesh.landmarks_2d):
-                # For part vertices, use aligned positions
-                if idx in part_indices:
-                    local_idx = part_indices.index(idx)
-                    if local_idx < len(aligned_src_2d):
-                        src_points.append(aligned_src_2d[local_idx])
-                    else:
-                        src_points.append(src_mesh.landmarks_2d[idx])
-                else:
-                    src_points.append(src_mesh.landmarks_2d[idx])
+                src_points.append(src_mesh.landmarks_2d[idx])
                 dst_points.append(base_mesh.landmarks_2d[idx])
 
         if len(src_points) < 4:
@@ -343,150 +457,116 @@ class PartBlender3D:
         src_points = np.array(src_points, dtype=np.float32)
         dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Pre-warp source image based on 3D alignment
-        warped_src = self._warp_with_3d_alignment(
-            src_mesh.texture,
-            src_mesh.landmarks_2d,
-            aligned_src_2d,
-            part_indices,
-            img_size,
-        )
+        # Apply perspective-aware warping for significant pose differences
+        if abs(yaw_diff) > 0.05 or abs(pitch_diff) > 0.05:  # > ~3 degrees
+            warped_src = self._perspective_warp(
+                src_mesh.texture,
+                src_points[:4] if len(src_points) >= 4 else src_points,
+                dst_points[:4] if len(dst_points) >= 4 else dst_points,
+                img_size,
+            )
+        else:
+            warped_src = src_mesh.texture
 
         # Fine-tune with RBF warping
         warped_src = self._rbf_warp(warped_src, src_points, dst_points, img_size)
 
-        # Create soft mask
+        # Create mask using target positions
         mask = self._create_soft_mask(base_mesh.landmarks_2d, part_indices, (h, w))
 
         if mask.sum() == 0:
             return base_img
 
-        # Apply color correction
-        warped_src = self._color_transfer(warped_src, base_img, mask)
+        # Apply depth-aware color correction
+        warped_src = self._depth_aware_color_transfer(
+            warped_src, base_img, mask,
+            src_mesh.depth_map, base_mesh.depth_map
+        )
 
-        # Multi-band blend
-        result = self._multiband_blend(base_img, warped_src, mask)
+        # Multi-band blend with extra levels for better transition
+        num_levels = 5 if part_name == "nose" else 4
+        result = self._multiband_blend(base_img, warped_src, mask, num_levels)
 
         return result
 
-    def _compute_3d_alignment(
+    def _build_rotation_matrix(
         self,
-        src_points: np.ndarray,
-        dst_points: np.ndarray,
-    ) -> Dict:
-        """
-        Compute 3D alignment transformation using Procrustes analysis.
-
-        Returns:
-            Dictionary with rotation, scale, and translation
-        """
-        # Center points
-        src_centroid = np.mean(src_points, axis=0)
-        dst_centroid = np.mean(dst_points, axis=0)
-
-        src_centered = src_points - src_centroid
-        dst_centered = dst_points - dst_centroid
-
-        # Compute scale
-        src_scale = np.sqrt(np.sum(src_centered ** 2) / len(src_centered))
-        dst_scale = np.sqrt(np.sum(dst_centered ** 2) / len(dst_centered))
-
-        scale = dst_scale / max(src_scale, 1e-6)
-        scale = np.clip(scale, 0.5, 2.0)  # Limit scale range
-
-        # Normalize
-        src_norm = src_centered / max(src_scale, 1e-6)
-        dst_norm = dst_centered / max(dst_scale, 1e-6)
-
-        # Compute rotation using SVD (Kabsch algorithm)
-        H = src_norm.T @ dst_norm
-        U, S, Vt = np.linalg.svd(H)
-        R = Vt.T @ U.T
-
-        # Ensure proper rotation (det = 1)
-        if np.linalg.det(R) < 0:
-            Vt[-1, :] *= -1
-            R = Vt.T @ U.T
-
-        return {
-            'rotation': R,
-            'scale': scale,
-            'src_centroid': src_centroid,
-            'dst_centroid': dst_centroid,
-        }
-
-    def _apply_3d_transform(
-        self,
-        points: np.ndarray,
-        transform: Dict,
+        yaw: float,
+        pitch: float,
+        roll: float,
     ) -> np.ndarray:
-        """Apply 3D transformation to points."""
-        R = transform['rotation']
-        scale = transform['scale']
-        src_centroid = transform['src_centroid']
-        dst_centroid = transform['dst_centroid']
+        """Build 3D rotation matrix from Euler angles."""
+        # Rotation around Y axis (yaw)
+        Ry = np.array([
+            [np.cos(yaw), 0, np.sin(yaw)],
+            [0, 1, 0],
+            [-np.sin(yaw), 0, np.cos(yaw)]
+        ], dtype=np.float32)
 
-        # Center, scale, rotate, translate
-        centered = points - src_centroid
-        scaled = centered * scale
-        rotated = scaled @ R.T
-        translated = rotated + dst_centroid
+        # Rotation around X axis (pitch)
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(pitch), -np.sin(pitch)],
+            [0, np.sin(pitch), np.cos(pitch)]
+        ], dtype=np.float32)
 
-        return translated
+        # Rotation around Z axis (roll)
+        Rz = np.array([
+            [np.cos(roll), -np.sin(roll), 0],
+            [np.sin(roll), np.cos(roll), 0],
+            [0, 0, 1]
+        ], dtype=np.float32)
 
-    def _project_to_2d(
+        # Combined rotation: R = Rz @ Ry @ Rx
+        return Rz @ Ry @ Rx
+
+    def _project_3d_to_2d(
         self,
         points_3d: np.ndarray,
         img_size: Tuple[int, int],
     ) -> np.ndarray:
-        """Project 3D points back to 2D image coordinates."""
+        """Project 3D points to 2D using pinhole camera model."""
         w, h = img_size
+        focal_length = max(w, h)
+        cx, cy = w / 2, h / 2
 
-        # Convert from normalized [-1, 1] to pixel coordinates
         points_2d = np.zeros((len(points_3d), 2), dtype=np.float32)
-        points_2d[:, 0] = (points_3d[:, 0] + 1) * w / 2
-        points_2d[:, 1] = (points_3d[:, 1] + 1) * h / 2
+
+        for i, (X, Y, Z) in enumerate(points_3d):
+            # Avoid division by zero
+            Z = max(Z, 0.1)
+
+            # Project using pinhole model
+            x = (X * focal_length / Z) + cx
+            y = (Y * focal_length / Z) + cy
+
+            points_2d[i] = [x, y]
 
         return points_2d
 
-    def _warp_with_3d_alignment(
+    def _perspective_warp(
         self,
         img: np.ndarray,
-        src_landmarks: np.ndarray,
-        aligned_landmarks: np.ndarray,
-        part_indices: List[int],
-        img_size: Tuple[int, int],
+        src_points: np.ndarray,
+        dst_points: np.ndarray,
+        output_size: Tuple[int, int],
     ) -> np.ndarray:
-        """Warp image based on 3D-aligned landmarks."""
-        w, h = img_size
+        """Apply perspective transformation."""
+        w, h = output_size
 
-        # Compute affine transformation from original to aligned landmarks
-        src_pts = []
-        dst_pts = []
-
-        for idx in part_indices:
-            if idx < len(src_landmarks) and idx < len(aligned_landmarks):
-                src_pts.append(src_landmarks[idx])
-
-        for i, idx in enumerate(part_indices):
-            if idx < len(aligned_landmarks):
-                dst_pts.append(aligned_landmarks[i])
-
-        if len(src_pts) < 3 or len(dst_pts) < 3:
-            return img
-
-        src_pts = np.array(src_pts[:3], dtype=np.float32)
-        dst_pts = np.array(dst_pts[:3], dtype=np.float32)
-
-        # Compute affine transform
-        M = cv2.getAffineTransform(src_pts, dst_pts)
-
-        # Apply transformation
-        warped = cv2.warpAffine(
-            img, M, (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE
-        )
+        if len(src_points) >= 4 and len(dst_points) >= 4:
+            # Compute perspective transform
+            M = cv2.getPerspectiveTransform(
+                src_points[:4].astype(np.float32),
+                dst_points[:4].astype(np.float32)
+            )
+            warped = cv2.warpPerspective(
+                img, M, (w, h),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REPLICATE
+            )
+        else:
+            warped = img
 
         return warped
 
@@ -560,13 +640,19 @@ class PartBlender3D:
 
         return mask
 
-    def _color_transfer(
+    def _depth_aware_color_transfer(
         self,
         src: np.ndarray,
         tgt: np.ndarray,
         mask: np.ndarray,
+        src_depth: np.ndarray,
+        tgt_depth: np.ndarray,
     ) -> np.ndarray:
-        """Transfer color from target to source in masked region."""
+        """
+        Transfer color with depth-aware adjustment.
+
+        Accounts for lighting differences due to surface orientation.
+        """
         if mask.sum() == 0:
             return src
 
@@ -580,6 +666,10 @@ class PartBlender3D:
 
         if not np.any(mask_bool):
             return src
+
+        # Compute depth difference for lighting adjustment
+        depth_diff = np.mean(tgt_depth[mask_bool]) - np.mean(src_depth[mask_bool])
+        lighting_factor = 1.0 + depth_diff * 0.3  # Subtle adjustment
 
         for i in range(3):
             src_channel = src_lab[:, :, i]
@@ -600,6 +690,11 @@ class PartBlender3D:
             tgt_iqr = max(tgt_p75 - tgt_p25, 1.0)
 
             scale = np.clip(tgt_iqr / src_iqr, 0.5, 2.0)
+
+            # Apply lighting factor to luminance channel
+            if i == 0:  # L channel
+                scale *= lighting_factor
+
             transferred = (src_channel - src_median) * scale + tgt_median
 
             blend_mask = mask.astype(np.float32) / 255.0
