@@ -625,9 +625,15 @@ class PartBlender3D:
             )
         else:
             # Enhanced 2D alignment without 3D rotation (avoids broken results)
-            aligned_2d = self._compute_2d_aligned_points(
-                src_2d, dst_2d, part_name
-            )
+            # For nose, use eye-center based alignment for better positioning
+            if part_name == "nose":
+                aligned_2d = self._compute_nose_aligned_points(
+                    src_2d, dst_2d, src_mesh.landmarks_2d, base_mesh.landmarks_2d, part_name
+                )
+            else:
+                aligned_2d = self._compute_2d_aligned_points(
+                    src_2d, dst_2d, part_name
+                )
 
         # Build correspondence for warping
         src_points = list(src_2d)
@@ -739,6 +745,102 @@ class PartBlender3D:
         aligned = src_centered * scale_ratio + dst_center
 
         return aligned.astype(np.float32)
+
+    def _compute_nose_aligned_points(
+        self,
+        src_2d: np.ndarray,
+        dst_2d: np.ndarray,
+        src_landmarks: np.ndarray,
+        dst_landmarks: np.ndarray,
+        part_name: str,
+    ) -> np.ndarray:
+        """
+        Compute aligned 2D points for nose using eye-center based alignment.
+
+        The nose is positioned relative to the center point between both eyes,
+        ensuring proper facial symmetry alignment.
+        """
+        # Eye landmark indices for computing eye centers
+        # Left eye center landmarks
+        LEFT_EYE_INNER = 133
+        LEFT_EYE_OUTER = 33
+        # Right eye center landmarks
+        RIGHT_EYE_INNER = 362
+        RIGHT_EYE_OUTER = 263
+        # Nose tip for reference
+        NOSE_TIP = 4
+
+        try:
+            # Compute eye centers for source face
+            src_left_eye_center = (
+                np.array(src_landmarks[LEFT_EYE_INNER]) +
+                np.array(src_landmarks[LEFT_EYE_OUTER])
+            ) / 2
+            src_right_eye_center = (
+                np.array(src_landmarks[RIGHT_EYE_INNER]) +
+                np.array(src_landmarks[RIGHT_EYE_OUTER])
+            ) / 2
+            src_eyes_center = (src_left_eye_center + src_right_eye_center) / 2
+
+            # Compute eye centers for destination face
+            dst_left_eye_center = (
+                np.array(dst_landmarks[LEFT_EYE_INNER]) +
+                np.array(dst_landmarks[LEFT_EYE_OUTER])
+            ) / 2
+            dst_right_eye_center = (
+                np.array(dst_landmarks[RIGHT_EYE_INNER]) +
+                np.array(dst_landmarks[RIGHT_EYE_OUTER])
+            ) / 2
+            dst_eyes_center = (dst_left_eye_center + dst_right_eye_center) / 2
+
+            # Compute inter-eye distances for scale reference
+            src_eye_distance = np.linalg.norm(src_left_eye_center - src_right_eye_center)
+            dst_eye_distance = np.linalg.norm(dst_left_eye_center - dst_right_eye_center)
+
+            # Scale ratio based on eye distance
+            scale_ratio = dst_eye_distance / max(src_eye_distance, 1e-6)
+            scale_ratio = np.clip(scale_ratio, 0.8, 1.25)
+
+            # Compute nose center (centroid of nose points)
+            src_nose_center = np.mean(src_2d, axis=0)
+            dst_nose_center = np.mean(dst_2d, axis=0)
+
+            # Compute offset from eye center to nose center
+            src_nose_offset = src_nose_center - src_eyes_center
+            dst_nose_offset = dst_nose_center - dst_eyes_center
+
+            # The target position is based on destination eye center + scaled offset
+            # We blend between using src offset (scaled) and dst offset
+            # Using more dst offset ensures nose lands at correct position
+            blend_factor = 0.7  # Weight toward destination position
+            target_offset = (
+                src_nose_offset * scale_ratio * (1 - blend_factor) +
+                dst_nose_offset * blend_factor
+            )
+            target_center = dst_eyes_center + target_offset
+
+            # Compute horizontal offset to align with eye center X position
+            # This ensures the nose is centered between the eyes
+            x_correction = dst_eyes_center[0] - (src_eyes_center[0] * scale_ratio +
+                                                  (target_center[0] - src_nose_center[0] * scale_ratio))
+            # Reduce horizontal correction to avoid over-shifting
+            x_correction *= 0.3
+
+            logger.info(f"Nose alignment: scale={scale_ratio:.3f}, "
+                        f"src_eye_dist={src_eye_distance:.1f}, dst_eye_dist={dst_eye_distance:.1f}, "
+                        f"x_correction={x_correction:.1f}")
+
+            # Apply transformation: scale around src center, then translate to target
+            src_centered = src_2d - src_nose_center
+            aligned = src_centered * scale_ratio + target_center
+            # Apply horizontal correction
+            aligned[:, 0] += x_correction
+
+            return aligned.astype(np.float32)
+
+        except (IndexError, TypeError) as e:
+            logger.warning(f"Eye-based nose alignment failed: {e}, falling back to simple alignment")
+            return self._compute_2d_aligned_points(src_2d, dst_2d, part_name)
 
     def _project_3d_to_2d(
         self,
