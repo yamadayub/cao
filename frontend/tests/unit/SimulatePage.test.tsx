@@ -110,7 +110,9 @@ describe('SimulatePage', () => {
   describe('ヘッダーナビゲーション', () => {
     it('ロゴが表示される', () => {
       render(<SimulatePage />)
-      expect(screen.getByText('Cao')).toBeInTheDocument()
+      // Header and Footer both contain "Cao", so we check for at least one
+      const logos = screen.getAllByText('Cao')
+      expect(logos.length).toBeGreaterThanOrEqual(1)
     })
 
     it('ログインリンクが表示される', () => {
@@ -118,9 +120,9 @@ describe('SimulatePage', () => {
       expect(screen.getByText('ログイン')).toBeInTheDocument()
     })
 
-    it('マイページリンクが表示される', () => {
+    it('今すぐ試すボタンが表示される', () => {
       render(<SimulatePage />)
-      expect(screen.getByText('マイページ')).toBeInTheDocument()
+      expect(screen.getByText('今すぐ試す')).toBeInTheDocument()
     })
   })
 
