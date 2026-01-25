@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -20,14 +20,14 @@ interface ImageState {
 /**
  * 現在のステップ
  */
-type Step = 'upload-ideal' | 'capture-current' | 'review'
+type Step = 'upload-ideal' | 'select-current-method' | 'upload-current' | 'review'
 
 /**
  * シミュレーション作成画面 (SCR-002)
  *
- * 新しいフロー:
+ * フロー:
  * 1. 理想の顔をアップロード
- * 2. カメラで現在の顔を撮影（理想の顔をガイドとして表示）
+ * 2. 現在の顔の取得方法を選択（カメラ or アップロード）
  * 3. 確認して生成
  */
 export default function SimulatePage() {
@@ -51,6 +51,7 @@ export default function SimulatePage() {
 
   // エラー状態
   const [idealError, setIdealError] = useState<string | undefined>()
+  const [currentError, setCurrentError] = useState<string | undefined>()
 
   // 生成中フラグ
   const [isGenerating, setIsGenerating] = useState(false)
@@ -117,12 +118,26 @@ export default function SimulatePage() {
   }, [])
 
   /**
-   * 次のステップへ（カメラ起動）
+   * 次のステップへ（方法選択）
    */
-  const handleProceedToCamera = useCallback(() => {
+  const handleProceedToSelectMethod = useCallback(() => {
     if (!idealImage.previewUrl) return
-    setShowCamera(true)
+    setStep('select-current-method')
   }, [idealImage.previewUrl])
+
+  /**
+   * カメラモードを選択
+   */
+  const handleSelectCamera = useCallback(() => {
+    setShowCamera(true)
+  }, [])
+
+  /**
+   * アップロードモードを選択
+   */
+  const handleSelectUpload = useCallback(() => {
+    setStep('upload-current')
+  }, [])
 
   /**
    * カメラで撮影完了
@@ -141,11 +156,38 @@ export default function SimulatePage() {
   }, [])
 
   /**
-   * 現在の顔を撮り直す
+   * 現在の顔画像選択ハンドラ（アップロード）
    */
-  const handleRetakeCurrentImage = useCallback(() => {
+  const handleCurrentFileSelect = useCallback(
+    (file: File, previewUrl: string) => {
+      setCurrentImage({ file, previewUrl })
+      setCurrentError(undefined)
+      setStep('review')
+    },
+    []
+  )
+
+  /**
+   * 現在の顔画像削除ハンドラ
+   */
+  const handleCurrentFileRemove = useCallback(() => {
     setCurrentImage({ file: null, previewUrl: null })
-    setShowCamera(true)
+    setCurrentError(undefined)
+  }, [])
+
+  /**
+   * 現在の顔画像バリデーションエラーハンドラ
+   */
+  const handleCurrentValidationError = useCallback((error: string) => {
+    setCurrentError(error)
+  }, [])
+
+  /**
+   * 現在の顔を変更する（方法選択に戻る）
+   */
+  const handleChangeCurrentImage = useCallback(() => {
+    setCurrentImage({ file: null, previewUrl: null })
+    setStep('select-current-method')
   }, [])
 
   /**
@@ -155,6 +197,13 @@ export default function SimulatePage() {
     setIdealImage({ file: null, previewUrl: null })
     setCurrentImage({ file: null, previewUrl: null })
     setStep('upload-ideal')
+  }, [])
+
+  /**
+   * 方法選択に戻る
+   */
+  const handleBackToSelectMethod = useCallback(() => {
+    setStep('select-current-method')
   }, [])
 
   /**
@@ -222,7 +271,9 @@ export default function SimulatePage() {
             </h1>
             <p className="text-sm md:text-base text-neutral-500">
               {step === 'upload-ideal' && '理想の顔写真をアップロードしてください'}
-              {step === 'review' && '撮影した写真を確認してください'}
+              {step === 'select-current-method' && '現在の顔の取得方法を選択してください'}
+              {step === 'upload-current' && '現在の顔写真をアップロードしてください'}
+              {step === 'review' && '写真を確認してください'}
             </p>
           </div>
 
@@ -275,9 +326,9 @@ export default function SimulatePage() {
               <span className="text-sm hidden sm:inline">理想の顔</span>
             </div>
             <div className="w-8 h-px bg-neutral-300" />
-            <div className={`flex items-center gap-2 ${step === 'review' ? 'text-primary-700' : 'text-neutral-400'}`}>
+            <div className={`flex items-center gap-2 ${step === 'select-current-method' || step === 'upload-current' || step === 'review' ? 'text-primary-700' : 'text-neutral-400'}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                step === 'review' ? 'bg-primary-700 text-white' : currentImage.file ? 'bg-primary-200 text-primary-700' : 'bg-neutral-200 text-neutral-500'
+                step === 'select-current-method' || step === 'upload-current' ? 'bg-primary-700 text-white' : currentImage.file ? 'bg-primary-200 text-primary-700' : 'bg-neutral-200 text-neutral-500'
               }`}>
                 {currentImage.file ? '✓' : '2'}
               </div>
@@ -306,33 +357,159 @@ export default function SimulatePage() {
               {idealImage.file && (
                 <button
                   type="button"
-                  onClick={handleProceedToCamera}
+                  onClick={handleProceedToSelectMethod}
                   className="px-8 py-4 bg-primary-700 text-white rounded-full font-medium hover:bg-primary-800 hover:shadow-elegant transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                  data-testid="proceed-to-camera-button"
+                  data-testid="proceed-button"
                 >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                    カメラで現在の顔を撮影
-                  </span>
+                  次へ進む
                 </button>
               )}
 
               {/* 説明テキスト */}
               <div className="text-center text-sm text-neutral-500 max-w-md">
-                <p className="mb-2">
-                  理想の顔写真をアップロードしてください。
-                </p>
                 <p>
-                  次のステップで、理想の顔と同じ向き・角度で現在の顔を撮影します。
+                  理想の顔写真をアップロードしてください。
                 </p>
               </div>
             </div>
           )}
 
-          {/* Step 2: 確認画面 */}
+          {/* Step 2: 現在の顔の取得方法を選択 */}
+          {step === 'select-current-method' && (
+            <div className="flex flex-col items-center gap-6">
+              {/* 理想の顔プレビュー */}
+              <div className="w-full max-w-[200px] bg-white rounded-xl shadow-elegant p-3">
+                <p className="text-xs text-neutral-500 text-center mb-2">理想の顔</p>
+                <div className="aspect-square rounded-lg overflow-hidden">
+                  {idealImage.previewUrl && (
+                    <img
+                      src={idealImage.previewUrl}
+                      alt="理想の顔"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* 選択肢 */}
+              <div className="w-full max-w-md space-y-4">
+                <p className="text-center text-neutral-700 font-medium mb-4">
+                  現在の顔をどのように取得しますか？
+                </p>
+
+                {/* カメラで撮影 */}
+                <button
+                  type="button"
+                  onClick={handleSelectCamera}
+                  className="w-full p-6 bg-white rounded-2xl shadow-elegant hover:shadow-lg transition-all duration-300 text-left group"
+                  data-testid="select-camera-button"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-primary-100 rounded-xl flex items-center justify-center group-hover:bg-primary-200 transition-colors">
+                      <svg className="w-7 h-7 text-primary-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-neutral-900 mb-1">カメラで撮影</h3>
+                      <p className="text-sm text-neutral-500">
+                        理想の顔をガイドにして撮影できます
+                      </p>
+                    </div>
+                    <svg className="w-5 h-5 text-neutral-400 group-hover:text-primary-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* 画像をアップロード */}
+                <button
+                  type="button"
+                  onClick={handleSelectUpload}
+                  className="w-full p-6 bg-white rounded-2xl shadow-elegant hover:shadow-lg transition-all duration-300 text-left group"
+                  data-testid="select-upload-button"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-neutral-100 rounded-xl flex items-center justify-center group-hover:bg-neutral-200 transition-colors">
+                      <svg className="w-7 h-7 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-neutral-900 mb-1">画像をアップロード</h3>
+                      <p className="text-sm text-neutral-500">
+                        手持ちの写真を使用します
+                      </p>
+                    </div>
+                    <svg className="w-5 h-5 text-neutral-400 group-hover:text-primary-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              </div>
+
+              {/* 戻るリンク */}
+              <button
+                type="button"
+                onClick={handleChangeIdealImage}
+                className="text-sm text-neutral-500 hover:text-primary-600 transition-colors"
+              >
+                理想の顔を変更する
+              </button>
+            </div>
+          )}
+
+          {/* Step 2b: 現在の顔をアップロード */}
+          {step === 'upload-current' && (
+            <div className="flex flex-col items-center gap-6">
+              {/* 理想の顔プレビュー（小さく表示） */}
+              <div className="w-full max-w-[160px] bg-white rounded-xl shadow-elegant p-2">
+                <p className="text-xs text-neutral-500 text-center mb-1">理想の顔</p>
+                <div className="aspect-square rounded-lg overflow-hidden">
+                  {idealImage.previewUrl && (
+                    <img
+                      src={idealImage.previewUrl}
+                      alt="理想の顔"
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full max-w-[320px] bg-white rounded-2xl shadow-elegant p-6">
+                <ImageUploader
+                  label="現在の顔"
+                  previewUrl={currentImage.previewUrl}
+                  error={currentError}
+                  onFileSelect={handleCurrentFileSelect}
+                  onFileRemove={handleCurrentFileRemove}
+                  onValidationError={handleCurrentValidationError}
+                  onClickBeforeSelect={attemptUpload}
+                  disabled={isGenerating}
+                  testId="current-image"
+                />
+              </div>
+
+              {/* 説明テキスト */}
+              <div className="text-center text-sm text-neutral-500 max-w-md">
+                <p>
+                  理想の顔と同じ向き・角度の写真をお選びください。
+                </p>
+              </div>
+
+              {/* 戻るリンク */}
+              <button
+                type="button"
+                onClick={handleBackToSelectMethod}
+                className="text-sm text-neutral-500 hover:text-primary-600 transition-colors"
+              >
+                戻る
+              </button>
+            </div>
+          )}
+
+          {/* Step 3: 確認画面 */}
           {step === 'review' && (
             <div className="flex flex-col items-center gap-6">
               {/* 2つの画像を並べて表示 */}
@@ -375,10 +552,10 @@ export default function SimulatePage() {
                     </div>
                     <button
                       type="button"
-                      onClick={handleRetakeCurrentImage}
+                      onClick={handleChangeCurrentImage}
                       className="w-full px-4 py-2 text-sm text-neutral-600 border border-neutral-300 rounded-full hover:bg-neutral-50 transition-colors"
                     >
-                      撮り直す
+                      変更する
                     </button>
                   </div>
                 </div>
