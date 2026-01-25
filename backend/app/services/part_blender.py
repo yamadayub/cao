@@ -350,6 +350,18 @@ class PartBlender:
         # Use alignment landmarks if available (more stable reference points)
         alignment_indices = PART_ALIGNMENT_LANDMARKS.get(part_name, part_indices)
 
+        # For nose, use pose-aware alignment
+        if part_name == "nose":
+            result = self._blend_nose_with_pose_compensation(
+                base_img, src_img,
+                base_landmarks, src_landmarks,
+                part_indices, context_indices,
+                img_size
+            )
+            if result is not None:
+                return result
+            # Fall back to standard alignment if pose compensation fails
+
         # Calculate centroid and angle for alignment using key landmarks
         src_centroid, src_angle, src_scale = self._calculate_part_geometry(
             src_landmarks, alignment_indices, part_name
@@ -418,6 +430,188 @@ class PartBlender:
         result = self._multiband_blend(base_img, warped_src, mask, num_levels=num_levels)
 
         return result
+
+    def _blend_nose_with_pose_compensation(
+        self,
+        base_img: np.ndarray,
+        src_img: np.ndarray,
+        base_landmarks: List[Tuple[float, float]],
+        src_landmarks: List[Tuple[float, float]],
+        part_indices: List[int],
+        context_indices: List[int],
+        img_size: Tuple[int, int],
+    ) -> Optional[np.ndarray]:
+        """
+        Blend nose with pose-aware alignment.
+
+        Estimates face pose (yaw, pitch, roll) for both images and
+        compensates for the difference when aligning the nose.
+        """
+        w, h = img_size
+
+        # Estimate pose for both faces
+        src_yaw, src_pitch, src_roll = self._estimate_face_pose(src_landmarks)
+        dst_yaw, dst_pitch, dst_roll = self._estimate_face_pose(base_landmarks)
+
+        # Get pose-adjusted centroids
+        src_centroid = self._get_nose_pose_adjusted_centroid(
+            src_landmarks, src_yaw, dst_yaw
+        )
+        dst_centroid = self._get_nose_pose_adjusted_centroid(
+            base_landmarks, dst_yaw, dst_yaw  # Reference is itself
+        )
+
+        if src_centroid is None or dst_centroid is None:
+            return None
+
+        # Calculate nose geometry for angle and scale
+        _, src_angle, src_scale = self._calculate_nose_geometry(src_landmarks)
+        _, dst_angle, dst_scale = self._calculate_nose_geometry(base_landmarks)
+
+        # Combine part and context indices for warping
+        all_indices = list(set(part_indices + context_indices))
+
+        # Get source and destination points for warping
+        src_points = []
+        dst_points = []
+        for idx in all_indices:
+            if idx < len(src_landmarks) and idx < len(base_landmarks):
+                src_points.append(src_landmarks[idx])
+                dst_points.append(base_landmarks[idx])
+
+        if len(src_points) < 4:
+            return None
+
+        src_points = np.array(src_points, dtype=np.float32)
+        dst_points = np.array(dst_points, dtype=np.float32)
+
+        # Calculate pose-aware scale (nose appears narrower when face is turned)
+        yaw_scale_factor = np.cos(src_yaw) / max(np.cos(dst_yaw), 0.5)
+        yaw_scale_factor = np.clip(yaw_scale_factor, 0.8, 1.25)
+
+        adjusted_scale = src_scale * yaw_scale_factor
+
+        # Align with pose compensation
+        aligned_src = self._align_with_pose_compensation(
+            src_img,
+            src_centroid, src_angle, adjusted_scale,
+            dst_centroid, dst_angle, dst_scale,
+            src_yaw, dst_yaw,
+            (w, h)
+        )
+
+        # Transform points with same compensation
+        aligned_src_points = self._transform_points_with_pose(
+            src_points,
+            src_centroid, src_angle, adjusted_scale,
+            dst_centroid, dst_angle, dst_scale,
+            src_yaw, dst_yaw
+        )
+
+        # Warp for fine-grained adjustment
+        warped_src = self._rbf_warp(aligned_src, aligned_src_points, dst_points, (w, h))
+
+        # Create mask
+        mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
+
+        if mask.sum() == 0:
+            return None
+
+        # Color transfer and blending
+        warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
+        result = self._multiband_blend(base_img, warped_src, mask, num_levels=4)
+
+        return result
+
+    def _align_with_pose_compensation(
+        self,
+        img: np.ndarray,
+        src_centroid: np.ndarray,
+        src_angle: float,
+        src_scale: float,
+        dst_centroid: np.ndarray,
+        dst_angle: float,
+        dst_scale: float,
+        src_yaw: float,
+        dst_yaw: float,
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Align image with pose compensation for yaw difference.
+        """
+        w, h = output_size
+
+        # Calculate rotation angle difference (roll)
+        angle_diff = dst_angle - src_angle
+
+        # Scale ratio
+        scale_ratio = np.clip(dst_scale / src_scale, 0.7, 1.4)
+
+        # Yaw compensation: add slight horizontal skew
+        yaw_diff = dst_yaw - src_yaw
+
+        cos_a = np.cos(angle_diff)
+        sin_a = np.sin(angle_diff)
+
+        # Add horizontal skew based on yaw difference
+        # This simulates the perspective change when face turns
+        skew_x = np.sin(yaw_diff) * 0.1  # Small skew factor
+
+        # Combined transform matrix with skew
+        transform = np.array([
+            [scale_ratio * cos_a + skew_x, -scale_ratio * sin_a,
+             dst_centroid[0] - scale_ratio * (cos_a * src_centroid[0] - sin_a * src_centroid[1])
+             - skew_x * src_centroid[1]],
+            [scale_ratio * sin_a, scale_ratio * cos_a,
+             dst_centroid[1] - scale_ratio * (sin_a * src_centroid[0] + cos_a * src_centroid[1])],
+        ], dtype=np.float32)
+
+        aligned = cv2.warpAffine(
+            img, transform, (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+
+        return aligned
+
+    def _transform_points_with_pose(
+        self,
+        points: np.ndarray,
+        src_centroid: np.ndarray,
+        src_angle: float,
+        src_scale: float,
+        dst_centroid: np.ndarray,
+        dst_angle: float,
+        dst_scale: float,
+        src_yaw: float,
+        dst_yaw: float,
+    ) -> np.ndarray:
+        """
+        Transform points with pose compensation.
+        """
+        angle_diff = dst_angle - src_angle
+        scale_ratio = np.clip(dst_scale / src_scale, 0.7, 1.4)
+        yaw_diff = dst_yaw - src_yaw
+        skew_x = np.sin(yaw_diff) * 0.1
+
+        cos_a = np.cos(angle_diff)
+        sin_a = np.sin(angle_diff)
+
+        transformed = []
+        for pt in points:
+            x = pt[0] - src_centroid[0]
+            y = pt[1] - src_centroid[1]
+
+            # Apply scale, rotate, and skew
+            new_x = scale_ratio * (cos_a * x - sin_a * y) + skew_x * y
+            new_y = scale_ratio * (sin_a * x + cos_a * y)
+
+            new_x += dst_centroid[0]
+            new_y += dst_centroid[1]
+
+            transformed.append([new_x, new_y])
+
+        return np.array(transformed, dtype=np.float32)
 
     def _calculate_part_geometry(
         self,
@@ -518,6 +712,131 @@ class PartBlender:
         scale = max(scale, 1.0)
 
         return centroid, angle, scale
+
+    def _estimate_face_pose(
+        self,
+        landmarks: List[Tuple[float, float]],
+    ) -> Tuple[float, float, float]:
+        """
+        Estimate face pose (yaw, pitch, roll) from 2D landmarks.
+
+        Uses the asymmetry of facial features to estimate 3D orientation.
+
+        Returns:
+            yaw: Left-right rotation (positive = looking right)
+            pitch: Up-down rotation (positive = looking up)
+            roll: Tilt rotation (positive = tilting right)
+        """
+        # Key landmarks for pose estimation
+        LEFT_EYE_OUTER = 33     # Left eye outer corner
+        RIGHT_EYE_OUTER = 263   # Right eye outer corner
+        LEFT_EYE_INNER = 133    # Left eye inner corner
+        RIGHT_EYE_INNER = 362   # Right eye inner corner
+        NOSE_TIP = 4            # Nose tip
+        NOSE_BRIDGE = 6         # Nose bridge (between eyes)
+        LEFT_MOUTH = 61         # Left mouth corner
+        RIGHT_MOUTH = 291       # Right mouth corner
+        CHIN = 152              # Chin center
+
+        try:
+            left_eye_outer = np.array(landmarks[LEFT_EYE_OUTER], dtype=np.float32)
+            right_eye_outer = np.array(landmarks[RIGHT_EYE_OUTER], dtype=np.float32)
+            left_eye_inner = np.array(landmarks[LEFT_EYE_INNER], dtype=np.float32)
+            right_eye_inner = np.array(landmarks[RIGHT_EYE_INNER], dtype=np.float32)
+            nose_tip = np.array(landmarks[NOSE_TIP], dtype=np.float32)
+            nose_bridge = np.array(landmarks[NOSE_BRIDGE], dtype=np.float32)
+            left_mouth = np.array(landmarks[LEFT_MOUTH], dtype=np.float32)
+            right_mouth = np.array(landmarks[RIGHT_MOUTH], dtype=np.float32)
+            chin = np.array(landmarks[CHIN], dtype=np.float32)
+        except (IndexError, TypeError):
+            return 0.0, 0.0, 0.0
+
+        # Calculate face center
+        face_center_x = (left_eye_outer[0] + right_eye_outer[0]) / 2
+
+        # === YAW (left-right rotation) ===
+        # Measure asymmetry of eye distances from nose
+        left_eye_to_nose = np.linalg.norm(left_eye_inner - nose_bridge)
+        right_eye_to_nose = np.linalg.norm(right_eye_inner - nose_bridge)
+
+        # Measure asymmetry of mouth corners
+        left_mouth_to_center = abs(left_mouth[0] - face_center_x)
+        right_mouth_to_center = abs(right_mouth[0] - face_center_x)
+
+        # Combined yaw estimation
+        eye_ratio = (right_eye_to_nose - left_eye_to_nose) / max(
+            right_eye_to_nose + left_eye_to_nose, 1.0
+        )
+        mouth_ratio = (right_mouth_to_center - left_mouth_to_center) / max(
+            right_mouth_to_center + left_mouth_to_center, 1.0
+        )
+
+        # Yaw angle approximation (in radians, roughly -30 to +30 degrees range)
+        yaw = (eye_ratio * 0.6 + mouth_ratio * 0.4) * np.pi / 3
+
+        # === PITCH (up-down rotation) ===
+        # Measure vertical distance ratios
+        eye_line_y = (left_eye_outer[1] + right_eye_outer[1]) / 2
+        eye_to_nose = nose_tip[1] - eye_line_y
+        nose_to_chin = chin[1] - nose_tip[1]
+
+        # Normal ratio is about 1:1
+        pitch_ratio = (eye_to_nose - nose_to_chin) / max(eye_to_nose + nose_to_chin, 1.0)
+        pitch = pitch_ratio * np.pi / 6  # Roughly -30 to +30 degrees
+
+        # === ROLL (tilt rotation) ===
+        # Measure eye line angle
+        eye_vector = right_eye_outer - left_eye_outer
+        roll = np.arctan2(eye_vector[1], eye_vector[0])
+
+        return yaw, pitch, roll
+
+    def _get_nose_pose_adjusted_centroid(
+        self,
+        landmarks: List[Tuple[float, float]],
+        yaw: float,
+        reference_yaw: float,
+    ) -> Optional[np.ndarray]:
+        """
+        Calculate nose centroid adjusted for face pose difference.
+
+        When faces have different yaw angles, the nose tip appears
+        shifted horizontally. This compensates for that.
+        """
+        NOSE_TIP = 4
+        NOSE_TIP_CENTER = 1
+        NOSE_BOTTOM = 2
+        LEFT_ALAR = 129
+        RIGHT_ALAR = 358
+
+        try:
+            nose_tip = np.array(landmarks[NOSE_TIP], dtype=np.float32)
+            nose_tip_center = np.array(landmarks[NOSE_TIP_CENTER], dtype=np.float32)
+            nose_bottom = np.array(landmarks[NOSE_BOTTOM], dtype=np.float32)
+            left_alar = np.array(landmarks[LEFT_ALAR], dtype=np.float32)
+            right_alar = np.array(landmarks[RIGHT_ALAR], dtype=np.float32)
+        except (IndexError, TypeError):
+            return None
+
+        # Calculate the nose width (used to estimate horizontal shift)
+        nose_width = np.linalg.norm(right_alar - left_alar)
+
+        # Calculate how much the yaw differs from reference
+        yaw_diff = yaw - reference_yaw
+
+        # The nose center line shifts based on yaw
+        # When looking right (positive yaw), nose center moves left relative to face center
+        # Approximate shift based on nose width and yaw angle
+        horizontal_shift = -np.sin(yaw_diff) * nose_width * 0.3
+
+        # Base centroid (weighted toward tip)
+        base_centroid = nose_tip_center * 0.5 + nose_tip * 0.25 + nose_bottom * 0.25
+
+        # Apply horizontal correction
+        corrected_centroid = base_centroid.copy()
+        corrected_centroid[0] += horizontal_shift
+
+        return corrected_centroid
 
     def _align_by_centroid_and_angle(
         self,
