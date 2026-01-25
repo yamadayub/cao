@@ -1,4 +1,4 @@
-"""3D-based part blending service using depth estimation."""
+"""3D-based part blending service using canonical face model fitting."""
 
 from __future__ import annotations
 
@@ -22,6 +22,55 @@ logger = logging.getLogger(__name__)
 # Depth estimation model singleton
 _depth_model = None
 _depth_processor = None
+
+# ============================================================================
+# MediaPipe Canonical Face Model - Key Landmarks (3D coordinates in cm)
+# Based on the official MediaPipe canonical_face_model.obj
+# Selected key landmarks that define the face shape for Procrustes fitting
+# ============================================================================
+
+# Key landmark indices for pose estimation (stable points)
+POSE_LANDMARKS = {
+    "nose_tip": 4,
+    "nose_bridge": 6,
+    "left_eye_outer": 33,
+    "left_eye_inner": 133,
+    "right_eye_outer": 263,
+    "right_eye_inner": 362,
+    "left_mouth": 61,
+    "right_mouth": 291,
+    "chin": 152,
+    "forehead": 10,
+    "left_cheek": 234,
+    "right_cheek": 454,
+}
+
+# Canonical 3D coordinates for key landmarks (from MediaPipe canonical_face_model.obj)
+# Units are in centimeters, Y-down, Z toward camera
+CANONICAL_LANDMARKS_3D = {
+    4: np.array([0.0, -0.463, 7.587]),       # nose tip
+    6: np.array([0.0, 0.366, 7.243]),        # nose bridge
+    33: np.array([-3.20, 1.99, 3.80]),       # left eye outer
+    133: np.array([-1.30, 1.42, 4.83]),      # left eye inner
+    263: np.array([3.20, 1.99, 3.80]),       # right eye outer
+    362: np.array([1.30, 1.42, 4.83]),       # right eye inner
+    61: np.array([-1.83, -4.10, 4.25]),      # left mouth
+    291: np.array([1.83, -4.10, 4.25]),      # right mouth
+    152: np.array([0.0, -6.15, 5.07]),       # chin
+    10: np.array([0.0, 4.89, 5.39]),         # forehead
+    234: np.array([-5.80, 2.35, 2.20]),      # left cheek
+    454: np.array([5.80, 2.35, 2.20]),       # right cheek
+    # Additional nose landmarks for better fitting
+    1: np.array([0.0, -1.13, 7.48]),         # nose bridge top
+    2: np.array([0.0, -2.09, 6.06]),         # nose dorsum
+    94: np.array([0.0, -1.72, 6.60]),        # nose center
+    # Eye corners for roll estimation
+    130: np.array([-1.41, 0.97, 4.56]),      # left eye corner
+    359: np.array([1.41, 0.97, 4.56]),       # right eye corner
+}
+
+# All indices used for fitting
+FITTING_INDICES = list(CANONICAL_LANDMARKS_3D.keys())
 
 
 def get_depth_model():
@@ -53,8 +102,255 @@ def get_depth_model():
     return _depth_model, _depth_processor
 
 
+class CanonicalFaceModel:
+    """
+    Canonical 3D face model based on MediaPipe's face geometry.
+
+    Uses Procrustes analysis to fit observed 2D landmarks to the
+    canonical 3D model and recover pose (rotation, translation, scale).
+    """
+
+    def __init__(self):
+        """Initialize with canonical 3D landmarks."""
+        self.canonical_3d = np.array([
+            CANONICAL_LANDMARKS_3D[idx] for idx in FITTING_INDICES
+        ], dtype=np.float32)
+        self.fitting_indices = FITTING_INDICES
+
+        # Center canonical model at origin
+        self.canonical_center = np.mean(self.canonical_3d, axis=0)
+        self.canonical_centered = self.canonical_3d - self.canonical_center
+
+        # Compute canonical model scale
+        self.canonical_scale = np.std(self.canonical_centered)
+
+    def fit_to_landmarks(
+        self,
+        landmarks_2d: np.ndarray,
+        img_size: Tuple[int, int],
+        depth_map: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+        """
+        Fit canonical model to observed 2D landmarks using Procrustes analysis.
+
+        Args:
+            landmarks_2d: (N, 2) array of all 2D landmarks
+            img_size: (width, height) of image
+            depth_map: Optional depth map for Z estimation
+
+        Returns:
+            rotation: (3, 3) rotation matrix
+            translation: (3,) translation vector
+            scale: float scale factor
+            landmarks_3d: (N, 3) reconstructed 3D landmarks
+        """
+        w, h = img_size
+
+        # Extract fitting landmarks
+        observed_2d = []
+        canonical_pts = []
+        valid_indices = []
+
+        for i, idx in enumerate(self.fitting_indices):
+            if idx < len(landmarks_2d):
+                observed_2d.append(landmarks_2d[idx])
+                canonical_pts.append(self.canonical_centered[i])
+                valid_indices.append(idx)
+
+        if len(observed_2d) < 6:
+            # Fallback to identity transform
+            return np.eye(3), np.zeros(3), 1.0, self._simple_3d_from_2d(landmarks_2d, img_size)
+
+        observed_2d = np.array(observed_2d, dtype=np.float32)
+        canonical_pts = np.array(canonical_pts, dtype=np.float32)
+
+        # Normalize observed 2D to [-1, 1] range
+        observed_normalized = observed_2d.copy()
+        observed_normalized[:, 0] = (observed_2d[:, 0] / w) * 2 - 1
+        observed_normalized[:, 1] = (observed_2d[:, 1] / h) * 2 - 1
+
+        # Estimate Z coordinates from depth map or canonical model
+        if depth_map is not None:
+            observed_z = self._estimate_z_from_depth(
+                observed_2d, depth_map, canonical_pts[:, 2]
+            )
+        else:
+            # Use canonical Z scaled appropriately
+            observed_z = canonical_pts[:, 2] / self.canonical_scale
+
+        # Create 3D observed points
+        observed_3d = np.column_stack([
+            observed_normalized[:, 0],
+            observed_normalized[:, 1],
+            observed_z
+        ])
+
+        # Center observed points
+        observed_center = np.mean(observed_3d, axis=0)
+        observed_centered = observed_3d - observed_center
+
+        # Normalize canonical points to match observed scale
+        canonical_normalized = canonical_pts / self.canonical_scale
+
+        # Procrustes: find optimal rotation from canonical to observed
+        rotation, scale = self._orthogonal_procrustes(
+            canonical_normalized, observed_centered
+        )
+
+        # Compute translation
+        translation = observed_center - scale * (rotation @ (np.zeros(3)))
+
+        # Reconstruct all 3D landmarks
+        landmarks_3d = self._reconstruct_all_3d(
+            landmarks_2d, img_size, rotation, translation, scale, depth_map
+        )
+
+        return rotation, translation, scale, landmarks_3d
+
+    def _orthogonal_procrustes(
+        self,
+        A: np.ndarray,
+        B: np.ndarray,
+    ) -> Tuple[np.ndarray, float]:
+        """
+        Solve orthogonal Procrustes: find R that minimizes ||B - RA||^2.
+
+        Args:
+            A: (N, 3) source points (canonical)
+            B: (N, 3) target points (observed)
+
+        Returns:
+            R: (3, 3) rotation matrix
+            s: scale factor
+        """
+        # Compute cross-covariance matrix
+        H = A.T @ B
+
+        # SVD decomposition
+        U, S, Vt = np.linalg.svd(H)
+
+        # Optimal rotation
+        R = Vt.T @ U.T
+
+        # Ensure proper rotation (det = 1)
+        if np.linalg.det(R) < 0:
+            Vt[-1, :] *= -1
+            R = Vt.T @ U.T
+
+        # Compute optimal scale
+        scale = np.sum(S) / np.sum(A ** 2)
+
+        return R, scale
+
+    def _estimate_z_from_depth(
+        self,
+        points_2d: np.ndarray,
+        depth_map: np.ndarray,
+        canonical_z: np.ndarray,
+    ) -> np.ndarray:
+        """Estimate Z coordinates using depth map and canonical shape prior."""
+        h, w = depth_map.shape
+        z_values = []
+
+        for i, (x, y) in enumerate(points_2d):
+            ix = int(np.clip(x, 0, w - 1))
+            iy = int(np.clip(y, 0, h - 1))
+
+            # Sample depth in local region
+            kernel = 3
+            x_start, x_end = max(0, ix - kernel), min(w, ix + kernel + 1)
+            y_start, y_end = max(0, iy - kernel), min(h, iy + kernel + 1)
+            depth_val = np.median(depth_map[y_start:y_end, x_start:x_end])
+
+            # Blend depth estimate with canonical prior
+            # (depth is noisy, canonical provides structure)
+            canonical_weight = 0.3
+            z = (1 - canonical_weight) * depth_val + \
+                canonical_weight * (canonical_z[i] / self.canonical_scale + 0.5)
+
+            z_values.append(z)
+
+        return np.array(z_values, dtype=np.float32)
+
+    def _simple_3d_from_2d(
+        self,
+        landmarks_2d: np.ndarray,
+        img_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """Fallback: simple 3D reconstruction without fitting."""
+        w, h = img_size
+        n = len(landmarks_2d)
+        landmarks_3d = np.zeros((n, 3), dtype=np.float32)
+
+        for i, (x, y) in enumerate(landmarks_2d):
+            landmarks_3d[i] = [
+                (x / w) * 2 - 1,
+                (y / h) * 2 - 1,
+                0.5  # Default depth
+            ]
+
+        return landmarks_3d
+
+    def _reconstruct_all_3d(
+        self,
+        landmarks_2d: np.ndarray,
+        img_size: Tuple[int, int],
+        rotation: np.ndarray,
+        translation: np.ndarray,
+        scale: float,
+        depth_map: Optional[np.ndarray],
+    ) -> np.ndarray:
+        """Reconstruct 3D coordinates for all landmarks."""
+        w, h = img_size
+        n = len(landmarks_2d)
+        landmarks_3d = np.zeros((n, 3), dtype=np.float32)
+
+        for i, (x, y) in enumerate(landmarks_2d):
+            # Normalize 2D
+            x_norm = (x / w) * 2 - 1
+            y_norm = (y / h) * 2 - 1
+
+            # Estimate Z from depth or model
+            if depth_map is not None:
+                ix = int(np.clip(x, 0, w - 1))
+                iy = int(np.clip(y, 0, h - 1))
+                z = depth_map[iy, ix]
+            else:
+                z = 0.5
+
+            landmarks_3d[i] = [x_norm, y_norm, z]
+
+        return landmarks_3d
+
+    def get_euler_angles(self, rotation: np.ndarray) -> Tuple[float, float, float]:
+        """
+        Extract Euler angles (yaw, pitch, roll) from rotation matrix.
+
+        Args:
+            rotation: (3, 3) rotation matrix
+
+        Returns:
+            yaw: rotation around Y axis (left-right)
+            pitch: rotation around X axis (up-down)
+            roll: rotation around Z axis (tilt)
+        """
+        # Handle gimbal lock
+        sy = np.sqrt(rotation[0, 0] ** 2 + rotation[1, 0] ** 2)
+
+        if sy > 1e-6:
+            pitch = np.arctan2(-rotation[2, 0], sy)
+            yaw = np.arctan2(rotation[1, 0], rotation[0, 0])
+            roll = np.arctan2(rotation[2, 1], rotation[2, 2])
+        else:
+            pitch = np.arctan2(-rotation[2, 0], sy)
+            yaw = np.arctan2(-rotation[1, 2], rotation[1, 1])
+            roll = 0
+
+        return float(yaw), float(pitch), float(roll)
+
+
 class FaceMesh3D:
-    """3D face mesh constructed from 2D landmarks and depth map."""
+    """3D face mesh fitted to canonical model."""
 
     def __init__(
         self,
@@ -62,70 +358,33 @@ class FaceMesh3D:
         depth_map: np.ndarray,
         texture: np.ndarray,
         img_size: Tuple[int, int],
+        canonical_model: CanonicalFaceModel,
     ):
         """
-        Initialize 3D face mesh.
+        Initialize 3D face mesh with canonical model fitting.
 
         Args:
             landmarks_2d: (N, 2) array of 2D landmark coordinates
             depth_map: (H, W) depth map
             texture: (H, W, 3) BGR texture image
             img_size: (width, height)
+            canonical_model: Shared canonical face model for fitting
         """
         self.landmarks_2d = landmarks_2d
         self.depth_map = depth_map
         self.texture = texture
         self.img_size = img_size
+        self.canonical_model = canonical_model
 
-        # Construct 3D vertices from 2D landmarks + depth
-        self.vertices_3d = self._construct_3d_vertices()
+        # Fit canonical model to get pose and 3D landmarks
+        self.rotation, self.translation, self.scale, self.vertices_3d = \
+            canonical_model.fit_to_landmarks(landmarks_2d, img_size, depth_map)
 
-        # Create triangulation for mesh
+        # Get Euler angles for easy comparison
+        self.yaw, self.pitch, self.roll = canonical_model.get_euler_angles(self.rotation)
+
+        # Create triangulation
         self.triangles = self._create_triangulation()
-
-        # Estimate face pose from 3D vertices
-        self.face_normal, self.face_center = self._estimate_face_pose()
-
-    def _construct_3d_vertices(self) -> np.ndarray:
-        """
-        Construct 3D vertices from 2D landmarks and depth map.
-
-        Uses pinhole camera model with focal length estimation.
-        """
-        w, h = self.img_size
-        n_landmarks = len(self.landmarks_2d)
-        vertices = np.zeros((n_landmarks, 3), dtype=np.float32)
-
-        # Estimate focal length (typical for face images)
-        focal_length = max(w, h)
-        cx, cy = w / 2, h / 2
-
-        for i, (x, y) in enumerate(self.landmarks_2d):
-            # Clamp coordinates to image bounds
-            ix = int(np.clip(x, 0, w - 1))
-            iy = int(np.clip(y, 0, h - 1))
-
-            # Get depth value at landmark position
-            # Use area sampling for more stable depth
-            kernel_size = 3
-            x_start = max(0, ix - kernel_size)
-            x_end = min(w, ix + kernel_size + 1)
-            y_start = max(0, iy - kernel_size)
-            y_end = min(h, iy + kernel_size + 1)
-            z = np.median(self.depth_map[y_start:y_end, x_start:x_end])
-
-            # Convert depth to actual Z (depth map is inverted - closer = higher value)
-            # Scale to reasonable range (face depth ~40-60cm)
-            z_scaled = (1 - z) * 0.5 + 0.3  # Range [0.3, 0.8] meters
-
-            # Back-project to 3D using pinhole camera model
-            X = (x - cx) * z_scaled / focal_length
-            Y = (y - cy) * z_scaled / focal_length
-            Z = z_scaled
-
-            vertices[i] = [X, Y, Z]
-
-        return vertices
 
     def _create_triangulation(self) -> np.ndarray:
         """Create Delaunay triangulation of landmarks."""
@@ -135,57 +394,6 @@ class FaceMesh3D:
         except Exception:
             return np.array([], dtype=np.int32)
 
-    def _estimate_face_pose(self) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Estimate face normal and center from 3D vertices.
-
-        Uses key facial landmarks to compute face plane.
-        """
-        # Key landmarks for pose estimation
-        # Left eye outer, right eye outer, nose tip, chin
-        key_indices = [33, 263, 4, 152]
-
-        key_points = []
-        for idx in key_indices:
-            if idx < len(self.vertices_3d):
-                key_points.append(self.vertices_3d[idx])
-
-        if len(key_points) < 3:
-            return np.array([0, 0, 1], dtype=np.float32), np.zeros(3, dtype=np.float32)
-
-        key_points = np.array(key_points, dtype=np.float32)
-
-        # Compute face center
-        center = np.mean(key_points, axis=0)
-
-        # Compute face normal using cross product of two face vectors
-        # Vector from left eye to right eye
-        if len(key_points) >= 2:
-            v1 = key_points[1] - key_points[0]  # Right eye - Left eye
-        else:
-            v1 = np.array([1, 0, 0])
-
-        # Vector from eyes to nose
-        if len(key_points) >= 3:
-            eye_center = (key_points[0] + key_points[1]) / 2
-            v2 = key_points[2] - eye_center  # Nose - Eye center
-        else:
-            v2 = np.array([0, 1, 0])
-
-        # Normal is cross product (points outward from face)
-        normal = np.cross(v1, v2)
-        norm = np.linalg.norm(normal)
-        if norm > 1e-6:
-            normal = normal / norm
-        else:
-            normal = np.array([0, 0, 1], dtype=np.float32)
-
-        # Ensure normal points toward camera (positive Z)
-        if normal[2] < 0:
-            normal = -normal
-
-        return normal, center
-
     def get_part_vertices(self, part_indices: List[int]) -> Tuple[np.ndarray, np.ndarray]:
         """Get 3D vertices and 2D coordinates for a facial part."""
         indices = [i for i in part_indices if i < len(self.vertices_3d)]
@@ -194,41 +402,38 @@ class FaceMesh3D:
         return vertices_3d, vertices_2d
 
     def get_yaw_pitch_roll(self) -> Tuple[float, float, float]:
+        """Get face rotation angles."""
+        return self.yaw, self.pitch, self.roll
+
+    def transform_point_to_other(
+        self,
+        point_3d: np.ndarray,
+        other: "FaceMesh3D",
+    ) -> np.ndarray:
         """
-        Get face rotation angles from face normal.
+        Transform a 3D point from this face's coordinate system to another's.
 
-        Returns:
-            yaw: Left-right rotation (radians)
-            pitch: Up-down rotation (radians)
-            roll: Computed from eye line (radians)
+        This is the key operation for parts blending: we transform the source
+        part's 3D position to match the target face's pose.
         """
-        nx, ny, nz = self.face_normal
+        # Remove this face's transform
+        point_centered = point_3d - self.translation
+        point_canonical = (self.rotation.T @ point_centered.T).T / self.scale
 
-        # Yaw (left-right): angle between normal projection on XZ plane and Z axis
-        yaw = np.arctan2(nx, nz)
+        # Apply other face's transform
+        point_other = other.scale * (other.rotation @ point_canonical.T).T + other.translation
 
-        # Pitch (up-down): angle between normal and XZ plane
-        pitch = np.arcsin(np.clip(-ny, -1, 1))
-
-        # Roll: compute from eye landmarks
-        left_eye_idx = 33
-        right_eye_idx = 263
-        if left_eye_idx < len(self.landmarks_2d) and right_eye_idx < len(self.landmarks_2d):
-            eye_vec = self.landmarks_2d[right_eye_idx] - self.landmarks_2d[left_eye_idx]
-            roll = np.arctan2(eye_vec[1], eye_vec[0])
-        else:
-            roll = 0.0
-
-        return float(yaw), float(pitch), float(roll)
+        return point_other
 
 
 class PartBlender3D:
-    """3D-based facial part blending service."""
+    """3D-based facial part blending service using canonical model fitting."""
 
     def __init__(self):
         """Initialize 3D part blender service."""
         self.face_service = get_face_detection_service()
         self._depth_available = None
+        self.canonical_model = CanonicalFaceModel()
 
     def is_depth_available(self) -> bool:
         """Check if depth estimation is available."""
@@ -246,7 +451,7 @@ class PartBlender3D:
         ideal_label: str = "ideal",
     ) -> np.ndarray:
         """
-        Blend selected facial parts using 3D reconstruction.
+        Blend selected facial parts using canonical model fitting.
         """
         if not parts.has_any_selection():
             raise ValueError("At least one part must be selected")
@@ -279,27 +484,29 @@ class PartBlender3D:
                 current_img, ideal_img, parts, current_label, ideal_label
             )
 
-        # Create 3D face meshes
+        # Create 3D face meshes with canonical model fitting
         current_mesh = FaceMesh3D(
             np.array(current_landmarks, dtype=np.float32),
             current_depth,
             current_img,
-            (out_w, out_h)
+            (out_w, out_h),
+            self.canonical_model,
         )
         ideal_mesh = FaceMesh3D(
             np.array(ideal_landmarks, dtype=np.float32),
             ideal_depth,
             ideal_img,
-            (out_w, out_h)
+            (out_w, out_h),
+            self.canonical_model,
         )
 
         # Log pose information for debugging
         src_yaw, src_pitch, src_roll = ideal_mesh.get_yaw_pitch_roll()
         dst_yaw, dst_pitch, dst_roll = current_mesh.get_yaw_pitch_roll()
-        logger.info(f"Source face pose: yaw={np.degrees(src_yaw):.1f}°, "
-                   f"pitch={np.degrees(src_pitch):.1f}°, roll={np.degrees(src_roll):.1f}°")
-        logger.info(f"Target face pose: yaw={np.degrees(dst_yaw):.1f}°, "
-                   f"pitch={np.degrees(dst_pitch):.1f}°, roll={np.degrees(dst_roll):.1f}°")
+        logger.info(f"Source face pose (from Procrustes): yaw={np.degrees(src_yaw):.1f}°, "
+                    f"pitch={np.degrees(src_pitch):.1f}°, roll={np.degrees(src_roll):.1f}°")
+        logger.info(f"Target face pose (from Procrustes): yaw={np.degrees(dst_yaw):.1f}°, "
+                    f"pitch={np.degrees(dst_pitch):.1f}°, roll={np.degrees(dst_roll):.1f}°")
 
         # Start with current image as base
         result = current_img.copy()
@@ -322,14 +529,14 @@ class PartBlender3D:
                 )
             except Exception as e:
                 logger.warning(f"Failed to blend {part_name} in 3D: {e}")
+                import traceback
+                logger.warning(traceback.format_exc())
                 continue
 
         return result
 
     def _estimate_depth(self, img: np.ndarray) -> Optional[np.ndarray]:
-        """
-        Estimate depth map from image using Depth Anything.
-        """
+        """Estimate depth map from image using Depth Anything."""
         model, processor = get_depth_model()
         if model is None or processor is None:
             return None
@@ -382,26 +589,12 @@ class PartBlender3D:
         part_name: str = "",
     ) -> np.ndarray:
         """
-        Blend a single facial part using 3D-aware transformation.
+        Blend a single facial part using canonical model-based 3D transformation.
 
-        Key improvements:
-        1. Compute view-normalized transformation
-        2. Apply depth-based parallax correction
-        3. Use 3D rotation to handle different face orientations
+        Key improvement: Use the fitted rotation matrices from Procrustes analysis
+        to properly transform parts between different face poses.
         """
         w, h = img_size
-
-        # Get face poses
-        src_yaw, src_pitch, src_roll = src_mesh.get_yaw_pitch_roll()
-        dst_yaw, dst_pitch, dst_roll = base_mesh.get_yaw_pitch_roll()
-
-        # Compute pose difference
-        yaw_diff = dst_yaw - src_yaw
-        pitch_diff = dst_pitch - src_pitch
-        roll_diff = dst_roll - src_roll
-
-        logger.info(f"Pose diff for {part_name}: yaw={np.degrees(yaw_diff):.1f}°, "
-                   f"pitch={np.degrees(pitch_diff):.1f}°, roll={np.degrees(roll_diff):.1f}°")
 
         # Get 3D and 2D vertices for the part
         src_3d, src_2d = src_mesh.get_part_vertices(part_indices)
@@ -410,42 +603,41 @@ class PartBlender3D:
         if len(src_3d) < 4 or len(dst_3d) < 4:
             return base_img
 
-        # Compute part centroids in 3D
-        src_center_3d = np.mean(src_3d, axis=0)
-        dst_center_3d = np.mean(dst_3d, axis=0)
+        # Compute the relative rotation between faces
+        # R_relative = R_dst @ R_src^T
+        R_relative = base_mesh.rotation @ src_mesh.rotation.T
 
-        # Build 3D rotation matrix to align source pose to target pose
-        R = self._build_rotation_matrix(yaw_diff, pitch_diff, roll_diff)
+        # Extract relative Euler angles for logging
+        rel_yaw, rel_pitch, rel_roll = self.canonical_model.get_euler_angles(R_relative)
+        logger.info(f"Relative pose for {part_name}: yaw={np.degrees(rel_yaw):.1f}°, "
+                    f"pitch={np.degrees(rel_pitch):.1f}°, roll={np.degrees(rel_roll):.1f}°")
 
         # Transform source 3D points to match target pose
-        src_3d_centered = src_3d - src_center_3d
-        src_3d_rotated = (R @ src_3d_centered.T).T
+        # Step 1: Center source points
+        src_center = np.mean(src_3d, axis=0)
+        dst_center = np.mean(dst_3d, axis=0)
+        src_centered = src_3d - src_center
 
-        # Compute scale from 3D point spread
-        src_spread = np.std(src_3d_centered)
-        dst_spread = np.std(dst_3d - dst_center_3d)
-        scale_3d = dst_spread / max(src_spread, 1e-6)
-        scale_3d = np.clip(scale_3d, 0.7, 1.4)
+        # Step 2: Apply relative rotation
+        src_rotated = (R_relative @ src_centered.T).T
 
-        # Apply scale and translate to target position
-        src_3d_transformed = src_3d_rotated * scale_3d + dst_center_3d
+        # Step 3: Compute scale adjustment
+        src_spread = np.std(src_centered)
+        dst_spread = np.std(dst_3d - dst_center)
+        scale_ratio = dst_spread / max(src_spread, 1e-6)
+        scale_ratio = np.clip(scale_ratio, 0.7, 1.4)
 
-        # Project transformed 3D points back to 2D
-        aligned_src_2d = self._project_3d_to_2d(
-            src_3d_transformed,
-            base_mesh.img_size,
-        )
+        # Step 4: Apply scale and translate to destination
+        src_transformed = src_rotated * scale_ratio + dst_center
 
-        # Compute 2D transformation for the entire source image
-        src_points = []
-        dst_points = []
+        # Project transformed 3D points to 2D
+        aligned_2d = self._project_3d_to_2d(src_transformed, img_size)
 
-        for i, _idx in enumerate(part_indices):
-            if i < len(aligned_src_2d):
-                src_points.append(src_2d[i])
-                dst_points.append(aligned_src_2d[i])
+        # Build correspondence for warping
+        src_points = list(src_2d)
+        dst_points = list(aligned_2d)
 
-        # Add context points (use original positions with offset)
+        # Add context points
         for idx in context_indices:
             if idx < len(src_mesh.landmarks_2d) and idx < len(base_mesh.landmarks_2d):
                 src_points.append(src_mesh.landmarks_2d[idx])
@@ -457,18 +649,21 @@ class PartBlender3D:
         src_points = np.array(src_points, dtype=np.float32)
         dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Apply perspective-aware warping for significant pose differences
-        if abs(yaw_diff) > 0.05 or abs(pitch_diff) > 0.05:  # > ~3 degrees
+        # Determine if perspective warp is needed based on relative rotation
+        needs_perspective = (abs(rel_yaw) > 0.05 or abs(rel_pitch) > 0.05)
+
+        if needs_perspective and len(src_points) >= 4:
+            # Use perspective transform for significant pose differences
             warped_src = self._perspective_warp(
                 src_mesh.texture,
-                src_points[:4] if len(src_points) >= 4 else src_points,
-                dst_points[:4] if len(dst_points) >= 4 else dst_points,
+                src_points[:4],
+                dst_points[:4],
                 img_size,
             )
         else:
             warped_src = src_mesh.texture
 
-        # Fine-tune with RBF warping
+        # Fine-tune with RBF warping using all correspondences
         warped_src = self._rbf_warp(warped_src, src_points, dst_points, img_size)
 
         # Create mask using target positions
@@ -477,70 +672,34 @@ class PartBlender3D:
         if mask.sum() == 0:
             return base_img
 
-        # Apply depth-aware color correction
+        # Apply color transfer
         warped_src = self._depth_aware_color_transfer(
             warped_src, base_img, mask,
             src_mesh.depth_map, base_mesh.depth_map
         )
 
-        # Multi-band blend with extra levels for better transition
+        # Multi-band blend
         num_levels = 5 if part_name == "nose" else 4
         result = self._multiband_blend(base_img, warped_src, mask, num_levels)
 
         return result
-
-    def _build_rotation_matrix(
-        self,
-        yaw: float,
-        pitch: float,
-        roll: float,
-    ) -> np.ndarray:
-        """Build 3D rotation matrix from Euler angles."""
-        # Rotation around Y axis (yaw)
-        Ry = np.array([
-            [np.cos(yaw), 0, np.sin(yaw)],
-            [0, 1, 0],
-            [-np.sin(yaw), 0, np.cos(yaw)]
-        ], dtype=np.float32)
-
-        # Rotation around X axis (pitch)
-        Rx = np.array([
-            [1, 0, 0],
-            [0, np.cos(pitch), -np.sin(pitch)],
-            [0, np.sin(pitch), np.cos(pitch)]
-        ], dtype=np.float32)
-
-        # Rotation around Z axis (roll)
-        Rz = np.array([
-            [np.cos(roll), -np.sin(roll), 0],
-            [np.sin(roll), np.cos(roll), 0],
-            [0, 0, 1]
-        ], dtype=np.float32)
-
-        # Combined rotation: R = Rz @ Ry @ Rx
-        return Rz @ Ry @ Rx
 
     def _project_3d_to_2d(
         self,
         points_3d: np.ndarray,
         img_size: Tuple[int, int],
     ) -> np.ndarray:
-        """Project 3D points to 2D using pinhole camera model."""
+        """Project normalized 3D points to 2D image coordinates."""
         w, h = img_size
-        focal_length = max(w, h)
-        cx, cy = w / 2, h / 2
 
         points_2d = np.zeros((len(points_3d), 2), dtype=np.float32)
 
-        for i, (X, Y, Z) in enumerate(points_3d):
-            # Avoid division by zero
-            Z = max(Z, 0.1)
-
-            # Project using pinhole model
-            x = (X * focal_length / Z) + cx
-            y = (Y * focal_length / Z) + cy
-
-            points_2d[i] = [x, y]
+        for i, (x, y, _z) in enumerate(points_3d):
+            # Simple orthographic projection from normalized coordinates
+            # (the perspective effect is already captured in the landmarks)
+            px = (x + 1) / 2 * w
+            py = (y + 1) / 2 * h
+            points_2d[i] = [px, py]
 
         return points_2d
 
@@ -555,7 +714,6 @@ class PartBlender3D:
         w, h = output_size
 
         if len(src_points) >= 4 and len(dst_points) >= 4:
-            # Compute perspective transform
             M = cv2.getPerspectiveTransform(
                 src_points[:4].astype(np.float32),
                 dst_points[:4].astype(np.float32)
@@ -595,8 +753,14 @@ class PartBlender3D:
         all_dst = np.vstack([dst_points, corners_dst])
 
         try:
-            rbf_x = RBFInterpolator(all_dst, all_src[:, 0], kernel='thin_plate_spline', smoothing=1.0)
-            rbf_y = RBFInterpolator(all_dst, all_src[:, 1], kernel='thin_plate_spline', smoothing=1.0)
+            rbf_x = RBFInterpolator(
+                all_dst, all_src[:, 0],
+                kernel='thin_plate_spline', smoothing=1.0
+            )
+            rbf_y = RBFInterpolator(
+                all_dst, all_src[:, 1],
+                kernel='thin_plate_spline', smoothing=1.0
+            )
         except Exception:
             return cv2.resize(img, (w, h))
 
@@ -606,7 +770,10 @@ class PartBlender3D:
         src_x = rbf_x(grid_points).reshape(h, w).astype(np.float32)
         src_y = rbf_y(grid_points).reshape(h, w).astype(np.float32)
 
-        warped = cv2.remap(img, src_x, src_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+        warped = cv2.remap(
+            img, src_x, src_y,
+            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+        )
 
         return warped
 
@@ -648,11 +815,7 @@ class PartBlender3D:
         src_depth: np.ndarray,
         tgt_depth: np.ndarray,
     ) -> np.ndarray:
-        """
-        Transfer color with depth-aware adjustment.
-
-        Accounts for lighting differences due to surface orientation.
-        """
+        """Transfer color with depth-aware adjustment."""
         if mask.sum() == 0:
             return src
 
@@ -669,7 +832,7 @@ class PartBlender3D:
 
         # Compute depth difference for lighting adjustment
         depth_diff = np.mean(tgt_depth[mask_bool]) - np.mean(src_depth[mask_bool])
-        lighting_factor = 1.0 + depth_diff * 0.3  # Subtle adjustment
+        lighting_factor = 1.0 + depth_diff * 0.3
 
         for i in range(3):
             src_channel = src_lab[:, :, i]
@@ -691,7 +854,6 @@ class PartBlender3D:
 
             scale = np.clip(tgt_iqr / src_iqr, 0.5, 2.0)
 
-            # Apply lighting factor to luminance channel
             if i == 0:  # L channel
                 scale *= lighting_factor
 
@@ -760,7 +922,9 @@ class PartBlender3D:
         # Reconstruct
         result = blended_lap[-1]
         for i in range(num_levels - 1, -1, -1):
-            result = cv2.pyrUp(result, dstsize=(blended_lap[i].shape[1], blended_lap[i].shape[0]))
+            result = cv2.pyrUp(
+                result, dstsize=(blended_lap[i].shape[1], blended_lap[i].shape[0])
+            )
             result = result + blended_lap[i]
 
         return np.clip(result, 0, 255).astype(np.uint8)
