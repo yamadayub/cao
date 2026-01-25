@@ -433,6 +433,7 @@ class PartBlender3D:
         """Initialize 3D part blender service."""
         self.face_service = get_face_detection_service()
         self._depth_available = None
+        self._has_real_depth = False  # Track if we have real depth data
         self.canonical_model = CanonicalFaceModel()
 
     def is_depth_available(self) -> bool:
@@ -486,9 +487,12 @@ class PartBlender3D:
         current_depth = self._estimate_depth(current_img)
         ideal_depth = self._estimate_depth(ideal_img)
 
+        # Track if we have real depth data for 3D transformation
+        self._has_real_depth = current_depth is not None and ideal_depth is not None
+
         # If depth is not available, use dummy depth maps (canonical model still works)
         if current_depth is None:
-            logger.info("Depth estimation not available, using canonical model only")
+            logger.info("Depth estimation not available, using 2D landmark alignment only")
             current_depth = np.ones((out_h, out_w), dtype=np.float32) * 0.5
         if ideal_depth is None:
             ideal_depth = np.ones((out_h, out_w), dtype=np.float32) * 0.5
@@ -598,10 +602,11 @@ class PartBlender3D:
         part_name: str = "",
     ) -> np.ndarray:
         """
-        Blend a single facial part using canonical model-based 3D transformation.
+        Blend a single facial part using canonical model-based transformation.
 
-        Key improvement: Use the fitted rotation matrices from Procrustes analysis
-        to properly transform parts between different face poses.
+        When real depth data is available: Use 3D rotation matrices for pose alignment.
+        When depth is not available: Use direct 2D landmark correspondence with
+        enhanced alignment (scale, translation) without 3D rotation.
         """
         w, h = img_size
 
@@ -612,41 +617,23 @@ class PartBlender3D:
         if len(src_3d) < 4 or len(dst_3d) < 4:
             return base_img
 
-        # Compute the relative rotation between faces
-        # R_relative = R_dst @ R_src^T
-        R_relative = base_mesh.rotation @ src_mesh.rotation.T
-
-        # Extract relative Euler angles for logging
-        rel_yaw, rel_pitch, rel_roll = self.canonical_model.get_euler_angles(R_relative)
-        logger.info(f"Relative pose for {part_name}: yaw={np.degrees(rel_yaw):.1f}°, "
-                    f"pitch={np.degrees(rel_pitch):.1f}°, roll={np.degrees(rel_roll):.1f}°")
-
-        # Transform source 3D points to match target pose
-        # Step 1: Center source points
-        src_center = np.mean(src_3d, axis=0)
-        dst_center = np.mean(dst_3d, axis=0)
-        src_centered = src_3d - src_center
-
-        # Step 2: Apply relative rotation
-        src_rotated = (R_relative @ src_centered.T).T
-
-        # Step 3: Compute scale adjustment
-        src_spread = np.std(src_centered)
-        dst_spread = np.std(dst_3d - dst_center)
-        scale_ratio = dst_spread / max(src_spread, 1e-6)
-        scale_ratio = np.clip(scale_ratio, 0.7, 1.4)
-
-        # Step 4: Apply scale and translate to destination
-        src_transformed = src_rotated * scale_ratio + dst_center
-
-        # Project transformed 3D points to 2D
-        aligned_2d = self._project_3d_to_2d(src_transformed, img_size)
+        # Check if we have real depth data for 3D transformation
+        if self._has_real_depth:
+            # Full 3D transformation with rotation
+            aligned_2d = self._compute_3d_aligned_points(
+                src_3d, dst_3d, src_mesh, base_mesh, img_size, part_name
+            )
+        else:
+            # Enhanced 2D alignment without 3D rotation (avoids broken results)
+            aligned_2d = self._compute_2d_aligned_points(
+                src_2d, dst_2d, part_name
+            )
 
         # Build correspondence for warping
         src_points = list(src_2d)
         dst_points = list(aligned_2d)
 
-        # Add context points
+        # Add context points (use target landmarks directly for context)
         for idx in context_indices:
             if idx < len(src_mesh.landmarks_2d) and idx < len(base_mesh.landmarks_2d):
                 src_points.append(src_mesh.landmarks_2d[idx])
@@ -658,22 +645,8 @@ class PartBlender3D:
         src_points = np.array(src_points, dtype=np.float32)
         dst_points = np.array(dst_points, dtype=np.float32)
 
-        # Determine if perspective warp is needed based on relative rotation
-        needs_perspective = (abs(rel_yaw) > 0.05 or abs(rel_pitch) > 0.05)
-
-        if needs_perspective and len(src_points) >= 4:
-            # Use perspective transform for significant pose differences
-            warped_src = self._perspective_warp(
-                src_mesh.texture,
-                src_points[:4],
-                dst_points[:4],
-                img_size,
-            )
-        else:
-            warped_src = src_mesh.texture
-
-        # Fine-tune with RBF warping using all correspondences
-        warped_src = self._rbf_warp(warped_src, src_points, dst_points, img_size)
+        # RBF warping for smooth deformation
+        warped_src = self._rbf_warp(src_mesh.texture, src_points, dst_points, img_size)
 
         # Create mask using target positions
         mask = self._create_soft_mask(base_mesh.landmarks_2d, part_indices, (h, w))
@@ -692,6 +665,80 @@ class PartBlender3D:
         result = self._multiband_blend(base_img, warped_src, mask, num_levels)
 
         return result
+
+    def _compute_3d_aligned_points(
+        self,
+        src_3d: np.ndarray,
+        dst_3d: np.ndarray,
+        src_mesh: FaceMesh3D,
+        base_mesh: FaceMesh3D,
+        img_size: Tuple[int, int],
+        part_name: str,
+    ) -> np.ndarray:
+        """
+        Compute aligned 2D points using full 3D transformation (when depth is available).
+
+        This applies rotation matrices from Procrustes analysis for pose alignment.
+        """
+        # Compute the relative rotation between faces
+        R_relative = base_mesh.rotation @ src_mesh.rotation.T
+
+        # Extract relative Euler angles for logging
+        rel_yaw, rel_pitch, rel_roll = self.canonical_model.get_euler_angles(R_relative)
+        logger.info(f"3D alignment for {part_name}: relative yaw={np.degrees(rel_yaw):.1f}°, "
+                    f"pitch={np.degrees(rel_pitch):.1f}°, roll={np.degrees(rel_roll):.1f}°")
+
+        # Transform source 3D points to match target pose
+        src_center = np.mean(src_3d, axis=0)
+        dst_center = np.mean(dst_3d, axis=0)
+        src_centered = src_3d - src_center
+
+        # Apply relative rotation
+        src_rotated = (R_relative @ src_centered.T).T
+
+        # Compute scale adjustment
+        src_spread = np.std(src_centered)
+        dst_spread = np.std(dst_3d - dst_center)
+        scale_ratio = dst_spread / max(src_spread, 1e-6)
+        scale_ratio = np.clip(scale_ratio, 0.7, 1.4)
+
+        # Apply scale and translate to destination
+        src_transformed = src_rotated * scale_ratio + dst_center
+
+        # Project transformed 3D points to 2D
+        return self._project_3d_to_2d(src_transformed, img_size)
+
+    def _compute_2d_aligned_points(
+        self,
+        src_2d: np.ndarray,
+        dst_2d: np.ndarray,
+        part_name: str,
+    ) -> np.ndarray:
+        """
+        Compute aligned 2D points using simple 2D transformation (when depth is unavailable).
+
+        This uses scale and translation only, without 3D rotation which would be
+        unreliable without real depth data. This produces more stable results.
+        """
+        # Compute centroids
+        src_center = np.mean(src_2d, axis=0)
+        dst_center = np.mean(dst_2d, axis=0)
+
+        # Compute scale based on bounding box or spread
+        src_spread = np.std(src_2d - src_center)
+        dst_spread = np.std(dst_2d - dst_center)
+        scale_ratio = dst_spread / max(src_spread, 1e-6)
+        scale_ratio = np.clip(scale_ratio, 0.8, 1.25)  # More conservative scaling
+
+        logger.info(f"2D alignment for {part_name}: scale={scale_ratio:.3f}, "
+                    f"translation=({dst_center[0] - src_center[0]:.1f}, "
+                    f"{dst_center[1] - src_center[1]:.1f})")
+
+        # Apply scale and translation (center src on dst)
+        src_centered = src_2d - src_center
+        aligned = src_centered * scale_ratio + dst_center
+
+        return aligned.astype(np.float32)
 
     def _project_3d_to_2d(
         self,
