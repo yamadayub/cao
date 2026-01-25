@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth, useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 import { getSimulations, deleteSimulation, createShareUrl } from '@/lib/api/simulations'
 import { SimulationSummary, Pagination } from '@/lib/api/types'
 import { ApiError } from '@/lib/api/client'
@@ -211,210 +213,205 @@ export function MypageClient({ testId }: MypageClientProps) {
   const userEmail = user?.primaryEmailAddress?.emailAddress || ''
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid={testId}>
-      {/* ヘッダー */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <Link href="/" className="text-2xl font-bold text-blue-600">
-            Cao
-          </Link>
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen flex flex-col bg-neutral-50" data-testid={testId}>
+      <Header />
+
+      <main className="flex-1 pt-20">
+        <div className="container-narrow py-8 md:py-12">
+          {/* ページタイトル */}
+          <div className="text-center mb-8 md:mb-12">
+            <p className="text-xs tracking-[0.2em] text-primary-600 uppercase mb-3">My Page</p>
+            <h1 className="font-serif text-display-3 md:text-display-3-lg text-neutral-900 mb-4">
+              マイページ
+            </h1>
+            <div className="inline-block bg-white rounded-xl shadow-elegant px-6 py-3">
+              <p
+                className="text-neutral-700"
+                data-testid={testId ? `${testId}-user-email` : undefined}
+              >
+                {userEmail}
+              </p>
+            </div>
+          </div>
+
+          {/* 新規作成ボタン */}
+          <div className="mb-8 flex justify-center">
             <Link
               href="/simulate"
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-8 py-3 text-base font-medium text-white bg-primary-700 rounded-full hover:bg-primary-800 hover:shadow-elegant transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
               data-testid={testId ? `${testId}-new-simulation` : undefined}
             >
-              新規作成
-            </Link>
-            <Link
-              href="/sign-in"
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 transition-colors"
-              data-testid={testId ? `${testId}-logout` : undefined}
-            >
-              ログアウト
+              新規シミュレーション作成
             </Link>
           </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* ユーザー情報 */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">マイページ</h1>
-          <div className="bg-white rounded-lg shadow p-4">
-            <p
-              className="text-gray-700"
-              data-testid={testId ? `${testId}-user-email` : undefined}
-            >
-              {userEmail}
-            </p>
-          </div>
-        </div>
-
-        {/* シミュレーション一覧 */}
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            保存済みシミュレーション
-            {pagination && (
-              <span className="ml-2 text-gray-500 font-normal">
-                ({pagination.total}件)
-              </span>
-            )}
-          </h2>
-
-          {/* ローディング */}
-          {isLoading && (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            </div>
-          )}
-
-          {/* エラー */}
-          {error && !isLoading && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-              {error}
-              <button
-                onClick={() => fetchSimulations()}
-                className="ml-4 underline hover:no-underline"
-              >
-                再試行
-              </button>
-            </div>
-          )}
 
           {/* シミュレーション一覧 */}
-          {!isLoading && !error && (
-            <>
-              {simulations.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-lg shadow">
-                  <p className="text-gray-500 mb-4">
-                    保存済みのシミュレーションはありません
-                  </p>
-                  <Link
-                    href="/simulate"
-                    className="inline-block px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    シミュレーションを作成する
-                  </Link>
-                </div>
-              ) : (
-                <>
-                  <div
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-                    data-testid={testId ? `${testId}-simulation-grid` : undefined}
-                  >
-                    {simulations.map((sim) => (
-                      <div
-                        key={sim.id}
-                        className="bg-white rounded-lg shadow overflow-hidden"
-                        data-testid={testId ? `${testId}-simulation-card-${sim.id}` : undefined}
-                      >
-                        {/* サムネイル */}
-                        <button
-                          type="button"
-                          onClick={() => handleThumbnailClick(sim.id)}
-                          className="w-full aspect-square bg-gray-100 overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset"
-                          aria-label={`${formatDate(sim.created_at)}のシミュレーションを表示`}
-                        >
-                          {sim.thumbnail_url ? (
-                            <img
-                              src={sim.thumbnail_url}
-                              alt={`シミュレーション ${formatDate(sim.created_at)}`}
-                              className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-400">
-                              <svg
-                                className="w-12 h-12"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                />
-                              </svg>
-                            </div>
-                          )}
-                        </button>
+          <div>
+            <h2 className="font-serif text-xl text-neutral-800 text-center mb-6">
+              保存済みシミュレーション
+              {pagination && (
+                <span className="ml-2 text-neutral-500 font-normal">
+                  ({pagination.total}件)
+                </span>
+              )}
+            </h2>
 
-                        {/* カード情報 */}
-                        <div className="p-4">
-                          <p className="text-sm text-gray-600 mb-3">
-                            {formatDate(sim.created_at)}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleShareClick(sim.id)}
-                              disabled={isGeneratingShareUrl}
-                              className="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
-                              data-testid={testId ? `${testId}-share-button-${sim.id}` : undefined}
-                            >
-                              共有
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteClick(sim.id)}
-                              className="flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                              data-testid={testId ? `${testId}-delete-button-${sim.id}` : undefined}
-                            >
-                              削除
-                            </button>
+            {/* ローディング */}
+            {isLoading && (
+              <div className="flex justify-center items-center py-12">
+                <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin" />
+              </div>
+            )}
+
+            {/* エラー */}
+            {error && !isLoading && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
+                {error}
+                <button
+                  onClick={() => fetchSimulations()}
+                  className="ml-4 text-primary-600 underline hover:text-primary-800"
+                >
+                  再試行
+                </button>
+              </div>
+            )}
+
+            {/* シミュレーション一覧 */}
+            {!isLoading && !error && (
+              <>
+                {simulations.length === 0 ? (
+                  <div className="text-center py-12 bg-white rounded-2xl shadow-elegant">
+                    <p className="text-neutral-500 mb-6">
+                      保存済みのシミュレーションはありません
+                    </p>
+                    <Link
+                      href="/simulate"
+                      className="inline-block px-6 py-3 text-sm font-medium text-white bg-primary-700 rounded-full hover:bg-primary-800 hover:shadow-elegant transition-all duration-300"
+                    >
+                      シミュレーションを作成する
+                    </Link>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
+                      data-testid={testId ? `${testId}-simulation-grid` : undefined}
+                    >
+                      {simulations.map((sim) => (
+                        <div
+                          key={sim.id}
+                          className="bg-white rounded-2xl shadow-elegant overflow-hidden"
+                          data-testid={testId ? `${testId}-simulation-card-${sim.id}` : undefined}
+                        >
+                          {/* サムネイル */}
+                          <button
+                            type="button"
+                            onClick={() => handleThumbnailClick(sim.id)}
+                            className="w-full aspect-square bg-neutral-100 overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-inset"
+                            aria-label={`${formatDate(sim.created_at)}のシミュレーションを表示`}
+                          >
+                            {sim.thumbnail_url ? (
+                              <img
+                                src={sim.thumbnail_url}
+                                alt={`シミュレーション ${formatDate(sim.created_at)}`}
+                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                                <svg
+                                  className="w-12 h-12"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                  />
+                                </svg>
+                              </div>
+                            )}
+                          </button>
+
+                          {/* カード情報 */}
+                          <div className="p-4">
+                            <p className="text-sm text-neutral-600 mb-3">
+                              {formatDate(sim.created_at)}
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleShareClick(sim.id)}
+                                disabled={isGeneratingShareUrl}
+                                className="flex-1 px-3 py-2 text-sm font-medium text-primary-700 bg-primary-50 rounded-full hover:bg-primary-100 transition-all duration-300 disabled:opacity-50"
+                                data-testid={testId ? `${testId}-share-button-${sim.id}` : undefined}
+                              >
+                                共有
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteClick(sim.id)}
+                                className="flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-full hover:bg-red-100 transition-all duration-300"
+                                data-testid={testId ? `${testId}-delete-button-${sim.id}` : undefined}
+                              >
+                                削除
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* さらに読み込むボタン */}
-                  {pagination?.has_more && (
-                    <div className="mt-8 text-center">
-                      <button
-                        type="button"
-                        onClick={handleLoadMore}
-                        disabled={isLoadingMore}
-                        className="px-8 py-3 text-base font-medium text-blue-600 bg-white border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
-                        data-testid={testId ? `${testId}-load-more` : undefined}
-                      >
-                        {isLoadingMore ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <svg
-                              className="w-5 h-5 animate-spin"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              />
-                            </svg>
-                            読み込み中...
-                          </span>
-                        ) : (
-                          'さらに読み込む'
-                        )}
-                      </button>
+                      ))}
                     </div>
-                  )}
-                </>
-              )}
-            </>
-          )}
+
+                    {/* さらに読み込むボタン */}
+                    {pagination?.has_more && (
+                      <div className="mt-8 text-center">
+                        <button
+                          type="button"
+                          onClick={handleLoadMore}
+                          disabled={isLoadingMore}
+                          className="px-8 py-3 text-base font-medium text-primary-700 bg-white border border-primary-300 rounded-full hover:bg-primary-50 hover:border-primary-400 transition-all duration-300 disabled:opacity-50"
+                          data-testid={testId ? `${testId}-load-more` : undefined}
+                        >
+                          {isLoadingMore ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <svg
+                                className="w-5 h-5 animate-spin"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                              >
+                                <circle
+                                  className="opacity-25"
+                                  cx="12"
+                                  cy="12"
+                                  r="10"
+                                  stroke="currentColor"
+                                  strokeWidth="4"
+                                />
+                                <path
+                                  className="opacity-75"
+                                  fill="currentColor"
+                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                />
+                              </svg>
+                              読み込み中...
+                            </span>
+                          ) : (
+                            'さらに読み込む'
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </main>
+
+      <Footer />
 
       {/* 削除確認モーダル */}
       <DeleteConfirmModal

@@ -182,7 +182,7 @@ export function ImageUploader({
   return (
     <div className="flex flex-col gap-3" data-testid={testId}>
       {/* ラベル */}
-      <h3 className="text-lg font-semibold text-gray-800">{label}</h3>
+      <h3 className="font-serif text-lg text-neutral-800 text-center">{label}</h3>
 
       {/* ドロップエリア */}
       <div
@@ -197,18 +197,18 @@ export function ImageUploader({
         onDrop={handleDrop}
         className={`
           relative flex flex-col items-center justify-center
-          w-full aspect-square max-w-[280px]
-          border-2 border-dashed rounded-lg
-          transition-all duration-200
+          w-full aspect-square max-w-[240px] mx-auto
+          border-2 border-dashed rounded-xl
+          transition-all duration-300
           ${
             disabled
-              ? 'bg-gray-100 border-gray-300 cursor-not-allowed'
+              ? 'bg-neutral-100 border-neutral-300 cursor-not-allowed'
               : isDragging
-                ? 'bg-blue-50 border-blue-400 cursor-copy'
-                : 'bg-gray-50 border-gray-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
+                ? 'bg-primary-50 border-primary-400 cursor-copy'
+                : 'bg-neutral-50 border-neutral-300 hover:border-primary-400 hover:bg-primary-50 cursor-pointer'
           }
           ${error ? 'border-red-400 bg-red-50' : ''}
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+          focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
         `}
         data-testid={testId ? `${testId}-dropzone` : undefined}
       >
@@ -218,7 +218,7 @@ export function ImageUploader({
             <img
               src={previewUrl}
               alt={`${label}のプレビュー`}
-              className="w-full h-full object-cover rounded-md"
+              className="w-full h-full object-cover rounded-lg"
               data-testid={testId ? `${testId}-preview` : undefined}
             />
           </div>
@@ -227,7 +227,7 @@ export function ImageUploader({
           <div className="flex flex-col items-center gap-2 p-4 text-center">
             {/* アップロードアイコン */}
             <svg
-              className={`w-12 h-12 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`}
+              className={`w-10 h-10 ${isDragging ? 'text-primary-500' : 'text-neutral-400'}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -240,10 +240,10 @@ export function ImageUploader({
                 d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-neutral-600">
               {isDragging ? 'ここにドロップ' : 'ドラッグ&ドロップ'}
             </p>
-            <p className="text-xs text-gray-500">または下のボタンで選択</p>
+            <p className="text-xs text-neutral-400">または下のボタンで選択</p>
           </div>
         )}
 
@@ -251,7 +251,7 @@ export function ImageUploader({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png"
+          accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
           onChange={handleFileChange}
           disabled={disabled}
           className="sr-only"
@@ -261,19 +261,19 @@ export function ImageUploader({
       </div>
 
       {/* ボタン群 */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 justify-center">
         {!previewUrl ? (
           <button
             type="button"
             onClick={handleClick}
             disabled={disabled}
             className={`
-              flex-1 px-4 py-2 text-sm font-medium
-              rounded-md transition-colors
+              px-6 py-2 text-sm font-medium
+              rounded-full transition-all duration-300
               ${
                 disabled
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
+                  ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                  : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2'
               }
             `}
             data-testid={testId ? `${testId}-select-button` : undefined}
@@ -286,12 +286,12 @@ export function ImageUploader({
             onClick={onFileRemove}
             disabled={disabled}
             className={`
-              flex-1 px-4 py-2 text-sm font-medium
-              rounded-md transition-colors
+              px-6 py-2 text-sm font-medium
+              rounded-full transition-all duration-300
               ${
                 disabled
-                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                  : 'bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2'
+                  ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                  : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2'
               }
             `}
             data-testid={testId ? `${testId}-remove-button` : undefined}
@@ -304,7 +304,7 @@ export function ImageUploader({
       {/* エラーメッセージ */}
       {error && (
         <p
-          className="text-sm text-red-600"
+          className="text-sm text-red-600 text-center"
           role="alert"
           data-testid={testId ? `${testId}-error` : undefined}
         >

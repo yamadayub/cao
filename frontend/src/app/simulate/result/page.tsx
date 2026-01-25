@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 import { ResultSlider } from '@/components/features/ResultSlider'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
@@ -389,173 +391,122 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [generateMorphImages])
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">Cao</h1>
-          <nav className="flex gap-4">
-            {isSignedIn ? (
-              <>
-                <span className="text-sm text-gray-600">
-                  {user?.primaryEmailAddress?.emailAddress}
-                </span>
-                <a
-                  href="/mypage"
-                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  マイページ
-                </a>
-              </>
-            ) : (
-              <>
-                <a
-                  href="/sign-in"
-                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  ログイン
-                </a>
-                <a
-                  href="/mypage"
-                  className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
-                >
-                  マイページ
-                </a>
-              </>
-            )}
-          </nav>
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col bg-neutral-50">
+      <Header />
 
       {/* メインコンテンツ */}
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* ページタイトル */}
-        <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">シミュレーション結果</h2>
-        </div>
+      <main className="flex-1 pt-20">
+        <div className="container-narrow py-8 md:py-12">
+          {/* ページタイトル */}
+          <div className="text-center mb-8 md:mb-12">
+            <p className="text-xs tracking-[0.2em] text-primary-600 uppercase mb-3">Result</p>
+            <h1 className="font-serif text-display-3 md:text-display-3-lg text-neutral-900">
+              シミュレーション結果
+            </h1>
+          </div>
 
-        {/* エラー表示 */}
-        {state.error && (
-          <div
-            className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg"
-            role="alert"
-            data-testid="error-message"
-          >
-            <div className="flex items-start gap-3">
-              <svg
-                className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+          {/* エラー表示 */}
+          {state.error && (
+            <div
+              className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl"
+              role="alert"
+              data-testid="error-message"
+            >
+              <div className="flex items-start gap-3">
+                <svg
+                  className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-red-700">{state.error}</p>
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    className="mt-2 text-sm font-medium text-primary-600 hover:text-primary-800 underline"
+                    data-testid="retry-button"
+                  >
+                    再試行
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ローディング表示 */}
+          {state.isLoading && (
+            <div
+              className="flex flex-col items-center justify-center py-16"
+              data-testid="loading"
+            >
+              <div className="w-12 h-12 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-4"></div>
+              <p className="text-neutral-700 text-base font-serif">シミュレーション画像を生成中...</p>
+              <p className="text-neutral-500 text-sm mt-2">しばらくお待ちください</p>
+            </div>
+          )}
+
+          {/* 結果表示 */}
+          {!state.isLoading && !state.error && state.images.length > 0 && (
+            <>
+              {/* 結果画像 */}
+              <div
+                className="bg-white rounded-2xl shadow-elegant p-4 mb-8"
+                data-testid="result-image-container"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
+                  {currentImage ? (
+                    <img
+                      src={currentImage}
+                      alt={`変化度${Math.round(state.currentProgress * 100)}%のシミュレーション結果`}
+                      className="w-full h-full object-cover"
+                      data-testid="result-image"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                      画像を読み込み中...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* スライダー */}
+              <div className="mb-8">
+                <ResultSlider
+                  value={state.currentProgress}
+                  onChange={handleProgressChange}
+                  disabled={state.isSaving || state.isSharing}
+                  testId="result-slider"
                 />
-              </svg>
-              <div className="flex-1">
-                <p className="text-red-700">{state.error}</p>
+              </div>
+
+              {/* 保存・共有ボタン */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
                 <button
                   type="button"
-                  onClick={handleRetry}
-                  className="mt-2 text-sm font-medium text-red-600 hover:text-red-800 underline"
-                  data-testid="retry-button"
+                  onClick={handleSave}
+                  disabled={state.isSaving || !!state.savedSimulationId}
+                  className={`
+                    px-8 py-3 text-base font-medium rounded-full
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
+                    ${
+                      state.savedSimulationId
+                        ? 'bg-green-600 text-white cursor-default'
+                        : state.isSaving
+                          ? 'bg-neutral-300 text-neutral-500 cursor-wait'
+                          : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
+                    }
+                  `}
+                  data-testid="save-button"
                 >
-                  再試行
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ローディング表示 */}
-        {state.isLoading && (
-          <div
-            className="flex flex-col items-center justify-center py-16"
-            data-testid="loading"
-          >
-            <svg
-              className="animate-spin h-12 w-12 text-blue-600 mb-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            <p className="text-gray-600 text-lg">シミュレーション画像を生成中...</p>
-            <p className="text-gray-500 text-sm mt-2">しばらくお待ちください</p>
-          </div>
-        )}
-
-        {/* 結果表示 */}
-        {!state.isLoading && !state.error && state.images.length > 0 && (
-          <>
-            {/* 結果画像 */}
-            <div
-              className="bg-white rounded-xl shadow-sm p-4 mb-8"
-              data-testid="result-image-container"
-            >
-              <div className="aspect-square max-w-lg mx-auto overflow-hidden rounded-lg bg-gray-100">
-                {currentImage ? (
-                  <img
-                    src={currentImage}
-                    alt={`変化度${Math.round(state.currentProgress * 100)}%のシミュレーション結果`}
-                    className="w-full h-full object-cover"
-                    data-testid="result-image"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    画像を読み込み中...
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* スライダー */}
-            <div className="mb-8">
-              <ResultSlider
-                value={state.currentProgress}
-                onChange={handleProgressChange}
-                disabled={state.isSaving || state.isSharing}
-                testId="result-slider"
-              />
-            </div>
-
-            {/* 保存・共有ボタン */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={state.isSaving || !!state.savedSimulationId}
-                className={`
-                  px-8 py-3 text-base font-semibold rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all
-                  ${
-                    state.savedSimulationId
-                      ? 'bg-green-600 text-white cursor-default'
-                      : state.isSaving
-                        ? 'bg-gray-400 text-white cursor-wait'
-                        : 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500'
-                  }
-                `}
-                data-testid="save-button"
-              >
                 {state.isSaving ? (
                   <span className="flex items-center gap-2">
                     <svg
@@ -604,21 +555,21 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={handleShare}
-                disabled={state.isSharing}
-                className={`
-                  px-8 py-3 text-base font-semibold rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all
-                  ${
-                    state.isSharing
-                      ? 'bg-gray-400 text-white cursor-wait'
-                      : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50 focus:ring-blue-500'
-                  }
-                `}
-                data-testid="share-button"
-              >
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  disabled={state.isSharing}
+                  className={`
+                    px-8 py-3 text-base font-medium rounded-full
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
+                    ${
+                      state.isSharing
+                        ? 'bg-neutral-300 text-neutral-500 cursor-wait'
+                        : 'bg-white text-primary-700 border border-primary-300 hover:bg-primary-50 hover:border-primary-400 focus:ring-primary-500'
+                    }
+                  `}
+                  data-testid="share-button"
+                >
                 {state.isSharing ? (
                   <span className="flex items-center gap-2">
                     <svg
@@ -650,50 +601,50 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
               </button>
             </div>
 
-            {/* 新規作成ボタン */}
-            <div className="flex justify-center">
+              {/* 新規作成ボタン */}
+              <div className="flex justify-center mt-6">
+                <button
+                  type="button"
+                  onClick={handleNewSimulation}
+                  className="w-full max-w-md px-8 py-4 text-base font-medium text-neutral-600 bg-white border border-neutral-300 rounded-full hover:bg-neutral-50 hover:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-all duration-300"
+                  data-testid="new-simulation-button"
+                >
+                  新しいシミュレーションを作成
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* 画像がない場合のエラー状態 */}
+          {!state.isLoading && !state.error && state.images.length === 0 && (
+            <div className="text-center py-16">
+              <svg
+                className="mx-auto h-12 w-12 text-neutral-400 mb-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <p className="text-neutral-600 mb-4">
+                シミュレーション結果がありません
+              </p>
               <button
                 type="button"
                 onClick={handleNewSimulation}
-                className="w-full max-w-md px-8 py-4 text-lg font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-all"
+                className="px-6 py-3 text-sm font-medium text-white bg-primary-700 rounded-full hover:bg-primary-800 hover:shadow-elegant focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 transition-all duration-300"
                 data-testid="new-simulation-button"
               >
-                新しいシミュレーションを作成
+                シミュレーションを作成する
               </button>
             </div>
-          </>
-        )}
-
-        {/* 画像がない場合のエラー状態 */}
-        {!state.isLoading && !state.error && state.images.length === 0 && (
-          <div className="text-center py-16">
-            <svg
-              className="mx-auto h-12 w-12 text-gray-400 mb-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-            <p className="text-gray-600 mb-4">
-              シミュレーション結果がありません
-            </p>
-            <button
-              type="button"
-              onClick={handleNewSimulation}
-              className="px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-              data-testid="new-simulation-button"
-            >
-              シミュレーションを作成する
-            </button>
-          </div>
-        )}
+          )}
       </div>
 
       {/* ログイン誘導モーダル */}
@@ -721,7 +672,10 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         onClose={() => setShowShareModal(false)}
         testId="share-url-modal"
       />
-    </main>
+      </main>
+
+      <Footer />
+    </div>
   )
 }
 

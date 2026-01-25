@@ -1,9 +1,25 @@
-import { SignIn } from '@clerk/nextjs';
+'use client'
+
+import { SignIn } from '@clerk/nextjs'
+import { Header } from '@/components/layout/Header'
+import { Footer } from '@/components/layout/Footer'
 
 export default function SignInPage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <SignIn />
-    </main>
-  );
+    <div className="min-h-screen flex flex-col bg-neutral-50">
+      <Header />
+
+      <main className="flex-1 flex flex-col items-center justify-center pt-20 pb-12 px-4">
+        <div className="text-center mb-8">
+          <p className="text-xs tracking-[0.2em] text-primary-600 uppercase mb-3">Sign In</p>
+          <h1 className="font-serif text-display-3 md:text-display-3-lg text-neutral-900">
+            ログイン
+          </h1>
+        </div>
+        <SignIn />
+      </main>
+
+      <Footer />
+    </div>
+  )
 }
