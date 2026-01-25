@@ -5,7 +5,13 @@ import { test, expect } from '@playwright/test'
  *
  * 参照: functional-spec.md セクション 3.4
  * 参照: /tests/e2e/specs/save-share.spec.md
+ *
+ * Note: CI環境ではClerkの環境変数が設定されていないため、
+ * 認証が必要なテストはスキップされます。
  */
+
+// CI環境かどうかを検出
+const skipClerkTests = process.env.CI === 'true'
 
 test.describe('保存・共有機能', () => {
   test.describe('共有閲覧画面', () => {
@@ -132,6 +138,9 @@ test.describe('保存・共有機能', () => {
   })
 
   test.describe('マイページ', () => {
+    // CI環境ではClerkキーがないためスキップ
+    test.skip(skipClerkTests, 'Skipping Clerk tests in CI environment without Clerk keys')
+
     test('未認証ユーザーがマイページにアクセスするとサインインにリダイレクトされる', async ({ page }) => {
       // Given: ユーザーは未認証
 
