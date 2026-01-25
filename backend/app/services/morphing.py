@@ -7,7 +7,6 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from scipy.interpolate import RBFInterpolator
 
 from app.services.face_detection import get_face_detection_service
 
@@ -212,13 +211,13 @@ class MorphingService:
 
         # Warp current image (img1) to intermediate positions
         # This gives us the hair and background
-        img1_warped = self._warp_image_rbf(
+        img1_warped = self._warp_image_triangles(
             img1, points1_full, points_mid, (out_w, out_h)
         )
 
         # Warp ideal image (img2) to intermediate positions
         # This gives us the facial features at the target shape
-        img2_warped = self._warp_image_rbf(
+        img2_warped = self._warp_image_triangles(
             img2, points2_full, points_mid, (out_w, out_h)
         )
 
@@ -298,10 +297,10 @@ class MorphingService:
             ]
 
             # Warp both images
-            img1_warped = self._warp_image_rbf(
+            img1_warped = self._warp_image_triangles(
                 img1, points1_full, points_mid, (out_w, out_h)
             )
-            img2_warped = self._warp_image_rbf(
+            img2_warped = self._warp_image_triangles(
                 img2, points2_full, points_mid, (out_w, out_h)
             )
 
@@ -361,7 +360,7 @@ class MorphingService:
 
         return mask
 
-    def _warp_image_rbf(
+    def _warp_image_triangles(
         self,
         img: np.ndarray,
         src_points: List[Tuple[float, float]],
@@ -369,7 +368,9 @@ class MorphingService:
         output_size: Tuple[int, int],
     ) -> np.ndarray:
         """
-        Warp image using RBF interpolation.
+        Warp image using Delaunay triangulation.
+
+        Memory-efficient method that warps triangles individually.
 
         Args:
             img: Source image
@@ -381,61 +382,37 @@ class MorphingService:
             Warped image
         """
         w, h = output_size
-        src_pts = np.array(src_points, dtype=np.float32)
-        dst_pts = np.array(dst_points, dtype=np.float32)
 
-        try:
-            # Create RBF interpolators for inverse mapping (dst -> src)
-            rbf_x = RBFInterpolator(
-                dst_pts, src_pts[:, 0],
-                kernel='thin_plate_spline', smoothing=1.0
-            )
-            rbf_y = RBFInterpolator(
-                dst_pts, src_pts[:, 1],
-                kernel='thin_plate_spline', smoothing=1.0
-            )
-        except Exception as e:
-            logger.warning(f"RBF interpolation failed: {e}, falling back to affine")
-            return self._warp_image_affine(img, src_pts, dst_pts, output_size)
+        # Resize image if needed
+        if img.shape[1] != w or img.shape[0] != h:
+            img = cv2.resize(img, (w, h))
 
-        # Create output grid
-        grid_y, grid_x = np.mgrid[0:h, 0:w]
-        grid_points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+        # Get triangulation from destination points
+        triangles = get_triangulation_indices(dst_points, w, h)
 
-        # Compute source coordinates
-        map_x = rbf_x(grid_points).reshape(h, w).astype(np.float32)
-        map_y = rbf_y(grid_points).reshape(h, w).astype(np.float32)
+        # Create output image
+        result = np.zeros((h, w, 3), dtype=np.float32)
 
-        # Warp image
-        warped = cv2.remap(
-            img, map_x, map_y,
-            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
-        )
+        for tri in triangles:
+            i1, i2, i3 = tri
 
-        return warped
+            # Get triangle vertices
+            t_src = np.array([
+                src_points[i1],
+                src_points[i2],
+                src_points[i3],
+            ], dtype=np.float32)
 
-    def _warp_image_affine(
-        self,
-        img: np.ndarray,
-        src_points: np.ndarray,
-        dst_points: np.ndarray,
-        output_size: Tuple[int, int],
-    ) -> np.ndarray:
-        """Fallback affine warping."""
-        w, h = output_size
+            t_dst = np.array([
+                dst_points[i1],
+                dst_points[i2],
+                dst_points[i3],
+            ], dtype=np.float32)
 
-        transform, _ = cv2.estimateAffinePartial2D(
-            src_points, dst_points, method=cv2.RANSAC
-        )
+            # Warp this triangle
+            warp_triangle(img, result, t_src, t_dst)
 
-        if transform is None:
-            return cv2.resize(img, (w, h))
-
-        return cv2.warpAffine(
-            img, transform, (w, h),
-            flags=cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_REPLICATE
-        )
+        return np.clip(result, 0, 255).astype(np.uint8)
 
     def _color_transfer_face(
         self,
