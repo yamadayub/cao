@@ -7,7 +7,7 @@ import { Footer } from '@/components/layout/Footer'
 import { ResultSlider } from '@/components/features/ResultSlider'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
-import { morphStages, blendParts, toDataUrl } from '@/lib/api/morph'
+import { morphStages, blendParts, toDataUrl, type BlendMethod } from '@/lib/api/morph'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { ApiError } from '@/lib/api/client'
 import type { StageImage, PartsSelection } from '@/lib/api/types'
@@ -47,6 +47,7 @@ interface ResultState {
  */
 interface PartsBlendState {
   selection: PartsSelection
+  method: BlendMethod
   image: string | null
   isLoading: boolean
   error: string | null
@@ -188,6 +189,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   // パーツブレンド状態
   const [partsBlendState, setPartsBlendState] = useState<PartsBlendState>({
     selection: defaultPartsSelection,
+    method: 'auto',
     image: null,
     isLoading: false,
     error: null,
@@ -439,6 +441,19 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [])
 
   /**
+   * ブレンドメソッド変更ハンドラ
+   */
+  const handleMethodChange = useCallback((method: BlendMethod) => {
+    setPartsBlendState((prev) => ({
+      ...prev,
+      method,
+      // メソッドが変更されたら以前の結果をクリア
+      image: null,
+      error: null,
+    }))
+  }, [])
+
+  /**
    * パーツブレンド実行ハンドラ
    */
   const handlePartsBlend = useCallback(async () => {
@@ -469,8 +484,13 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       const currentFile = dataUrlToFile(currentImage, 'current.png')
       const idealFile = dataUrlToFile(idealImage, 'ideal.png')
 
-      // パーツブレンドAPIを呼び出し
-      const result = await blendParts(currentFile, idealFile, partsBlendState.selection)
+      // パーツブレンドAPIを呼び出し（選択されたメソッドを使用）
+      const result = await blendParts(
+        currentFile,
+        idealFile,
+        partsBlendState.selection,
+        partsBlendState.method
+      )
 
       setPartsBlendState((prev) => ({
         ...prev,
@@ -494,7 +514,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         error: errorMessage,
       }))
     }
-  }, [sourceImages, partsBlendState.selection])
+  }, [sourceImages, partsBlendState.selection, partsBlendState.method])
 
   /**
    * 選択されたパーツの表示名リストを取得
@@ -678,6 +698,41 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                       disabled={partsBlendState.isLoading}
                       testId="parts-selector"
                     />
+
+                    {/* ブレンドメソッド選択 */}
+                    <div className="mt-6 pt-4 border-t border-neutral-100">
+                      <h4 className="text-sm font-medium text-neutral-700 mb-3 text-center">
+                        ブレンド方式
+                      </h4>
+                      <div className="flex justify-center gap-2">
+                        {(['auto', '2d', '3d'] as BlendMethod[]).map((method) => (
+                          <button
+                            key={method}
+                            type="button"
+                            onClick={() => handleMethodChange(method)}
+                            disabled={partsBlendState.isLoading}
+                            className={`
+                              px-4 py-2 text-sm font-medium rounded-full transition-all duration-200
+                              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500
+                              ${
+                                partsBlendState.method === method
+                                  ? 'bg-primary-700 text-white shadow-md'
+                                  : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                              }
+                              ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                            `}
+                            data-testid={`blend-method-${method}`}
+                          >
+                            {method === 'auto' ? '自動' : method === '2d' ? '2D' : '3D高精度'}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-neutral-500 text-center mt-2">
+                        {partsBlendState.method === 'auto' && '利用可能な場合は3D方式を使用します'}
+                        {partsBlendState.method === '2d' && '従来の2D画像処理方式'}
+                        {partsBlendState.method === '3d' && '深度推定による高精度な3D合成（処理に時間がかかります）'}
+                      </p>
+                    </div>
 
                     {/* パーツブレンド実行ボタン */}
                     <div className="mt-6 flex justify-center">

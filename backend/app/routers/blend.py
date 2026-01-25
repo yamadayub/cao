@@ -1,6 +1,7 @@
 """Blend API endpoints."""
 
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -14,7 +15,10 @@ from app.models.schemas import (
     PartsBlendResponse,
 )
 from app.services.part_blender import PartsSelection, get_part_blender_service
+from app.services.part_blender_3d import get_part_blender_3d_service
 from app.utils.image import ImageValidationError, cv2_to_base64, validate_image
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/blend", tags=["blend"])
 
@@ -31,6 +35,7 @@ async def blend_parts(
     current_image: Optional[UploadFile] = File(None),
     ideal_image: Optional[UploadFile] = File(None),
     parts: Optional[str] = Form(None),
+    method: Optional[str] = Form("auto"),
 ) -> JSONResponse:
     """
     Blend selected facial parts from ideal image onto current image.
@@ -39,6 +44,8 @@ async def blend_parts(
         current_image: Current face image (base image)
         ideal_image: Ideal face image (source of parts)
         parts: JSON string specifying which parts to blend
+        method: Blending method - "2d", "3d", or "auto" (default: "auto")
+                "auto" uses 3D if available, falls back to 2D
 
     Returns:
         Blended image with selected parts applied
@@ -148,9 +155,24 @@ async def blend_parts(
             ).model_dump(),
         )
 
-    # Perform blending
+    # Perform blending - choose method
     try:
-        blender = get_part_blender_service()
+        use_3d = False
+
+        if method == "3d":
+            use_3d = True
+        elif method == "auto":
+            # Auto mode: try 3D if available
+            blender_3d = get_part_blender_3d_service()
+            use_3d = blender_3d.is_depth_available()
+
+        if use_3d:
+            logger.info("Using 3D blending method")
+            blender = get_part_blender_3d_service()
+        else:
+            logger.info("Using 2D blending method")
+            blender = get_part_blender_service()
+
         result_img = blender.blend(
             current_img,
             ideal_img,

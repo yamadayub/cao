@@ -103,11 +103,18 @@ export function toDataUrl(base64: string, format: string = 'png'): string {
 }
 
 /**
+ * ブレンドメソッドの型
+ */
+export type BlendMethod = '2d' | '3d' | 'auto';
+
+/**
  * 理想の顔から選択したパーツを現在の顔にブレンドする
  *
  * @param current - 現在の顔画像（JPEG/PNG、最大10MB）
  * @param ideal - 理想の顔画像（JPEG/PNG、最大10MB）
  * @param parts - ブレンドするパーツの選択
+ * @param method - ブレンド方式（'2d', '3d', 'auto'）。デフォルトは'auto'
+ *                 'auto'は3Dが利用可能な場合は3D、それ以外は2Dを使用
  * @returns ブレンド結果（Base64エンコードされた画像）
  * @throws ApiError - 顔未検出、画像フォーマットエラーなど
  *
@@ -121,7 +128,7 @@ export function toDataUrl(base64: string, format: string = 'png'): string {
  *     lips: false,
  *     left_eyebrow: false,
  *     right_eyebrow: false,
- *   });
+ *   }, '3d');
  *   const imgSrc = `data:image/png;base64,${result.image}`;
  *   document.querySelector('img')!.src = imgSrc;
  * } catch (error) {
@@ -132,15 +139,17 @@ export function toDataUrl(base64: string, format: string = 'png'): string {
 export async function blendParts(
   current: File,
   ideal: File,
-  parts: PartsSelection
+  parts: PartsSelection,
+  method: BlendMethod = 'auto'
 ): Promise<PartsBlendData> {
   const formData = new FormData();
   formData.append('current_image', current);
   formData.append('ideal_image', ideal);
   formData.append('parts', JSON.stringify(parts));
+  formData.append('method', method);
 
-  // パーツブレンドは時間がかかるため、長めのタイムアウトを設定
+  // 3Dブレンドは特に時間がかかるため、より長めのタイムアウトを設定
   return apiPostFormData<PartsBlendData>('/api/v1/blend/parts', formData, {
-    timeout: 60000, // 60秒
+    timeout: 120000, // 120秒（3Dは処理に時間がかかる）
   });
 }
