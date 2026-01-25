@@ -3,7 +3,7 @@
  */
 
 import { apiPostFormData } from './client';
-import { MorphData, StagedMorphData } from './types';
+import { MorphData, StagedMorphData, PartsBlendData, PartsSelection } from './types';
 
 /**
  * デフォルトの段階値
@@ -100,4 +100,47 @@ export function toDataUrl(base64: string, format: string = 'png'): string {
     return base64;
   }
   return `data:image/${format};base64,${base64}`;
+}
+
+/**
+ * 理想の顔から選択したパーツを現在の顔にブレンドする
+ *
+ * @param current - 現在の顔画像（JPEG/PNG、最大10MB）
+ * @param ideal - 理想の顔画像（JPEG/PNG、最大10MB）
+ * @param parts - ブレンドするパーツの選択
+ * @returns ブレンド結果（Base64エンコードされた画像）
+ * @throws ApiError - 顔未検出、画像フォーマットエラーなど
+ *
+ * @example
+ * ```typescript
+ * try {
+ *   const result = await blendParts(currentFile, idealFile, {
+ *     left_eye: true,
+ *     right_eye: true,
+ *     nose: true,
+ *     lips: false,
+ *     left_eyebrow: false,
+ *     right_eyebrow: false,
+ *   });
+ *   const imgSrc = `data:image/png;base64,${result.image}`;
+ *   document.querySelector('img')!.src = imgSrc;
+ * } catch (error) {
+ *   console.error('Parts blend failed:', error);
+ * }
+ * ```
+ */
+export async function blendParts(
+  current: File,
+  ideal: File,
+  parts: PartsSelection
+): Promise<PartsBlendData> {
+  const formData = new FormData();
+  formData.append('current_image', current);
+  formData.append('ideal_image', ideal);
+  formData.append('parts', JSON.stringify(parts));
+
+  // パーツブレンドは時間がかかるため、長めのタイムアウトを設定
+  return apiPostFormData<PartsBlendData>('/api/v1/blend/parts', formData, {
+    timeout: 60000, // 60秒
+  });
 }

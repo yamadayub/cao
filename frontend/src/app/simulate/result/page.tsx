@@ -7,10 +7,12 @@ import { Footer } from '@/components/layout/Footer'
 import { ResultSlider } from '@/components/features/ResultSlider'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
-import { morphStages, toDataUrl } from '@/lib/api/morph'
+import { morphStages, blendParts, toDataUrl } from '@/lib/api/morph'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { ApiError } from '@/lib/api/client'
-import type { StageImage } from '@/lib/api/types'
+import type { StageImage, PartsSelection } from '@/lib/api/types'
+import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
+import { PartsSelector } from '@/components/features/PartsSelector'
 
 // Clerkの型定義
 interface ClerkInstance {
@@ -38,6 +40,28 @@ interface ResultState {
   isSharing: boolean
   savedSimulationId: string | null
   shareUrl: string | null
+}
+
+/**
+ * パーツブレンド状態の型
+ */
+interface PartsBlendState {
+  selection: PartsSelection
+  image: string | null
+  isLoading: boolean
+  error: string | null
+}
+
+/**
+ * デフォルトのパーツ選択（全てOFF）
+ */
+const defaultPartsSelection: PartsSelection = {
+  left_eye: false,
+  right_eye: false,
+  left_eyebrow: false,
+  right_eyebrow: false,
+  nose: false,
+  lips: false,
 }
 
 /**
@@ -160,6 +184,17 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
     currentImage: string | null
     idealImage: string | null
   }>({ currentImage: null, idealImage: null })
+
+  // パーツブレンド状態
+  const [partsBlendState, setPartsBlendState] = useState<PartsBlendState>({
+    selection: defaultPartsSelection,
+    image: null,
+    isLoading: false,
+    error: null,
+  })
+
+  // 表示モード（'morph' または 'parts'）
+  const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
 
   /**
    * 現在の変化度に対応する画像を取得
@@ -390,6 +425,86 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
     generateMorphImages()
   }, [generateMorphImages])
 
+  /**
+   * パーツ選択変更ハンドラ
+   */
+  const handlePartsSelectionChange = useCallback((selection: PartsSelection) => {
+    setPartsBlendState((prev) => ({
+      ...prev,
+      selection,
+      // 選択が変更されたら以前の結果をクリア
+      image: null,
+      error: null,
+    }))
+  }, [])
+
+  /**
+   * パーツブレンド実行ハンドラ
+   */
+  const handlePartsBlend = useCallback(async () => {
+    const { currentImage, idealImage } = sourceImages
+
+    if (!currentImage || !idealImage) {
+      setPartsBlendState((prev) => ({
+        ...prev,
+        error: '画像データが見つかりません。',
+      }))
+      return
+    }
+
+    // 少なくとも1つのパーツが選択されているか確認
+    const hasAnySelection = Object.values(partsBlendState.selection).some(Boolean)
+    if (!hasAnySelection) {
+      setPartsBlendState((prev) => ({
+        ...prev,
+        error: 'ブレンドするパーツを1つ以上選択してください。',
+      }))
+      return
+    }
+
+    setPartsBlendState((prev) => ({ ...prev, isLoading: true, error: null }))
+
+    try {
+      // Data URLをFileに変換
+      const currentFile = dataUrlToFile(currentImage, 'current.png')
+      const idealFile = dataUrlToFile(idealImage, 'ideal.png')
+
+      // パーツブレンドAPIを呼び出し
+      const result = await blendParts(currentFile, idealFile, partsBlendState.selection)
+
+      setPartsBlendState((prev) => ({
+        ...prev,
+        image: toDataUrl(result.image),
+        isLoading: false,
+        error: null,
+      }))
+    } catch (error) {
+      console.error('Parts blend error:', error)
+
+      let errorMessage = 'パーツブレンド中にエラーが発生しました。'
+      if (error instanceof ApiError) {
+        errorMessage = error.localizedMessage
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      setPartsBlendState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }))
+    }
+  }, [sourceImages, partsBlendState.selection])
+
+  /**
+   * 選択されたパーツの表示名リストを取得
+   */
+  const selectedPartsNames = useMemo(() => {
+    return (Object.entries(partsBlendState.selection) as [keyof PartsSelection, boolean][])
+      .filter(([, isSelected]) => isSelected)
+      .map(([part]) => PARTS_DISPLAY_NAMES[part])
+  }, [partsBlendState.selection])
+
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
       <Header />
@@ -463,30 +578,185 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                 data-testid="result-image-container"
               >
                 <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
-                  {currentImage ? (
-                    <img
-                      src={currentImage}
-                      alt={`変化度${Math.round(state.currentProgress * 100)}%のシミュレーション結果`}
-                      className="w-full h-full object-cover"
-                      data-testid="result-image"
-                    />
+                  {viewMode === 'morph' ? (
+                    // モーフィングモードの画像表示
+                    currentImage ? (
+                      <img
+                        src={currentImage}
+                        alt={`変化度${Math.round(state.currentProgress * 100)}%のシミュレーション結果`}
+                        className="w-full h-full object-cover"
+                        data-testid="result-image"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                        画像を読み込み中...
+                      </div>
+                    )
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-neutral-400">
-                      画像を読み込み中...
-                    </div>
+                    // パーツブレンドモードの画像表示
+                    partsBlendState.image ? (
+                      <img
+                        src={partsBlendState.image}
+                        alt={`パーツブレンド結果（${selectedPartsNames.join('、')}）`}
+                        className="w-full h-full object-cover"
+                        data-testid="result-image"
+                      />
+                    ) : partsBlendState.isLoading ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                        <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
+                        <p>パーツをブレンド中...</p>
+                      </div>
+                    ) : (
+                      // パーツ未選択時は元の画像を表示
+                      sourceImages.currentImage ? (
+                        <img
+                          src={sourceImages.currentImage}
+                          alt="現在の顔"
+                          className="w-full h-full object-cover opacity-70"
+                          data-testid="result-image"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          パーツを選択してブレンドを実行してください
+                        </div>
+                      )
+                    )
                   )}
                 </div>
               </div>
 
-              {/* スライダー */}
-              <div className="mb-8">
-                <ResultSlider
-                  value={state.currentProgress}
-                  onChange={handleProgressChange}
-                  disabled={state.isSaving || state.isSharing}
-                  testId="result-slider"
-                />
+              {/* タブ切り替え */}
+              <div className="flex justify-center mb-6">
+                <div className="inline-flex rounded-full bg-neutral-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('morph')}
+                    className={`px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+                      viewMode === 'morph'
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                    data-testid="view-mode-morph"
+                  >
+                    モーフィング
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('parts')}
+                    className={`px-6 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+                      viewMode === 'parts'
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-neutral-600 hover:text-neutral-900'
+                    }`}
+                    data-testid="view-mode-parts"
+                  >
+                    パーツブレンド
+                  </button>
+                </div>
               </div>
+
+              {/* モーフィングモード */}
+              {viewMode === 'morph' && (
+                <div className="mb-8">
+                  <ResultSlider
+                    value={state.currentProgress}
+                    onChange={handleProgressChange}
+                    disabled={state.isSaving || state.isSharing}
+                    testId="result-slider"
+                  />
+                </div>
+              )}
+
+              {/* パーツブレンドモード */}
+              {viewMode === 'parts' && (
+                <div className="mb-8 space-y-6">
+                  {/* パーツ選択UI */}
+                  <div className="bg-white rounded-2xl shadow-sm p-6">
+                    <PartsSelector
+                      selection={partsBlendState.selection}
+                      onChange={handlePartsSelectionChange}
+                      disabled={partsBlendState.isLoading}
+                      testId="parts-selector"
+                    />
+
+                    {/* パーツブレンド実行ボタン */}
+                    <div className="mt-6 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={handlePartsBlend}
+                        disabled={partsBlendState.isLoading || !Object.values(partsBlendState.selection).some(Boolean)}
+                        className={`
+                          px-8 py-3 text-base font-medium rounded-full
+                          focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
+                          ${
+                            partsBlendState.isLoading
+                              ? 'bg-neutral-300 text-neutral-500 cursor-wait'
+                              : !Object.values(partsBlendState.selection).some(Boolean)
+                                ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                                : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
+                          }
+                        `}
+                        data-testid="parts-blend-button"
+                      >
+                        {partsBlendState.isLoading ? (
+                          <span className="flex items-center gap-2">
+                            <svg
+                              className="animate-spin h-5 w-5"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                            ブレンド中...
+                          </span>
+                        ) : (
+                          'パーツをブレンド'
+                        )}
+                      </button>
+                    </div>
+
+                    {/* パーツブレンドエラー */}
+                    {partsBlendState.error && (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                        {partsBlendState.error}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* パーツブレンド結果画像 */}
+                  {partsBlendState.image && (
+                    <div className="bg-white rounded-2xl shadow-elegant p-4" data-testid="parts-blend-result">
+                      <div className="text-center mb-3">
+                        <p className="text-sm text-neutral-600">
+                          適用パーツ: <span className="font-medium">{selectedPartsNames.join('、')}</span>
+                        </p>
+                      </div>
+                      <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
+                        <img
+                          src={partsBlendState.image}
+                          alt={`パーツブレンド結果（${selectedPartsNames.join('、')}）`}
+                          className="w-full h-full object-cover"
+                          data-testid="parts-blend-image"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* 保存・共有ボタン */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">

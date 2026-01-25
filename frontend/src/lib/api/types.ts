@@ -270,6 +270,46 @@ export interface SharedSimulationData {
 export type SharedSimulationResponse = SuccessResponse<SharedSimulationData>;
 
 // =============================================================================
+// パーツブレンド (Parts Blend)
+// =============================================================================
+
+/**
+ * パーツ選択
+ */
+export interface PartsSelection {
+  left_eye: boolean;
+  right_eye: boolean;
+  left_eyebrow: boolean;
+  right_eyebrow: boolean;
+  nose: boolean;
+  lips: boolean;
+}
+
+/**
+ * パーツブレンドデータ
+ */
+export interface PartsBlendData {
+  image: string;  // Base64エンコード
+  format: 'png';
+  applied_parts: string[];
+  dimensions: ImageDimensions;
+}
+
+export type PartsBlendResponse = SuccessResponse<PartsBlendData>;
+
+/**
+ * パーツ表示名マッピング
+ */
+export const PARTS_DISPLAY_NAMES: Record<keyof PartsSelection, string> = {
+  left_eye: '左目',
+  right_eye: '右目',
+  left_eyebrow: '左眉',
+  right_eyebrow: '右眉',
+  nose: '鼻',
+  lips: '唇',
+};
+
+// =============================================================================
 // エラーメッセージマッピング
 // =============================================================================
 
