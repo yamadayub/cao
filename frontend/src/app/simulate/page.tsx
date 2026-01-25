@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { ImageUploader } from '@/components/features/ImageUploader'
+import { CameraCapture } from '@/components/features/CameraCapture'
 import { TermsAgreementModal } from '@/components/features/TermsAgreementModal'
 import { useTermsAgreement } from '@/hooks/useTermsAgreement'
 
@@ -17,28 +18,24 @@ interface ImageState {
 }
 
 /**
- * エラーのステート型
+ * 現在のステップ
  */
-interface ErrorState {
-  current?: string
-  ideal?: string
-}
+type Step = 'upload-ideal' | 'capture-current' | 'review'
 
 /**
  * シミュレーション作成画面 (SCR-002)
  *
- * 参照: functional-spec.md セクション 3.3
- * 参照: business-spec.md UC-001, UC-002, UC-003
+ * 新しいフロー:
+ * 1. 理想の顔をアップロード
+ * 2. カメラで現在の顔を撮影（理想の顔をガイドとして表示）
+ * 3. 確認して生成
  */
 export default function SimulatePage() {
   const router = useRouter()
   const { hasAgreed, isLoading: isLoadingTerms, agree } = useTermsAgreement()
 
-  // 現在の顔画像の状態
-  const [currentImage, setCurrentImage] = useState<ImageState>({
-    file: null,
-    previewUrl: null,
-  })
+  // 現在のステップ
+  const [step, setStep] = useState<Step>('upload-ideal')
 
   // 理想の顔画像の状態
   const [idealImage, setIdealImage] = useState<ImageState>({
@@ -46,8 +43,14 @@ export default function SimulatePage() {
     previewUrl: null,
   })
 
+  // 現在の顔画像の状態
+  const [currentImage, setCurrentImage] = useState<ImageState>({
+    file: null,
+    previewUrl: null,
+  })
+
   // エラー状態
-  const [errors, setErrors] = useState<ErrorState>({})
+  const [idealError, setIdealError] = useState<string | undefined>()
 
   // 生成中フラグ
   const [isGenerating, setIsGenerating] = useState(false)
@@ -55,45 +58,25 @@ export default function SimulatePage() {
   // 利用規約同意モーダル表示状態
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
 
-  // 利用規約同意後に実行するアクション（'current' | 'ideal' | null）
-  const [pendingUploadType, setPendingUploadType] = useState<'current' | 'ideal' | null>(null)
+  // カメラモード表示状態
+  const [showCamera, setShowCamera] = useState(false)
 
   /**
    * 画像アップロードを試みる（未同意の場合はモーダル表示）
-   * @returns boolean - 同意済みの場合はtrue、未同意の場合はfalse
    */
-  const attemptUpload = useCallback(
-    (uploadType: 'current' | 'ideal') => {
-      if (!hasAgreed) {
-        setPendingUploadType(uploadType)
-        setIsTermsModalOpen(true)
-        return false
-      }
-      return true
-    },
-    [hasAgreed]
-  )
-
-  /**
-   * 現在の顔画像選択前のチェック
-   */
-  const handleCurrentBeforeSelect = useCallback(() => {
-    return attemptUpload('current')
-  }, [attemptUpload])
-
-  /**
-   * 理想の顔画像選択前のチェック
-   */
-  const handleIdealBeforeSelect = useCallback(() => {
-    return attemptUpload('ideal')
-  }, [attemptUpload])
+  const attemptUpload = useCallback(() => {
+    if (!hasAgreed) {
+      setIsTermsModalOpen(true)
+      return false
+    }
+    return true
+  }, [hasAgreed])
 
   /**
    * 利用規約同意モーダルを閉じる
    */
   const handleTermsModalClose = useCallback(() => {
     setIsTermsModalOpen(false)
-    setPendingUploadType(null)
   }, [])
 
   /**
@@ -102,36 +85,7 @@ export default function SimulatePage() {
   const handleTermsAgree = useCallback(() => {
     agree()
     setIsTermsModalOpen(false)
-    // 同意後、保留中のアップロードがあればそのフィールドにフォーカスを移す
-    // （実際のファイル選択ダイアログは開かないが、UIの準備は整う）
-    setPendingUploadType(null)
   }, [agree])
-
-  /**
-   * 現在の顔画像選択ハンドラ
-   */
-  const handleCurrentFileSelect = useCallback(
-    (file: File, previewUrl: string) => {
-      setCurrentImage({ file, previewUrl })
-      setErrors((prev) => ({ ...prev, current: undefined }))
-    },
-    []
-  )
-
-  /**
-   * 現在の顔画像削除ハンドラ
-   */
-  const handleCurrentFileRemove = useCallback(() => {
-    setCurrentImage({ file: null, previewUrl: null })
-    setErrors((prev) => ({ ...prev, current: undefined }))
-  }, [])
-
-  /**
-   * 現在の顔画像バリデーションエラーハンドラ
-   */
-  const handleCurrentValidationError = useCallback((error: string) => {
-    setErrors((prev) => ({ ...prev, current: error }))
-  }, [])
 
   /**
    * 理想の顔画像選択ハンドラ
@@ -139,7 +93,7 @@ export default function SimulatePage() {
   const handleIdealFileSelect = useCallback(
     (file: File, previewUrl: string) => {
       setIdealImage({ file, previewUrl })
-      setErrors((prev) => ({ ...prev, ideal: undefined }))
+      setIdealError(undefined)
     },
     []
   )
@@ -149,14 +103,58 @@ export default function SimulatePage() {
    */
   const handleIdealFileRemove = useCallback(() => {
     setIdealImage({ file: null, previewUrl: null })
-    setErrors((prev) => ({ ...prev, ideal: undefined }))
+    setIdealError(undefined)
+    // 現在の顔もリセット
+    setCurrentImage({ file: null, previewUrl: null })
+    setStep('upload-ideal')
   }, [])
 
   /**
    * 理想の顔画像バリデーションエラーハンドラ
    */
   const handleIdealValidationError = useCallback((error: string) => {
-    setErrors((prev) => ({ ...prev, ideal: error }))
+    setIdealError(error)
+  }, [])
+
+  /**
+   * 次のステップへ（カメラ起動）
+   */
+  const handleProceedToCamera = useCallback(() => {
+    if (!idealImage.previewUrl) return
+    setShowCamera(true)
+  }, [idealImage.previewUrl])
+
+  /**
+   * カメラで撮影完了
+   */
+  const handleCameraCapture = useCallback((file: File, previewUrl: string) => {
+    setCurrentImage({ file, previewUrl })
+    setShowCamera(false)
+    setStep('review')
+  }, [])
+
+  /**
+   * カメラをキャンセル
+   */
+  const handleCameraCancel = useCallback(() => {
+    setShowCamera(false)
+  }, [])
+
+  /**
+   * 現在の顔を撮り直す
+   */
+  const handleRetakeCurrentImage = useCallback(() => {
+    setCurrentImage({ file: null, previewUrl: null })
+    setShowCamera(true)
+  }, [])
+
+  /**
+   * 理想の顔を変更する
+   */
+  const handleChangeIdealImage = useCallback(() => {
+    setIdealImage({ file: null, previewUrl: null })
+    setCurrentImage({ file: null, previewUrl: null })
+    setStep('upload-ideal')
   }, [])
 
   /**
@@ -171,7 +169,6 @@ export default function SimulatePage() {
 
     try {
       // TODO: 実際のAPI呼び出しを実装
-      // 現在は仮の遅延を入れて結果画面に遷移
       await new Promise((resolve) => setTimeout(resolve, 500))
 
       // 画像データをsessionStorageに保存（結果画面で使用）
@@ -189,16 +186,24 @@ export default function SimulatePage() {
     }
   }, [currentImage, idealImage, router])
 
-  // 両方の画像がアップロードされているかチェック
-  const canGenerate =
-    currentImage.file !== null && idealImage.file !== null && !isGenerating
-
   // ローディング中は簡易表示
   if (isLoadingTerms) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin"></div>
       </div>
+    )
+  }
+
+  // カメラモード
+  if (showCamera && idealImage.previewUrl) {
+    return (
+      <CameraCapture
+        guideImageUrl={idealImage.previewUrl}
+        onCapture={handleCameraCapture}
+        onCancel={handleCameraCancel}
+        testId="camera-capture"
+      />
     )
   }
 
@@ -216,7 +221,8 @@ export default function SimulatePage() {
               シミュレーション作成
             </h1>
             <p className="text-sm md:text-base text-neutral-500">
-              現在の顔と理想の顔をアップロードして、シミュレーションを生成します
+              {step === 'upload-ideal' && '理想の顔写真をアップロードしてください'}
+              {step === 'review' && '撮影した写真を確認してください'}
             </p>
           </div>
 
@@ -258,98 +264,182 @@ export default function SimulatePage() {
             </div>
           )}
 
-          {/* アップロードエリア */}
-          <div
-            className="flex flex-col md:flex-row gap-4 md:gap-8 justify-center items-center"
-            data-testid="upload-area"
-          >
-            {/* 現在の顔 */}
-            <div className="w-full max-w-[300px] bg-white rounded-2xl shadow-elegant p-5 md:p-6">
-              <ImageUploader
-                label="現在の顔"
-                previewUrl={currentImage.previewUrl}
-                error={errors.current}
-                onFileSelect={handleCurrentFileSelect}
-                onFileRemove={handleCurrentFileRemove}
-                onValidationError={handleCurrentValidationError}
-                onClickBeforeSelect={handleCurrentBeforeSelect}
-                disabled={isGenerating}
-                testId="current-image"
-              />
+          {/* ステップインジケーター */}
+          <div className="flex items-center justify-center gap-4 mb-8">
+            <div className={`flex items-center gap-2 ${step === 'upload-ideal' ? 'text-primary-700' : 'text-neutral-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                step === 'upload-ideal' ? 'bg-primary-700 text-white' : idealImage.file ? 'bg-primary-200 text-primary-700' : 'bg-neutral-200 text-neutral-500'
+              }`}>
+                {idealImage.file ? '✓' : '1'}
+              </div>
+              <span className="text-sm hidden sm:inline">理想の顔</span>
             </div>
-
-            {/* 理想の顔 */}
-            <div className="w-full max-w-[300px] bg-white rounded-2xl shadow-elegant p-5 md:p-6">
-              <ImageUploader
-                label="理想の顔"
-                previewUrl={idealImage.previewUrl}
-                error={errors.ideal}
-                onFileSelect={handleIdealFileSelect}
-                onFileRemove={handleIdealFileRemove}
-                onValidationError={handleIdealValidationError}
-                onClickBeforeSelect={handleIdealBeforeSelect}
-                disabled={isGenerating}
-                testId="ideal-image"
-              />
+            <div className="w-8 h-px bg-neutral-300" />
+            <div className={`flex items-center gap-2 ${step === 'review' ? 'text-primary-700' : 'text-neutral-400'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                step === 'review' ? 'bg-primary-700 text-white' : currentImage.file ? 'bg-primary-200 text-primary-700' : 'bg-neutral-200 text-neutral-500'
+              }`}>
+                {currentImage.file ? '✓' : '2'}
+              </div>
+              <span className="text-sm hidden sm:inline">現在の顔</span>
             </div>
           </div>
 
-          {/* 生成ボタン */}
-          <div className="mt-8 md:mt-12 flex justify-center">
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-              className={`
-                w-full max-w-md px-8 py-4 text-base font-medium
-                rounded-full transition-all duration-300
-                focus:outline-none focus:ring-2 focus:ring-offset-2
-                ${
-                  canGenerate
-                    ? 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
-                    : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                }
-              `}
-              data-testid="generate-button"
-            >
-              {isGenerating ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="animate-spin h-5 w-5 text-white"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  生成中...
-                </span>
-              ) : (
-                'シミュレーションを生成'
+          {/* Step 1: 理想の顔をアップロード */}
+          {step === 'upload-ideal' && (
+            <div className="flex flex-col items-center gap-6">
+              <div className="w-full max-w-[320px] bg-white rounded-2xl shadow-elegant p-6">
+                <ImageUploader
+                  label="理想の顔"
+                  previewUrl={idealImage.previewUrl}
+                  error={idealError}
+                  onFileSelect={handleIdealFileSelect}
+                  onFileRemove={handleIdealFileRemove}
+                  onValidationError={handleIdealValidationError}
+                  onClickBeforeSelect={attemptUpload}
+                  disabled={isGenerating}
+                  testId="ideal-image"
+                />
+              </div>
+
+              {/* 次へボタン */}
+              {idealImage.file && (
+                <button
+                  type="button"
+                  onClick={handleProceedToCamera}
+                  className="px-8 py-4 bg-primary-700 text-white rounded-full font-medium hover:bg-primary-800 hover:shadow-elegant transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                  data-testid="proceed-to-camera-button"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    カメラで現在の顔を撮影
+                  </span>
+                </button>
               )}
-            </button>
-          </div>
+
+              {/* 説明テキスト */}
+              <div className="text-center text-sm text-neutral-500 max-w-md">
+                <p className="mb-2">
+                  理想の顔写真をアップロードしてください。
+                </p>
+                <p>
+                  次のステップで、理想の顔と同じ向き・角度で現在の顔を撮影します。
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: 確認画面 */}
+          {step === 'review' && (
+            <div className="flex flex-col items-center gap-6">
+              {/* 2つの画像を並べて表示 */}
+              <div className="flex flex-col md:flex-row gap-6 justify-center items-center">
+                {/* 理想の顔 */}
+                <div className="w-full max-w-[280px]">
+                  <div className="bg-white rounded-2xl shadow-elegant p-4">
+                    <h3 className="font-serif text-lg text-neutral-800 text-center mb-3">理想の顔</h3>
+                    <div className="aspect-square rounded-xl overflow-hidden mb-3">
+                      {idealImage.previewUrl && (
+                        <img
+                          src={idealImage.previewUrl}
+                          alt="理想の顔"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleChangeIdealImage}
+                      className="w-full px-4 py-2 text-sm text-neutral-600 border border-neutral-300 rounded-full hover:bg-neutral-50 transition-colors"
+                    >
+                      変更する
+                    </button>
+                  </div>
+                </div>
+
+                {/* 現在の顔 */}
+                <div className="w-full max-w-[280px]">
+                  <div className="bg-white rounded-2xl shadow-elegant p-4">
+                    <h3 className="font-serif text-lg text-neutral-800 text-center mb-3">現在の顔</h3>
+                    <div className="aspect-square rounded-xl overflow-hidden mb-3">
+                      {currentImage.previewUrl && (
+                        <img
+                          src={currentImage.previewUrl}
+                          alt="現在の顔"
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRetakeCurrentImage}
+                      className="w-full px-4 py-2 text-sm text-neutral-600 border border-neutral-300 rounded-full hover:bg-neutral-50 transition-colors"
+                    >
+                      撮り直す
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 生成ボタン */}
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className={`
+                  w-full max-w-md px-8 py-4 text-base font-medium
+                  rounded-full transition-all duration-300
+                  focus:outline-none focus:ring-2 focus:ring-offset-2
+                  ${
+                    !isGenerating
+                      ? 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
+                      : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                  }
+                `}
+                data-testid="generate-button"
+              >
+                {isGenerating ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg
+                      className="animate-spin h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    生成中...
+                  </span>
+                ) : (
+                  'シミュレーションを生成'
+                )}
+              </button>
+            </div>
+          )}
 
           {/* 注意書き */}
-          <p className="mt-6 text-center text-sm text-neutral-400">
+          <p className="mt-8 text-center text-sm text-neutral-400">
             ※ 顔写真は正面を向いた明るい写真をお使いください
           </p>
 
           {/* 利用規約・プライバシーポリシーリンク */}
-          <div className="mt-8 flex justify-center gap-6 text-sm text-neutral-400">
+          <div className="mt-6 flex justify-center gap-6 text-sm text-neutral-400">
             <a href="/terms" className="hover:text-primary-600 transition-colors">
               利用規約
             </a>
