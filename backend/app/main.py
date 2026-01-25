@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.models.schemas import ErrorDetail, ErrorResponse
-from app.routers import analyze, health, morph, shared, simulations
+from app.routers import analyze, blend, health, morph, shared, simulations
 
 settings = get_settings()
 
@@ -100,6 +100,7 @@ async def add_request_metadata(request: Request, call_next) -> Response:
 app.include_router(health.router)
 app.include_router(analyze.router, prefix="/api/v1")
 app.include_router(morph.router, prefix="/api/v1")
+app.include_router(blend.router, prefix="/api/v1")
 app.include_router(simulations.router, prefix="/api/v1")
 app.include_router(shared.router, prefix="/api/v1")
 

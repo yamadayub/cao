@@ -102,6 +102,7 @@ type ErrorCode =
 | `/api/v1/simulations/{id}` | DELETE | 必要 | シミュレーション削除 |
 | `/api/v1/simulations/{id}/share` | POST | 必要 | 共有URL生成 |
 | `/api/v1/shared/{token}` | GET | 不要 | 共有シミュレーション取得 |
+| `/api/v1/blend/parts` | POST | 不要 | パーツ別ブレンド |
 
 ---
 
@@ -462,6 +463,98 @@ interface SharedSimulationResponse {
 | エラーコード | 条件 | メッセージ |
 |-------------|------|-----------|
 | NOT_FOUND | 無効なトークン | Shared simulation not found |
+
+---
+
+#### 2.3.11 パーツ別ブレンド
+
+```
+POST /api/v1/blend/parts
+Content-Type: multipart/form-data
+```
+
+**リクエスト**
+| フィールド | 型 | 必須 | 説明 |
+|-----------|-----|------|------|
+| current_image | File | Yes | 現在の顔画像（ベース） |
+| ideal_image | File | Yes | 理想の顔画像（パーツ提供元） |
+| parts | string (JSON) | Yes | 適用するパーツの指定 |
+
+**partsフィールド形式**
+```typescript
+interface PartsSelection {
+  left_eye: boolean;      // 左目
+  right_eye: boolean;     // 右目
+  left_eyebrow: boolean;  // 左眉
+  right_eyebrow: boolean; // 右眉
+  nose: boolean;          // 鼻
+  lips: boolean;          // 口
+}
+```
+
+**レスポンス**
+```typescript
+interface PartsBlendResponse {
+  success: true;
+  data: {
+    image: string;  // Base64エンコード
+    format: 'png';
+    applied_parts: string[];  // 実際に適用されたパーツのリスト
+    dimensions: {
+      width: number;
+      height: number;
+    };
+  };
+}
+```
+
+**例**
+```json
+{
+  "success": true,
+  "data": {
+    "image": "data:image/png;base64,...",
+    "format": "png",
+    "applied_parts": ["left_eye", "right_eye", "nose"],
+    "dimensions": { "width": 512, "height": 512 }
+  }
+}
+```
+
+**エラーケース**
+| エラーコード | 条件 | メッセージ |
+|-------------|------|-----------|
+| VALIDATION_ERROR | partsが無効 | Invalid parts selection format |
+| VALIDATION_ERROR | パーツ未選択 | At least one part must be selected |
+| FACE_NOT_DETECTED | いずれかの画像で顔未検出 | No face detected in {current/ideal} image |
+| PROCESSING_ERROR | 処理失敗 | Failed to generate blended image |
+
+**処理フロー**
+1. 両画像から顔のランドマークを検出（MediaPipe Face Mesh）
+2. 理想の顔から指定パーツのマスクを生成
+3. パーツの位置・角度・サイズを現在の顔に合わせて変換（アフィン変換）
+4. 色調を補正（ヒストグラムマッチング）
+5. Poisson Blendingでシームレスに合成
+6. 合成画像を返却
+
+**対応パーツ一覧**
+| パーツID | 名称 | 対象ランドマークインデックス |
+|----------|------|------------------------------|
+| left_eye | 左目 | 左目・上下まぶた周辺 |
+| right_eye | 右目 | 右目・上下まぶた周辺 |
+| left_eyebrow | 左眉 | 左眉毛領域 |
+| right_eyebrow | 右眉 | 右眉毛領域 |
+| nose | 鼻 | 鼻全体（鼻筋・鼻先・小鼻） |
+| lips | 口 | 唇・口周り |
+
+**品質要件**
+- 処理時間: 10秒以内
+- パーツ境界の自然な馴染み
+- 色調の不自然な浮きなし
+
+**MVP制約**
+- 正面顔のみ対応
+- パーツのON/OFFのみ（ブレンド率調整は将来対応）
 
 ---
 
@@ -1260,6 +1353,8 @@ CREATE POLICY "Anyone can view public results"
 | E2E-008 | UC-007 | 共有URL生成 |
 | E2E-009 | UC-008 | 共有URL閲覧 |
 | E2E-010 | UC-010 | 履歴確認 |
+| E2E-011 | UC-011 | パーツ別ブレンド生成（成功） |
+| E2E-012 | UC-011 | パーツ別ブレンド（エラー: 顔未検出） |
 
 ---
 
@@ -1268,3 +1363,4 @@ CREATE POLICY "Anyone can view public results"
 | バージョン | 日付 | 変更内容 | 担当 |
 |------------|------|----------|------|
 | 1.0.0 | 2025-01-23 | 初版作成 | Spec Agent |
+| 1.1.0 | 2025-01-25 | パーツ別ブレンドAPI（2.3.11）追加、E2E-011/012追加 | Spec Agent |

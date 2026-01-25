@@ -158,6 +158,26 @@ class StagedMorphResponse(SuccessResponse[StagedMorphData]):
 
 
 # ============================================
+# Parts Blend Schemas
+# ============================================
+
+
+class PartsBlendData(BaseModel):
+    """Parts blend result data."""
+
+    image: str = Field(..., description="Base64 encoded result image")
+    format: Literal["png"] = Field(default="png", description="Output image format")
+    applied_parts: List[str] = Field(..., description="List of parts that were applied")
+    dimensions: ImageDimensions = Field(..., description="Output image dimensions")
+
+
+class PartsBlendResponse(SuccessResponse[PartsBlendData]):
+    """Parts blend response."""
+
+    pass
+
+
+# ============================================
 # Error Code Constants
 # ============================================
 
