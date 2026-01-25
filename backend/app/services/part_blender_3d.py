@@ -45,6 +45,26 @@ POSE_LANDMARKS = {
     "right_cheek": 454,
 }
 
+# Nose-specific landmark indices for centerline and alignment
+NOSE_ALIGNMENT_LANDMARKS = {
+    "nose_tip": 4,           # Tip of nose (pronnasale)
+    "nose_bridge_top": 6,    # Top of nose bridge (nasion area)
+    "nose_bridge_mid": 168,  # Middle of nose bridge
+    "nose_bottom": 2,        # Bottom of nose (subnasale)
+    "left_alar": 129,        # Left nostril wing (alar)
+    "right_alar": 358,       # Right nostril wing (alar)
+    "left_nostril": 48,      # Left nostril base
+    "right_nostril": 278,    # Right nostril base
+}
+
+# Eye landmarks for computing eye center
+EYE_CENTER_LANDMARKS = {
+    "left_eye_inner": 133,
+    "left_eye_outer": 33,
+    "right_eye_inner": 362,
+    "right_eye_outer": 263,
+}
+
 # Canonical 3D coordinates for key landmarks (from MediaPipe canonical_face_model.obj)
 # Units are in centimeters, Y-down, Z toward camera
 CANONICAL_LANDMARKS_3D = {
@@ -617,15 +637,20 @@ class PartBlender3D:
         if len(src_3d) < 4 or len(dst_3d) < 4:
             return base_img
 
-        # Check if we have real depth data for 3D transformation
-        if self._has_real_depth:
-            # Full 3D transformation with rotation
+        # Use nose-specific alignment for better results
+        if part_name == "nose":
+            aligned_2d = self._compute_nose_aligned_points(
+                src_2d, dst_2d,
+                src_mesh.landmarks_2d, base_mesh.landmarks_2d,
+                part_name
+            )
+        elif self._has_real_depth:
+            # Full 3D transformation with rotation for non-nose parts
             aligned_2d = self._compute_3d_aligned_points(
                 src_3d, dst_3d, src_mesh, base_mesh, img_size, part_name
             )
         else:
             # Enhanced 2D alignment without 3D rotation (avoids broken results)
-            # Use direct landmark mapping with similarity transform for all parts
             aligned_2d = self._compute_similarity_aligned_points(
                 src_2d, dst_2d, part_name
             )
@@ -777,6 +802,142 @@ class PartBlender3D:
                           f"using direct destination landmarks")
             # Fallback: use destination landmarks directly
             return dst_2d.astype(np.float32)
+
+    def _compute_nose_aligned_points(
+        self,
+        src_2d: np.ndarray,
+        dst_2d: np.ndarray,
+        src_landmarks: np.ndarray,
+        dst_landmarks: np.ndarray,
+        part_name: str,
+    ) -> np.ndarray:
+        """
+        Compute aligned 2D points for nose using eye-center and centerline alignment.
+
+        This method:
+        1. Positions the nose center at the midpoint between both eyes
+        2. Aligns the nose centerline (from bridge to tip) with the target face centerline
+        3. Scales the nose appropriately based on inter-eye distance
+
+        Args:
+            src_2d: Source nose 2D landmarks
+            dst_2d: Destination nose 2D landmarks
+            src_landmarks: All source face landmarks
+            dst_landmarks: All destination face landmarks
+            part_name: Name of the part for logging
+
+        Returns:
+            Aligned 2D points for the nose
+        """
+        try:
+            # Get eye center landmarks
+            left_eye_inner_idx = EYE_CENTER_LANDMARKS["left_eye_inner"]
+            left_eye_outer_idx = EYE_CENTER_LANDMARKS["left_eye_outer"]
+            right_eye_inner_idx = EYE_CENTER_LANDMARKS["right_eye_inner"]
+            right_eye_outer_idx = EYE_CENTER_LANDMARKS["right_eye_outer"]
+
+            # Compute eye centers for source
+            src_left_eye = (
+                np.array(src_landmarks[left_eye_inner_idx]) +
+                np.array(src_landmarks[left_eye_outer_idx])
+            ) / 2
+            src_right_eye = (
+                np.array(src_landmarks[right_eye_inner_idx]) +
+                np.array(src_landmarks[right_eye_outer_idx])
+            ) / 2
+            src_inter_eye_dist = np.linalg.norm(src_right_eye - src_left_eye)
+
+            # Compute eye centers for destination
+            dst_left_eye = (
+                np.array(dst_landmarks[left_eye_inner_idx]) +
+                np.array(dst_landmarks[left_eye_outer_idx])
+            ) / 2
+            dst_right_eye = (
+                np.array(dst_landmarks[right_eye_inner_idx]) +
+                np.array(dst_landmarks[right_eye_outer_idx])
+            ) / 2
+            dst_eyes_center = (dst_left_eye + dst_right_eye) / 2
+            dst_inter_eye_dist = np.linalg.norm(dst_right_eye - dst_left_eye)
+
+            # Get nose centerline landmarks
+            nose_tip_idx = NOSE_ALIGNMENT_LANDMARKS["nose_tip"]
+            nose_bridge_idx = NOSE_ALIGNMENT_LANDMARKS["nose_bridge_top"]
+            left_alar_idx = NOSE_ALIGNMENT_LANDMARKS["left_alar"]
+            right_alar_idx = NOSE_ALIGNMENT_LANDMARKS["right_alar"]
+
+            # Compute source nose centerline
+            src_nose_tip = np.array(src_landmarks[nose_tip_idx])
+            src_nose_bridge = np.array(src_landmarks[nose_bridge_idx])
+            src_left_alar = np.array(src_landmarks[left_alar_idx])
+            src_right_alar = np.array(src_landmarks[right_alar_idx])
+
+            # Source nose center (midpoint of alars)
+            src_nose_center = (src_left_alar + src_right_alar) / 2
+
+            # Source nose centerline vector (from bridge to tip)
+            src_centerline = src_nose_tip - src_nose_bridge
+            src_centerline_angle = np.arctan2(src_centerline[1], src_centerline[0])
+
+            # Compute destination nose centerline
+            dst_nose_tip = np.array(dst_landmarks[nose_tip_idx])
+            dst_nose_bridge = np.array(dst_landmarks[nose_bridge_idx])
+            dst_left_alar = np.array(dst_landmarks[left_alar_idx])
+            dst_right_alar = np.array(dst_landmarks[right_alar_idx])
+
+            # Destination nose center (midpoint of alars)
+            dst_nose_center = (dst_left_alar + dst_right_alar) / 2
+
+            # Destination nose centerline vector
+            dst_centerline = dst_nose_tip - dst_nose_bridge
+            dst_centerline_angle = np.arctan2(dst_centerline[1], dst_centerline[0])
+
+            # Compute rotation angle to align centerlines
+            rotation_angle = dst_centerline_angle - src_centerline_angle
+
+            # Compute scale based on inter-eye distance
+            scale = dst_inter_eye_dist / max(src_inter_eye_dist, 1e-6)
+            scale = np.clip(scale, 0.7, 1.4)
+
+            # Create rotation matrix
+            cos_a = np.cos(rotation_angle)
+            sin_a = np.sin(rotation_angle)
+            R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+
+            # Target position: position nose center under the eye center
+            # Use destination eye center's X coordinate and destination nose center's Y relationship
+            dst_vertical_offset = dst_nose_center[1] - dst_eyes_center[1]
+
+            # Target position: X aligned with destination eye center, Y based on destination proportions
+            target_center = np.array([
+                dst_eyes_center[0],  # X: centered under eyes
+                dst_eyes_center[1] + dst_vertical_offset  # Y: proper vertical position
+            ])
+
+            # Apply transformation:
+            # 1. Center source nose points around source nose center
+            src_centered = src_2d - src_nose_center
+
+            # 2. Apply rotation to align centerlines
+            src_rotated = (src_centered @ R.T)
+
+            # 3. Apply scale
+            src_scaled = src_rotated * scale
+
+            # 4. Translate to target position
+            aligned = src_scaled + target_center
+
+            logger.info(f"Nose alignment: rotation={np.degrees(rotation_angle):.1f}°, "
+                        f"scale={scale:.3f}, "
+                        f"src_eye_dist={src_inter_eye_dist:.1f}, "
+                        f"dst_eye_dist={dst_inter_eye_dist:.1f}, "
+                        f"target_center=({target_center[0]:.1f}, {target_center[1]:.1f})")
+
+            return aligned.astype(np.float32)
+
+        except (IndexError, KeyError, TypeError) as e:
+            logger.warning(f"Nose-specific alignment failed: {e}, "
+                          f"falling back to similarity transform")
+            return self._compute_similarity_aligned_points(src_2d, dst_2d, part_name)
 
     def _project_3d_to_2d(
         self,

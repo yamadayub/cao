@@ -442,84 +442,227 @@ class PartBlender:
         img_size: Tuple[int, int],
     ) -> Optional[np.ndarray]:
         """
-        Blend nose with pose-aware alignment.
+        Blend nose with eye-center and centerline alignment.
 
-        Estimates face pose (yaw, pitch, roll) for both images and
-        compensates for the difference when aligning the nose.
+        This method:
+        1. Positions the nose center at the midpoint between both eyes
+        2. Aligns the nose centerline (from bridge to tip) with the target face centerline
+        3. Scales the nose appropriately based on inter-eye distance
+        4. Applies color matching for natural blending
         """
         w, h = img_size
 
-        # Estimate pose for both faces
-        src_yaw, src_pitch, src_roll = self._estimate_face_pose(src_landmarks)
-        dst_yaw, dst_pitch, dst_roll = self._estimate_face_pose(base_landmarks)
+        try:
+            # Eye landmark indices
+            LEFT_EYE_INNER = 133
+            LEFT_EYE_OUTER = 33
+            RIGHT_EYE_INNER = 362
+            RIGHT_EYE_OUTER = 263
 
-        # Get pose-adjusted centroids
-        src_centroid = self._get_nose_pose_adjusted_centroid(
-            src_landmarks, src_yaw, dst_yaw
-        )
-        dst_centroid = self._get_nose_pose_adjusted_centroid(
-            base_landmarks, dst_yaw, dst_yaw  # Reference is itself
-        )
+            # Nose landmark indices
+            NOSE_TIP = 4
+            NOSE_BRIDGE_TOP = 6
+            LEFT_ALAR = 129
+            RIGHT_ALAR = 358
 
-        if src_centroid is None or dst_centroid is None:
+            # Compute eye centers for source
+            src_left_eye = (
+                np.array(src_landmarks[LEFT_EYE_INNER]) +
+                np.array(src_landmarks[LEFT_EYE_OUTER])
+            ) / 2
+            src_right_eye = (
+                np.array(src_landmarks[RIGHT_EYE_INNER]) +
+                np.array(src_landmarks[RIGHT_EYE_OUTER])
+            ) / 2
+            src_inter_eye_dist = np.linalg.norm(src_right_eye - src_left_eye)
+
+            # Compute eye centers for destination
+            dst_left_eye = (
+                np.array(base_landmarks[LEFT_EYE_INNER]) +
+                np.array(base_landmarks[LEFT_EYE_OUTER])
+            ) / 2
+            dst_right_eye = (
+                np.array(base_landmarks[RIGHT_EYE_INNER]) +
+                np.array(base_landmarks[RIGHT_EYE_OUTER])
+            ) / 2
+            dst_eyes_center = (dst_left_eye + dst_right_eye) / 2
+            dst_inter_eye_dist = np.linalg.norm(dst_right_eye - dst_left_eye)
+
+            # Compute source nose centerline
+            src_nose_tip = np.array(src_landmarks[NOSE_TIP])
+            src_nose_bridge = np.array(src_landmarks[NOSE_BRIDGE_TOP])
+            src_left_alar = np.array(src_landmarks[LEFT_ALAR])
+            src_right_alar = np.array(src_landmarks[RIGHT_ALAR])
+            src_nose_center = (src_left_alar + src_right_alar) / 2
+
+            # Source nose centerline vector (from bridge to tip)
+            src_centerline = src_nose_tip - src_nose_bridge
+            src_centerline_angle = np.arctan2(src_centerline[1], src_centerline[0])
+
+            # Compute destination nose centerline
+            dst_nose_tip = np.array(base_landmarks[NOSE_TIP])
+            dst_nose_bridge = np.array(base_landmarks[NOSE_BRIDGE_TOP])
+            dst_left_alar = np.array(base_landmarks[LEFT_ALAR])
+            dst_right_alar = np.array(base_landmarks[RIGHT_ALAR])
+            dst_nose_center = (dst_left_alar + dst_right_alar) / 2
+
+            # Destination nose centerline vector
+            dst_centerline = dst_nose_tip - dst_nose_bridge
+            dst_centerline_angle = np.arctan2(dst_centerline[1], dst_centerline[0])
+
+            # Compute rotation angle to align centerlines
+            rotation_angle = dst_centerline_angle - src_centerline_angle
+
+            # Compute scale based on inter-eye distance
+            scale = dst_inter_eye_dist / max(src_inter_eye_dist, 1e-6)
+            scale = np.clip(scale, 0.7, 1.4)
+
+            # Target position: X centered under eyes, Y at destination nose position
+            dst_vertical_offset = dst_nose_center[1] - dst_eyes_center[1]
+            target_center = np.array([
+                dst_eyes_center[0],
+                dst_eyes_center[1] + dst_vertical_offset
+            ])
+
+            # Combine part and context indices for warping
+            all_indices = list(set(part_indices + context_indices))
+
+            # Get source and destination points
+            src_points = []
+            dst_points = []
+            for idx in all_indices:
+                if idx < len(src_landmarks) and idx < len(base_landmarks):
+                    src_points.append(src_landmarks[idx])
+                    dst_points.append(base_landmarks[idx])
+
+            if len(src_points) < 4:
+                return None
+
+            src_points = np.array(src_points, dtype=np.float32)
+            dst_points = np.array(dst_points, dtype=np.float32)
+
+            # Create rotation matrix
+            cos_a = np.cos(rotation_angle)
+            sin_a = np.sin(rotation_angle)
+            R = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+
+            # Transform source points:
+            # 1. Center around source nose center
+            src_centered = src_points - src_nose_center
+            # 2. Rotate to align centerlines
+            src_rotated = (src_centered @ R.T)
+            # 3. Scale
+            src_scaled = src_rotated * scale
+            # 4. Translate to target position
+            aligned_src_points = src_scaled + target_center
+
+            # Apply same transformation to source image
+            M = cv2.getRotationMatrix2D(
+                (float(src_nose_center[0]), float(src_nose_center[1])),
+                np.degrees(-rotation_angle),
+                scale
+            )
+            # Adjust translation to move to target center
+            M[0, 2] += target_center[0] - src_nose_center[0] * scale * cos_a - \
+                       src_nose_center[1] * scale * (-sin_a)
+            M[1, 2] += target_center[1] - src_nose_center[0] * scale * sin_a - \
+                       src_nose_center[1] * scale * cos_a
+
+            aligned_src = cv2.warpAffine(
+                src_img, M, (w, h),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_REPLICATE
+            )
+
+            # Warp for fine-grained adjustment
+            warped_src = self._rbf_warp(
+                aligned_src,
+                aligned_src_points.astype(np.float32),
+                dst_points,
+                (w, h)
+            )
+
+            # Create mask
+            mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
+
+            if mask.sum() == 0:
+                return None
+
+            # Enhanced color transfer for nose
+            warped_src = self._nose_color_transfer(warped_src, base_img, mask)
+
+            # Multi-band blend with more levels for smoother transition
+            result = self._multiband_blend(base_img, warped_src, mask, num_levels=5)
+
+            return result
+
+        except (IndexError, KeyError, TypeError) as e:
+            print(f"Warning: Eye-center nose alignment failed: {e}")
             return None
 
-        # Calculate nose geometry for angle and scale
-        _, src_angle, src_scale = self._calculate_nose_geometry(src_landmarks)
-        _, dst_angle, dst_scale = self._calculate_nose_geometry(base_landmarks)
+    def _nose_color_transfer(
+        self,
+        src: np.ndarray,
+        tgt: np.ndarray,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Transfer color from target to source for nose blending.
 
-        # Combine part and context indices for warping
-        all_indices = list(set(part_indices + context_indices))
-
-        # Get source and destination points for warping
-        src_points = []
-        dst_points = []
-        for idx in all_indices:
-            if idx < len(src_landmarks) and idx < len(base_landmarks):
-                src_points.append(src_landmarks[idx])
-                dst_points.append(base_landmarks[idx])
-
-        if len(src_points) < 4:
-            return None
-
-        src_points = np.array(src_points, dtype=np.float32)
-        dst_points = np.array(dst_points, dtype=np.float32)
-
-        # Calculate pose-aware scale (nose appears narrower when face is turned)
-        yaw_scale_factor = np.cos(src_yaw) / max(np.cos(dst_yaw), 0.5)
-        yaw_scale_factor = np.clip(yaw_scale_factor, 0.8, 1.25)
-
-        adjusted_scale = src_scale * yaw_scale_factor
-
-        # Align with pose compensation
-        aligned_src = self._align_with_pose_compensation(
-            src_img,
-            src_centroid, src_angle, adjusted_scale,
-            dst_centroid, dst_angle, dst_scale,
-            src_yaw, dst_yaw,
-            (w, h)
-        )
-
-        # Transform points with same compensation
-        aligned_src_points = self._transform_points_with_pose(
-            src_points,
-            src_centroid, src_angle, adjusted_scale,
-            dst_centroid, dst_angle, dst_scale,
-            src_yaw, dst_yaw
-        )
-
-        # Warp for fine-grained adjustment
-        warped_src = self._rbf_warp(aligned_src, aligned_src_points, dst_points, (w, h))
-
-        # Create mask
-        mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
-
+        Uses LAB color space for better perceptual matching and
+        applies stronger blending for the nose area.
+        """
         if mask.sum() == 0:
-            return None
+            return src
 
-        # Color transfer and blending
-        warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
-        result = self._multiband_blend(base_img, warped_src, mask, num_levels=4)
+        result = src.copy()
+
+        # Convert to LAB color space
+        src_lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB).astype(np.float32)
+        tgt_lab = cv2.cvtColor(tgt, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+        # Expand mask for statistics computation
+        kernel = np.ones((15, 15), np.uint8)
+        stat_mask = cv2.dilate(mask, kernel, iterations=2)
+        mask_bool = stat_mask > 127
+
+        if not np.any(mask_bool):
+            return src
+
+        # Process each channel
+        for i in range(3):
+            src_channel = src_lab[:, :, i]
+            tgt_channel = tgt_lab[:, :, i]
+
+            src_masked = src_channel[mask_bool]
+            tgt_masked = tgt_channel[mask_bool]
+
+            if len(src_masked) == 0 or len(tgt_masked) == 0:
+                continue
+
+            # Use median and IQR for robust statistics
+            src_median = np.median(src_masked)
+            src_p25, src_p75 = np.percentile(src_masked, [25, 75])
+            src_iqr = max(src_p75 - src_p25, 1.0)
+
+            tgt_median = np.median(tgt_masked)
+            tgt_p25, tgt_p75 = np.percentile(tgt_masked, [25, 75])
+            tgt_iqr = max(tgt_p75 - tgt_p25, 1.0)
+
+            # Scale factor with stronger matching for L channel
+            scale = np.clip(tgt_iqr / src_iqr, 0.5, 2.0)
+            if i == 0:  # L channel - stronger adjustment
+                scale = np.clip(scale, 0.7, 1.5)
+
+            # Transfer color
+            transferred = (src_channel - src_median) * scale + tgt_median
+
+            # Apply with mask blending
+            blend_mask = mask.astype(np.float32) / 255.0
+            src_lab[:, :, i] = src_channel * (1 - blend_mask) + transferred * blend_mask
+
+        src_lab = np.clip(src_lab, 0, 255).astype(np.uint8)
+        result = cv2.cvtColor(src_lab, cv2.COLOR_LAB2BGR)
 
         return result
 
