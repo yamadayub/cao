@@ -1,13 +1,40 @@
-"""Face morphing service using OpenCV."""
+"""Face morphing service using OpenCV with landmark-based warping."""
 
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+from scipy.interpolate import RBFInterpolator
 
 from app.services.face_detection import get_face_detection_service
+
+logger = logging.getLogger(__name__)
+
+# MediaPipe Face Mesh landmark indices for face regions
+# These define the face oval/boundary
+FACE_OVAL_LANDMARKS = [
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109
+]
+
+# Forehead region (above eyebrows, below hairline)
+FOREHEAD_LANDMARKS = [
+    10, 338, 297, 332, 284, 251, 389, 356,  # Top of face oval
+    109, 67, 103, 54, 21, 162, 127, 234,    # Continue around
+    # Eyebrow top points
+    107, 66, 105, 63, 70,  # Left eyebrow
+    336, 296, 334, 293, 300,  # Right eyebrow
+]
+
+# Hair/background region landmarks (outside face but inside image)
+HAIR_REGION_LANDMARKS = [
+    # Top of head (estimated positions above face oval)
+    10, 151, 9, 8, 168, 6, 197, 195, 5,
+]
 
 
 def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int) -> List[Tuple[int, int, int]]:
@@ -22,24 +49,19 @@ def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int)
     Returns:
         List of triangles as (idx1, idx2, idx3) tuples
     """
-    # Create subdivision
     rect = (0, 0, w, h)
     subdiv = cv2.Subdiv2D(rect)
 
-    # Add points to subdivision (clamped to image bounds)
     point_to_idx = {}
     for idx, (x, y) in enumerate(points):
-        # Clamp points to image boundaries
         x = max(0, min(w - 1, x))
         y = max(0, min(h - 1, y))
         try:
             subdiv.insert((x, y))
             point_to_idx[(int(x), int(y))] = idx
         except cv2.error:
-            # Skip points that cause issues
             pass
 
-    # Get triangles
     triangles = subdiv.getTriangleList()
     triangle_indices = []
 
@@ -48,9 +70,7 @@ def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int)
         pt2 = (int(t[2]), int(t[3]))
         pt3 = (int(t[4]), int(t[5]))
 
-        # Check if triangle is inside image and we have indices for all points
         if all(0 <= pt[0] < w and 0 <= pt[1] < h for pt in [pt1, pt2, pt3]):
-            # Find corresponding indices
             idx1 = point_to_idx.get(pt1)
             idx2 = point_to_idx.get(pt2)
             idx3 = point_to_idx.get(pt3)
@@ -61,111 +81,67 @@ def get_triangulation_indices(points: List[Tuple[float, float]], w: int, h: int)
     return triangle_indices
 
 
-def apply_affine_transform(
+def warp_triangle(
     src: np.ndarray,
-    src_tri: np.ndarray,
-    dst_tri: np.ndarray,
-    size: Tuple[int, int],
-) -> np.ndarray:
+    img_out: np.ndarray,
+    t_src: np.ndarray,
+    t_dst: np.ndarray,
+) -> None:
     """
-    Apply affine transformation to warp a triangular region.
+    Warp a single triangle from source to destination.
+
+    Unlike morph_triangle, this does NOT blend two images - it only warps
+    one source image to the destination position.
 
     Args:
         src: Source image
-        src_tri: Source triangle vertices
-        dst_tri: Destination triangle vertices
-        size: Output size (width, height)
-
-    Returns:
-        Warped image patch
+        img_out: Output image (modified in place)
+        t_src: Triangle vertices in source image
+        t_dst: Triangle vertices in destination (output) image
     """
-    # Find bounding rectangle for destination triangle
-    r_dst = cv2.boundingRect(np.array([dst_tri], dtype=np.float32))
-    x, y, w, h = r_dst
+    # Find bounding rectangles
+    r_src = cv2.boundingRect(np.array([t_src], dtype=np.float32))
+    r_dst = cv2.boundingRect(np.array([t_dst], dtype=np.float32))
 
-    # Offset destination triangle
-    dst_tri_offset = dst_tri - np.array([x, y], dtype=np.float32)
+    # Offset triangles
+    t_src_offset = [(t_src[i][0] - r_src[0], t_src[i][1] - r_src[1]) for i in range(3)]
+    t_dst_offset = [(t_dst[i][0] - r_dst[0], t_dst[i][1] - r_dst[1]) for i in range(3)]
 
-    # Find affine transform
+    # Get source patch
+    patch = src[r_src[1]:r_src[1]+r_src[3], r_src[0]:r_src[0]+r_src[2]]
+
+    if patch.size == 0:
+        return
+
+    # Warp patch
+    size = (r_dst[2], r_dst[3])
     warp_mat = cv2.getAffineTransform(
-        np.float32(src_tri),
-        np.float32(dst_tri_offset)
+        np.float32(t_src_offset),
+        np.float32(t_dst_offset)
     )
-
-    # Apply affine transform
-    dst = cv2.warpAffine(
-        src,
+    warped = cv2.warpAffine(
+        patch,
         warp_mat,
-        (w, h),
+        size,
         None,
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_REFLECT_101,
     )
 
-    return dst
-
-
-def morph_triangle(
-    img1: np.ndarray,
-    img2: np.ndarray,
-    img_out: np.ndarray,
-    t1: np.ndarray,
-    t2: np.ndarray,
-    t_out: np.ndarray,
-    alpha: float,
-) -> None:
-    """
-    Morph a single triangle from two images.
-
-    Args:
-        img1: First source image
-        img2: Second source image
-        img_out: Output image (modified in place)
-        t1: Triangle vertices in img1
-        t2: Triangle vertices in img2
-        t_out: Triangle vertices in output image
-        alpha: Blend factor (0.0 = img1, 1.0 = img2)
-    """
-    # Find bounding rectangles
-    r1 = cv2.boundingRect(np.array([t1], dtype=np.float32))
-    r2 = cv2.boundingRect(np.array([t2], dtype=np.float32))
-    r_out = cv2.boundingRect(np.array([t_out], dtype=np.float32))
-
-    # Offset triangles
-    t1_offset = [(t1[i][0] - r1[0], t1[i][1] - r1[1]) for i in range(3)]
-    t2_offset = [(t2[i][0] - r2[0], t2[i][1] - r2[1]) for i in range(3)]
-    t_out_offset = [(t_out[i][0] - r_out[0], t_out[i][1] - r_out[1]) for i in range(3)]
-
-    # Get patches
-    patch1 = img1[r1[1]:r1[1]+r1[3], r1[0]:r1[0]+r1[2]]
-    patch2 = img2[r2[1]:r2[1]+r2[3], r2[0]:r2[0]+r2[2]]
-
-    if patch1.size == 0 or patch2.size == 0:
-        return
-
-    # Warp patches
-    size = (r_out[2], r_out[3])
-
-    warp1 = apply_affine_transform(patch1, np.float32(t1_offset), np.float32(t_out_offset), size)
-    warp2 = apply_affine_transform(patch2, np.float32(t2_offset), np.float32(t_out_offset), size)
-
-    # Blend warped patches
-    img_patch = (1 - alpha) * warp1 + alpha * warp2
-
     # Create mask
-    mask = np.zeros((r_out[3], r_out[2], 3), dtype=np.float32)
-    cv2.fillConvexPoly(mask, np.int32(t_out_offset), (1.0, 1.0, 1.0), 16, 0)
+    mask = np.zeros((r_dst[3], r_dst[2], 3), dtype=np.float32)
+    cv2.fillConvexPoly(mask, np.int32(t_dst_offset), (1.0, 1.0, 1.0), 16, 0)
 
     # Copy to output
-    y1, y2 = r_out[1], r_out[1] + r_out[3]
-    x1, x2 = r_out[0], r_out[0] + r_out[2]
+    y1, y2 = r_dst[1], r_dst[1] + r_dst[3]
+    x1, x2 = r_dst[0], r_dst[0] + r_dst[2]
 
     if y2 <= img_out.shape[0] and x2 <= img_out.shape[1] and y2 > y1 and x2 > x1:
-        img_out[y1:y2, x1:x2] = img_out[y1:y2, x1:x2] * (1 - mask) + img_patch * mask
+        img_out[y1:y2, x1:x2] = img_out[y1:y2, x1:x2] * (1 - mask) + warped * mask
 
 
 class MorphingService:
-    """Service for morphing faces between two images."""
+    """Service for morphing faces using landmark-based warping."""
 
     def __init__(self):
         """Initialize morphing service."""
@@ -182,24 +158,28 @@ class MorphingService:
         """
         Morph between two face images.
 
+        Key approach:
+        1. Compute intermediate landmark positions (linear interpolation)
+        2. Warp the CURRENT image to intermediate positions (for hair/background)
+        3. Warp the IDEAL image to intermediate positions (for facial features)
+        4. Blend based on face region mask
+        5. Apply color correction for seamless blending
+
         Args:
-            img1: First image (BGR format)
-            img2: Second image (BGR format)
+            img1: Current image (BGR format) - hair will come from this
+            img2: Ideal image (BGR format) - face features will be warped toward this
             progress: Morphing progress (0.0 = img1, 1.0 = img2)
             img1_label: Label for img1 in error messages
             img2_label: Label for img2 in error messages
 
         Returns:
             Morphed image (BGR format)
-
-        Raises:
-            ImageValidationError: If face detection fails
         """
         # Get landmarks for both images
         points1, w1, h1 = self.face_service.get_landmark_points(img1, img1_label)
         points2, w2, h2 = self.face_service.get_landmark_points(img2, img2_label)
 
-        # Resize images to common size
+        # Resize to common size
         out_w = max(w1, w2)
         out_h = max(h1, h2)
 
@@ -211,48 +191,52 @@ class MorphingService:
             img2 = cv2.resize(img2, (out_w, out_h))
             points2 = [(x * out_w / w2, y * out_h / h2) for x, y in points2]
 
-        # Add corner points for better coverage
+        # Add corner and edge points
         corner_points = [
-            (0, 0),
-            (out_w - 1, 0),
-            (out_w - 1, out_h - 1),
-            (0, out_h - 1),
-            (out_w // 2, 0),
-            (out_w // 2, out_h - 1),
-            (0, out_h // 2),
-            (out_w - 1, out_h // 2),
+            (0, 0), (out_w - 1, 0), (out_w - 1, out_h - 1), (0, out_h - 1),
+            (out_w // 2, 0), (out_w // 2, out_h - 1),
+            (0, out_h // 2), (out_w - 1, out_h // 2),
+            # Additional edge points for better hair coverage
+            (out_w // 4, 0), (3 * out_w // 4, 0),
+            (0, out_h // 4), (out_w - 1, out_h // 4),
         ]
-        points1 = points1 + corner_points
-        points2 = points2 + corner_points
+        points1_full = list(points1) + corner_points
+        points2_full = list(points2) + corner_points
 
-        # Calculate intermediate points
-        points_out = [
+        # Compute intermediate positions
+        points_mid = [
             ((1 - progress) * p1[0] + progress * p2[0],
              (1 - progress) * p1[1] + progress * p2[1])
-            for p1, p2 in zip(points1, points2)
+            for p1, p2 in zip(points1_full, points2_full)
         ]
 
-        # Get triangulation
-        triangles = get_triangulation_indices(points_out, out_w, out_h)
+        # Warp current image (img1) to intermediate positions
+        # This gives us the hair and background
+        img1_warped = self._warp_image_rbf(
+            img1, points1_full, points_mid, (out_w, out_h)
+        )
 
-        # Create output image
-        img_out = np.zeros((out_h, out_w, 3), dtype=np.float32)
-        img1_float = img1.astype(np.float32)
-        img2_float = img2.astype(np.float32)
+        # Warp ideal image (img2) to intermediate positions
+        # This gives us the facial features at the target shape
+        img2_warped = self._warp_image_rbf(
+            img2, points2_full, points_mid, (out_w, out_h)
+        )
 
-        # Morph each triangle
-        for t_idx in triangles:
-            try:
-                t1 = np.array([points1[i] for i in t_idx], dtype=np.float32)
-                t2 = np.array([points2[i] for i in t_idx], dtype=np.float32)
-                t_out = np.array([points_out[i] for i in t_idx], dtype=np.float32)
+        # Create the morphed face mask at intermediate position
+        face_mask_mid = self._create_face_mask(points_mid[:len(points1)], (out_h, out_w))
 
-                morph_triangle(img1_float, img2_float, img_out, t1, t2, t_out, progress)
-            except (IndexError, cv2.error):
-                # Skip problematic triangles
-                continue
+        # Apply color transfer from img1 to img2_warped within face region
+        img2_color_matched = self._color_transfer_face(
+            img2_warped, img1_warped, face_mask_mid
+        )
 
-        return np.uint8(np.clip(img_out, 0, 255))
+        # Blend: use img1_warped for hair/background, img2_color_matched for face
+        # The blend factor is controlled by progress
+        result = self._blend_with_mask(
+            img1_warped, img2_color_matched, face_mask_mid, progress
+        )
+
+        return result
 
     def morph_stages(
         self,
@@ -275,7 +259,7 @@ class MorphingService:
         Returns:
             List of (progress, morphed_image) tuples
         """
-        # Pre-compute landmarks once
+        # Get landmarks once
         points1, w1, h1 = self.face_service.get_landmark_points(img1, img1_label)
         points2, w2, h2 = self.face_service.get_landmark_points(img2, img2_label)
 
@@ -283,7 +267,6 @@ class MorphingService:
         out_w = max(w1, w2)
         out_h = max(h1, h2)
 
-        # Resize if needed
         if w1 != out_w or h1 != out_h:
             img1 = cv2.resize(img1, (out_w, out_h))
             points1 = [(x * out_w / w1, y * out_h / h1) for x, y in points1]
@@ -292,52 +275,338 @@ class MorphingService:
             img2 = cv2.resize(img2, (out_w, out_h))
             points2 = [(x * out_w / w2, y * out_h / h2) for x, y in points2]
 
-        # Add corner points
+        # Add corner and edge points
         corner_points = [
-            (0, 0),
-            (out_w - 1, 0),
-            (out_w - 1, out_h - 1),
-            (0, out_h - 1),
-            (out_w // 2, 0),
-            (out_w // 2, out_h - 1),
-            (0, out_h // 2),
-            (out_w - 1, out_h // 2),
+            (0, 0), (out_w - 1, 0), (out_w - 1, out_h - 1), (0, out_h - 1),
+            (out_w // 2, 0), (out_w // 2, out_h - 1),
+            (0, out_h // 2), (out_w - 1, out_h // 2),
+            (out_w // 4, 0), (3 * out_w // 4, 0),
+            (0, out_h // 4), (out_w - 1, out_h // 4),
         ]
-        points1 = points1 + corner_points
-        points2 = points2 + corner_points
-
-        img1_float = img1.astype(np.float32)
-        img2_float = img2.astype(np.float32)
+        points1_full = list(points1) + corner_points
+        points2_full = list(points2) + corner_points
 
         results = []
         for progress in stages:
-            # Calculate intermediate points
-            points_out = [
+            logger.info(f"Generating morph stage: {progress:.0%}")
+
+            # Compute intermediate positions
+            points_mid = [
                 ((1 - progress) * p1[0] + progress * p2[0],
                  (1 - progress) * p1[1] + progress * p2[1])
-                for p1, p2 in zip(points1, points2)
+                for p1, p2 in zip(points1_full, points2_full)
             ]
 
-            # Get triangulation
-            triangles = get_triangulation_indices(points_out, out_w, out_h)
+            # Warp both images
+            img1_warped = self._warp_image_rbf(
+                img1, points1_full, points_mid, (out_w, out_h)
+            )
+            img2_warped = self._warp_image_rbf(
+                img2, points2_full, points_mid, (out_w, out_h)
+            )
 
-            # Create output
-            img_out = np.zeros((out_h, out_w, 3), dtype=np.float32)
+            # Face mask at intermediate position
+            face_mask_mid = self._create_face_mask(points_mid[:len(points1)], (out_h, out_w))
 
-            # Morph triangles
-            for t_idx in triangles:
-                try:
-                    t1 = np.array([points1[i] for i in t_idx], dtype=np.float32)
-                    t2 = np.array([points2[i] for i in t_idx], dtype=np.float32)
-                    t_out = np.array([points_out[i] for i in t_idx], dtype=np.float32)
+            # Color transfer and blend
+            img2_color_matched = self._color_transfer_face(
+                img2_warped, img1_warped, face_mask_mid
+            )
 
-                    morph_triangle(img1_float, img2_float, img_out, t1, t2, t_out, progress)
-                except (IndexError, cv2.error):
-                    continue
+            result = self._blend_with_mask(
+                img1_warped, img2_color_matched, face_mask_mid, progress
+            )
 
-            results.append((progress, np.uint8(np.clip(img_out, 0, 255))))
+            results.append((progress, result))
 
         return results
+
+    def _create_face_mask(
+        self,
+        landmarks: List[Tuple[float, float]],
+        img_shape: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Create a soft face mask from landmarks.
+
+        Args:
+            landmarks: Face landmarks
+            img_shape: (height, width)
+
+        Returns:
+            Soft mask (0-255, uint8)
+        """
+        h, w = img_shape
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Get face oval points
+        oval_points = []
+        for idx in FACE_OVAL_LANDMARKS:
+            if idx < len(landmarks):
+                x, y = landmarks[idx]
+                oval_points.append([int(x), int(y)])
+
+        if len(oval_points) < 3:
+            return mask
+
+        # Fill face oval
+        oval_points = np.array(oval_points, dtype=np.int32)
+        hull = cv2.convexHull(oval_points)
+        cv2.fillConvexPoly(mask, hull, 255)
+
+        # Expand slightly and blur for soft edges
+        kernel = np.ones((7, 7), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=2)
+        mask = cv2.GaussianBlur(mask, (31, 31), 0)
+
+        return mask
+
+    def _warp_image_rbf(
+        self,
+        img: np.ndarray,
+        src_points: List[Tuple[float, float]],
+        dst_points: List[Tuple[float, float]],
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """
+        Warp image using RBF interpolation.
+
+        Args:
+            img: Source image
+            src_points: Source landmark positions
+            dst_points: Destination landmark positions
+            output_size: (width, height)
+
+        Returns:
+            Warped image
+        """
+        w, h = output_size
+        src_pts = np.array(src_points, dtype=np.float32)
+        dst_pts = np.array(dst_points, dtype=np.float32)
+
+        try:
+            # Create RBF interpolators for inverse mapping (dst -> src)
+            rbf_x = RBFInterpolator(
+                dst_pts, src_pts[:, 0],
+                kernel='thin_plate_spline', smoothing=1.0
+            )
+            rbf_y = RBFInterpolator(
+                dst_pts, src_pts[:, 1],
+                kernel='thin_plate_spline', smoothing=1.0
+            )
+        except Exception as e:
+            logger.warning(f"RBF interpolation failed: {e}, falling back to affine")
+            return self._warp_image_affine(img, src_pts, dst_pts, output_size)
+
+        # Create output grid
+        grid_y, grid_x = np.mgrid[0:h, 0:w]
+        grid_points = np.column_stack([grid_x.ravel(), grid_y.ravel()])
+
+        # Compute source coordinates
+        map_x = rbf_x(grid_points).reshape(h, w).astype(np.float32)
+        map_y = rbf_y(grid_points).reshape(h, w).astype(np.float32)
+
+        # Warp image
+        warped = cv2.remap(
+            img, map_x, map_y,
+            cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+        )
+
+        return warped
+
+    def _warp_image_affine(
+        self,
+        img: np.ndarray,
+        src_points: np.ndarray,
+        dst_points: np.ndarray,
+        output_size: Tuple[int, int],
+    ) -> np.ndarray:
+        """Fallback affine warping."""
+        w, h = output_size
+
+        transform, _ = cv2.estimateAffinePartial2D(
+            src_points, dst_points, method=cv2.RANSAC
+        )
+
+        if transform is None:
+            return cv2.resize(img, (w, h))
+
+        return cv2.warpAffine(
+            img, transform, (w, h),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE
+        )
+
+    def _color_transfer_face(
+        self,
+        src: np.ndarray,
+        ref: np.ndarray,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Transfer color from reference to source within masked region.
+
+        Args:
+            src: Source image (to be color-corrected)
+            ref: Reference image (color reference)
+            mask: Face mask
+
+        Returns:
+            Color-corrected source image
+        """
+        if mask.sum() == 0:
+            return src
+
+        result = src.copy()
+
+        # Convert to LAB
+        src_lab = cv2.cvtColor(src, cv2.COLOR_BGR2LAB).astype(np.float32)
+        ref_lab = cv2.cvtColor(ref, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+        mask_bool = mask > 127
+
+        if not np.any(mask_bool):
+            return src
+
+        # Transfer each channel
+        for i in range(3):
+            src_channel = src_lab[:, :, i]
+            ref_channel = ref_lab[:, :, i]
+
+            src_masked = src_channel[mask_bool]
+            ref_masked = ref_channel[mask_bool]
+
+            if len(src_masked) == 0 or len(ref_masked) == 0:
+                continue
+
+            # Robust statistics
+            src_median = np.median(src_masked)
+            src_p25, src_p75 = np.percentile(src_masked, [25, 75])
+            src_iqr = max(src_p75 - src_p25, 1.0)
+
+            ref_median = np.median(ref_masked)
+            ref_p25, ref_p75 = np.percentile(ref_masked, [25, 75])
+            ref_iqr = max(ref_p75 - ref_p25, 1.0)
+
+            # Scale factor
+            scale = np.clip(ref_iqr / src_iqr, 0.5, 2.0)
+
+            # Transfer
+            transferred = (src_channel - src_median) * scale + ref_median
+
+            # Apply with mask blending
+            blend_mask = mask.astype(np.float32) / 255.0
+            src_lab[:, :, i] = src_channel * (1 - blend_mask) + transferred * blend_mask
+
+        src_lab = np.clip(src_lab, 0, 255).astype(np.uint8)
+        result = cv2.cvtColor(src_lab, cv2.COLOR_LAB2BGR)
+
+        return result
+
+    def _blend_with_mask(
+        self,
+        img_bg: np.ndarray,
+        img_face: np.ndarray,
+        face_mask: np.ndarray,
+        progress: float,
+    ) -> np.ndarray:
+        """
+        Blend background and face images using mask.
+
+        For hair/background: always use img_bg (current image)
+        For face region: blend img_bg and img_face based on progress
+
+        Args:
+            img_bg: Background/hair image (current image warped)
+            img_face: Face image (ideal image warped and color-matched)
+            face_mask: Face region mask
+            progress: Morphing progress (0=img_bg, 1=img_face)
+
+        Returns:
+            Blended result
+        """
+        # Normalize mask
+        mask_float = face_mask.astype(np.float32) / 255.0
+        mask_3ch = np.dstack([mask_float, mask_float, mask_float])
+
+        # Convert to float
+        bg_float = img_bg.astype(np.float32)
+        face_float = img_face.astype(np.float32)
+
+        # Compute face blend based on progress
+        # At progress=0: 100% current (img_bg)
+        # At progress=1: 100% ideal (img_face)
+        face_blend = (1 - progress) * bg_float + progress * face_float
+
+        # Final blend: face region from face_blend, background from img_bg
+        result = bg_float * (1 - mask_3ch) + face_blend * mask_3ch
+
+        # Multi-band blending for smooth transitions
+        result = self._multiband_blend(img_bg, result.astype(np.uint8), face_mask)
+
+        return result
+
+    def _multiband_blend(
+        self,
+        base: np.ndarray,
+        overlay: np.ndarray,
+        mask: np.ndarray,
+        num_levels: int = 4,
+    ) -> np.ndarray:
+        """
+        Multi-band (Laplacian pyramid) blending for seamless transitions.
+        """
+        if base.shape != overlay.shape:
+            overlay = cv2.resize(overlay, (base.shape[1], base.shape[0]))
+
+        mask_float = mask.astype(np.float32) / 255.0
+        mask_3ch = np.dstack([mask_float, mask_float, mask_float])
+
+        # Build Gaussian pyramid for mask
+        mask_pyramid = [mask_3ch]
+        current_mask = mask_3ch
+        for _ in range(num_levels):
+            current_mask = cv2.pyrDown(current_mask)
+            mask_pyramid.append(current_mask)
+
+        # Build Laplacian pyramid for base
+        base_lap = []
+        current = base.astype(np.float32)
+        for _ in range(num_levels):
+            down = cv2.pyrDown(current)
+            up = cv2.pyrUp(down, dstsize=(current.shape[1], current.shape[0]))
+            lap = current - up
+            base_lap.append(lap)
+            current = down
+        base_lap.append(current)
+
+        # Build Laplacian pyramid for overlay
+        overlay_lap = []
+        current = overlay.astype(np.float32)
+        for _ in range(num_levels):
+            down = cv2.pyrDown(current)
+            up = cv2.pyrUp(down, dstsize=(current.shape[1], current.shape[0]))
+            lap = current - up
+            overlay_lap.append(lap)
+            current = down
+        overlay_lap.append(current)
+
+        # Blend pyramids
+        blended_lap = []
+        for i in range(num_levels + 1):
+            m = mask_pyramid[min(i, len(mask_pyramid) - 1)]
+            if m.shape[:2] != base_lap[i].shape[:2]:
+                m = cv2.resize(m, (base_lap[i].shape[1], base_lap[i].shape[0]))
+            blended = overlay_lap[i] * m + base_lap[i] * (1 - m)
+            blended_lap.append(blended)
+
+        # Reconstruct
+        result = blended_lap[-1]
+        for i in range(num_levels - 1, -1, -1):
+            result = cv2.pyrUp(result, dstsize=(blended_lap[i].shape[1], blended_lap[i].shape[0]))
+            result = result + blended_lap[i]
+
+        return np.clip(result, 0, 255).astype(np.uint8)
 
 
 # Global instance
