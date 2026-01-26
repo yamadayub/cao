@@ -7,7 +7,6 @@ Provides accurate pixel-level segmentation of facial parts:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -93,7 +92,8 @@ class FaceParsingService:
 
         # Fallback: try to load PyTorch model
         try:
-            import torch
+            import torch  # noqa: I001
+
             from .bisenet_model import BiSeNet
 
             # Check for PyTorch model

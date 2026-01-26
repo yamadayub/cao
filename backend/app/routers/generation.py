@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
 from app.models.schemas import (

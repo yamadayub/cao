@@ -22,7 +22,11 @@ from app.services.face_detection import (
     get_face_detection_service,
 )
 from app.services.morphing import MorphingService, get_morphing_service
-from app.services.part_blender import PartBlender, PartsSelection, get_part_blender_service
+from app.services.part_blender import (
+    PartBlender,
+    PartsSelection,
+    get_part_blender_service,
+)
 from app.utils.image import bytes_to_cv2, cv2_to_base64
 
 logger = logging.getLogger(__name__)
@@ -202,7 +206,7 @@ class GenerationPipeline:
         try:
             image_bytes = base64.b64decode(data)
         except Exception as e:
-            raise PipelineError(f"Invalid base64 encoding for {label} image: {e}")
+            raise PipelineError(f"Invalid base64 encoding for {label} image: {e}") from e
 
         img = bytes_to_cv2(image_bytes)
         if img is None:
