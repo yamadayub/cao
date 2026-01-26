@@ -254,10 +254,11 @@ describe('SimulatePage', () => {
 
       const currentFile = createMockFile('current.jpg', 'image/jpeg', 1024)
       const idealFile = createMockFile('ideal.jpg', 'image/jpeg', 1024)
-      const inputs = document.querySelectorAll('input[type="file"]')
+      const currentInput = screen.getByTestId('current-image-input')
+      const idealInput = screen.getByTestId('ideal-image-input')
 
-      fireEvent.change(inputs[0], { target: { files: [currentFile] } })
-      fireEvent.change(inputs[1], { target: { files: [idealFile] } })
+      fireEvent.change(currentInput, { target: { files: [currentFile] } })
+      fireEvent.change(idealInput, { target: { files: [idealFile] } })
 
       await waitFor(() => {
         expect(screen.getByAltText('現在の顔のプレビュー')).toBeInTheDocument()
@@ -288,10 +289,11 @@ describe('SimulatePage', () => {
 
       const currentFile = createMockFile('current.jpg', 'image/jpeg', 1024)
       const idealFile = createMockFile('ideal.jpg', 'image/jpeg', 1024)
-      const inputs = document.querySelectorAll('input[type="file"]')
+      const currentInput = screen.getByTestId('current-image-input')
+      const idealInput = screen.getByTestId('ideal-image-input')
 
-      fireEvent.change(inputs[0], { target: { files: [currentFile] } })
-      fireEvent.change(inputs[1], { target: { files: [idealFile] } })
+      fireEvent.change(currentInput, { target: { files: [currentFile] } })
+      fireEvent.change(idealInput, { target: { files: [idealFile] } })
 
       await waitFor(() => {
         expect(screen.getByAltText('現在の顔のプレビュー')).toBeInTheDocument()
@@ -311,10 +313,11 @@ describe('SimulatePage', () => {
 
       const currentFile = createMockFile('current.jpg', 'image/jpeg', 1024)
       const idealFile = createMockFile('ideal.jpg', 'image/jpeg', 1024)
-      const inputs = document.querySelectorAll('input[type="file"]')
+      const currentInput = screen.getByTestId('current-image-input')
+      const idealInput = screen.getByTestId('ideal-image-input')
 
-      fireEvent.change(inputs[0], { target: { files: [currentFile] } })
-      fireEvent.change(inputs[1], { target: { files: [idealFile] } })
+      fireEvent.change(currentInput, { target: { files: [currentFile] } })
+      fireEvent.change(idealInput, { target: { files: [idealFile] } })
 
       await waitFor(() => {
         expect(screen.getByAltText('現在の顔のプレビュー')).toBeInTheDocument()
@@ -335,10 +338,11 @@ describe('SimulatePage', () => {
 
       const currentFile = createMockFile('current.jpg', 'image/jpeg', 1024)
       const idealFile = createMockFile('ideal.jpg', 'image/jpeg', 1024)
-      const inputs = document.querySelectorAll('input[type="file"]')
+      const currentInput = screen.getByTestId('current-image-input')
+      const idealInput = screen.getByTestId('ideal-image-input')
 
-      fireEvent.change(inputs[0], { target: { files: [currentFile] } })
-      fireEvent.change(inputs[1], { target: { files: [idealFile] } })
+      fireEvent.change(currentInput, { target: { files: [currentFile] } })
+      fireEvent.change(idealInput, { target: { files: [idealFile] } })
 
       await waitFor(() => {
         expect(screen.getByAltText('現在の顔のプレビュー')).toBeInTheDocument()
@@ -364,10 +368,11 @@ describe('SimulatePage', () => {
 
       const currentFile = createMockFile('current.jpg', 'image/jpeg', 1024)
       const idealFile = createMockFile('ideal.jpg', 'image/jpeg', 1024)
-      const inputs = document.querySelectorAll('input[type="file"]')
+      const currentInput = screen.getByTestId('current-image-input')
+      const idealInput = screen.getByTestId('ideal-image-input')
 
-      fireEvent.change(inputs[0], { target: { files: [currentFile] } })
-      fireEvent.change(inputs[1], { target: { files: [idealFile] } })
+      fireEvent.change(currentInput, { target: { files: [currentFile] } })
+      fireEvent.change(idealInput, { target: { files: [idealFile] } })
 
       await waitFor(() => {
         expect(screen.getByAltText('現在の顔のプレビュー')).toBeInTheDocument()
