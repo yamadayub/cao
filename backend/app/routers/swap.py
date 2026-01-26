@@ -6,14 +6,9 @@ Provides endpoints for:
 - Previewing all parts at once
 """
 
-import asyncio
 import base64
 import logging
-import uuid
-from typing import Optional
 
-import cv2
-import numpy as np
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -21,19 +16,19 @@ from app.models.schemas import (
     ErrorCodes,
     ErrorDetail,
     ErrorResponse,
+    SwapGenerateData,
     SwapGenerateRequest,
     SwapGenerateResponse,
-    SwapGenerateData,
+    SwapPartsData,
     SwapPartsRequest,
     SwapPartsResponse,
-    SwapPartsData,
+    SwapPreviewAllData,
     SwapPreviewAllRequest,
     SwapPreviewAllResponse,
-    SwapPreviewAllData,
     SwapResultData,
     SwapResultResponse,
 )
-from app.services.replicate_client import get_replicate_client, ReplicateError
+from app.services.replicate_client import ReplicateError, get_replicate_client
 from app.services.swap_cache import get_swap_cache
 from app.services.swap_compositor import get_swap_compositor
 from app.utils.image import bytes_to_cv2, cv2_to_base64
@@ -62,7 +57,7 @@ def _decode_base64_image(b64_string: str) -> bytes:
     try:
         return base64.b64decode(b64_string)
     except Exception as e:
-        raise ValueError(f"Invalid base64 encoding: {e}")
+        raise ValueError(f"Invalid base64 encoding: {e}") from e
 
 
 def _encode_bytes_to_base64(image_bytes: bytes) -> str:

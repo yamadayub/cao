@@ -10,7 +10,6 @@ from typing import Dict, Optional
 import cv2
 import numpy as np
 
-from app.services.face_detection import get_face_detection_service
 from app.services.part_blender import PartBlender, PartsSelection
 
 logger = logging.getLogger(__name__)

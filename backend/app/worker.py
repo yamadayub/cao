@@ -25,7 +25,7 @@ import logging
 import signal
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Configure logging before imports
 logging.basicConfig(
