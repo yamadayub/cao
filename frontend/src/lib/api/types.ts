@@ -37,7 +37,8 @@ export type ErrorCode =
   | 'RATE_LIMITED'
   | 'UNAUTHORIZED'
   | 'NOT_FOUND'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'JOB_FAILED';
 
 /**
  * エラー詳細
@@ -297,6 +298,62 @@ export interface PartsBlendData {
 
 export type PartsBlendResponse = SuccessResponse<PartsBlendData>;
 
+// =============================================================================
+// Generation Jobs (非同期ジョブAPI)
+// =============================================================================
+
+/**
+ * ジョブ生成モード
+ */
+export type GenerationMode = 'morph' | 'parts';
+
+/**
+ * ジョブステータス
+ */
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+/**
+ * ジョブ作成リクエスト
+ */
+export interface CreateGenerationJobRequest {
+  base_image: string;      // Base64エンコード
+  target_image: string;    // Base64エンコード
+  mode: GenerationMode;
+  parts?: string[];        // mode='parts'の場合必須
+  strength?: number;       // 0-1、デフォルト0.5
+  seed?: number;
+}
+
+/**
+ * ジョブステータスデータ
+ */
+export interface GenerationJobStatus {
+  job_id: string;
+  status: JobStatus;
+  progress: number;        // 0-100
+  result_image_url: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export type CreateGenerationJobResponse = SuccessResponse<GenerationJobStatus>;
+export type GenerationJobStatusResponse = SuccessResponse<GenerationJobStatus>;
+
+/**
+ * ジョブ結果データ
+ */
+export interface GenerationResultData {
+  job_id: string;
+  image: string;           // Base64エンコード
+  format: 'png';
+  mode: GenerationMode;
+  strength: number;
+}
+
+export type GenerationResultResponse = SuccessResponse<GenerationResultData>;
+
 /**
  * パーツ表示名マッピング
  */
@@ -327,6 +384,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   UNAUTHORIZED: 'ログインが必要です',
   NOT_FOUND: '指定されたデータが見つかりません',
   INTERNAL_ERROR: 'サーバーエラーが発生しました。しばらく待ってから再度お試しください',
+  JOB_FAILED: '生成ジョブが失敗しました。再度お試しください',
 };
 
 /**

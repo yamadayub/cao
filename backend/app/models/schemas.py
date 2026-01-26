@@ -320,3 +320,77 @@ class ErrorCodes:
     UNAUTHORIZED = "UNAUTHORIZED"
     NOT_FOUND = "NOT_FOUND"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+    JOB_FAILED = "JOB_FAILED"
+
+
+# ============================================
+# Generation Job Schemas
+# ============================================
+
+
+class GenerationMode(BaseModel):
+    """Generation mode enum-like constants."""
+
+    MORPH: str = "morph"
+    PARTS: str = "parts"
+
+
+class CreateGenerationJobRequest(BaseModel):
+    """Request to create a generation job."""
+
+    base_image: str = Field(..., description="Base64 encoded base face image")
+    target_image: str = Field(..., description="Base64 encoded target/ideal face image")
+    mode: Literal["morph", "parts"] = Field(..., description="Generation mode: 'morph' or 'parts'")
+    parts: Optional[List[str]] = Field(
+        None,
+        description="For mode='parts': list of parts to blend ['left_eye', 'right_eye', 'left_eyebrow', 'right_eyebrow', 'nose', 'lips']",
+    )
+    strength: Optional[float] = Field(
+        0.5, ge=0, le=1, description="Blend strength (0=base, 1=target)"
+    )
+    seed: Optional[int] = Field(None, description="Random seed for reproducibility")
+
+
+class GenerationJobStatus(BaseModel):
+    """Generation job status data."""
+
+    job_id: str = Field(..., description="Unique job identifier")
+    status: Literal["queued", "running", "succeeded", "failed"] = Field(
+        ..., description="Current job status"
+    )
+    progress: int = Field(0, ge=0, le=100, description="Processing progress percentage")
+    result_image_url: Optional[str] = Field(
+        None, description="Result image URL (when succeeded)"
+    )
+    error: Optional[str] = Field(None, description="Error message (when failed)")
+    created_at: datetime = Field(..., description="Job creation timestamp")
+    started_at: Optional[datetime] = Field(None, description="Processing start time")
+    completed_at: Optional[datetime] = Field(None, description="Completion time")
+
+
+class CreateGenerationJobResponse(SuccessResponse[GenerationJobStatus]):
+    """Response for job creation."""
+
+    pass
+
+
+class GenerationJobStatusResponse(SuccessResponse[GenerationJobStatus]):
+    """Response for job status query."""
+
+    pass
+
+
+class GenerationResultData(BaseModel):
+    """Generation result data."""
+
+    job_id: str = Field(..., description="Job identifier")
+    image: str = Field(..., description="Base64 encoded result image")
+    format: Literal["png"] = Field(default="png", description="Image format")
+    mode: Literal["morph", "parts"] = Field(..., description="Generation mode used")
+    strength: float = Field(..., description="Strength value used")
+
+
+class GenerationResultResponse(SuccessResponse[GenerationResultData]):
+    """Response for generation result."""
+
+    pass

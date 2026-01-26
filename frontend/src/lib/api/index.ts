@@ -80,6 +80,12 @@ export type {
   ShareResponse,
   SharedSimulationData,
   SharedSimulationResponse,
+  // Generation Jobs
+  GenerationMode,
+  JobStatus,
+  CreateGenerationJobRequest,
+  GenerationJobStatus,
+  GenerationResultData,
 } from './types';
 export { ERROR_MESSAGES, getErrorMessage } from './types';
 
@@ -95,3 +101,14 @@ export {
   createShareUrl,
   getSharedSimulation,
 } from './simulations';
+
+// 非同期生成ジョブAPI
+export {
+  createGenerationJob,
+  getJobStatus,
+  getJobResult,
+  waitForJobCompletion,
+  generateAndWait,
+  base64ToFile,
+  fileToBase64,
+} from './generation';
