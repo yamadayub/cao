@@ -1,6 +1,9 @@
 """Pytest configuration and fixtures."""
 
 import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
 
 
 def pytest_configure(config):
@@ -12,3 +15,15 @@ def pytest_configure(config):
 def anyio_backend():
     """Use asyncio as the async backend."""
     return "asyncio"
+
+
+@pytest.fixture
+def client():
+    """Create a test client for the FastAPI app."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def api_base_url():
+    """Base URL for API endpoints."""
+    return "/api/v1"
