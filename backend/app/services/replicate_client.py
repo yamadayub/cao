@@ -104,10 +104,16 @@ class ReplicateClient:
                     },
                 )
 
-                # Output is a URL to the result image
+                # Output can be a URL string, FileOutput object, or list
                 result_url = output
                 if isinstance(output, list) and len(output) > 0:
                     result_url = output[0]
+
+                # Handle FileOutput object (newer replicate library versions)
+                if hasattr(result_url, 'url'):
+                    result_url = result_url.url
+                elif not isinstance(result_url, str):
+                    result_url = str(result_url)
 
                 logger.info(f"Face swap completed, downloading result from: {result_url}")
 
