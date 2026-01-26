@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 
+# Register pytest-asyncio plugin
+pytest_plugins = ["pytest_asyncio"]
+
 
 def pytest_configure(config):
     """Configure pytest."""
