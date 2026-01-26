@@ -7,10 +7,11 @@ import { Footer } from '@/components/layout/Footer'
 import { ResultSlider } from '@/components/features/ResultSlider'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
-import { morphStages, blendParts, toDataUrl, type BlendMethod } from '@/lib/api/morph'
+import { type BlendMethod } from '@/lib/api/morph'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
+import { generateAndWait } from '@/lib/api/generation'
 import { ApiError } from '@/lib/api/client'
-import type { StageImage, PartsSelection } from '@/lib/api/types'
+import type { PartsSelection, GenerationJobStatus } from '@/lib/api/types'
 import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
 
@@ -35,6 +36,8 @@ interface ResultState {
   images: ImageData[]
   currentProgress: number
   isLoading: boolean
+  loadingProgress: number // ジョブ進捗 0-100
+  loadingMessage: string  // 進捗メッセージ
   error: string | null
   isSaving: boolean
   isSharing: boolean
@@ -168,6 +171,8 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
     images: [],
     currentProgress: 0.5,
     isLoading: true,
+    loadingProgress: 0,
+    loadingMessage: '',
     error: null,
     isSaving: false,
     isSharing: false,
@@ -207,7 +212,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [state.images, state.currentProgress])
 
   /**
-   * モーフィング画像を生成
+   * モーフィング画像を生成（非同期ジョブAPI使用）
    */
   const generateMorphImages = useCallback(async () => {
     const { currentImage, idealImage } = getStoredImages()
@@ -223,26 +228,69 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
 
     setSourceImages({ currentImage, idealImage })
 
-    setState((prev) => ({ ...prev, isLoading: true, error: null }))
+    setState((prev) => ({
+      ...prev,
+      isLoading: true,
+      loadingProgress: 0,
+      loadingMessage: 'ジョブを作成中...',
+      error: null
+    }))
 
     try {
-      // Data URLをFileに変換
-      const currentFile = dataUrlToFile(currentImage, 'current.png')
-      const idealFile = dataUrlToFile(idealImage, 'ideal.png')
+      // Base64データを取得（Data URLプレフィックスを除去）
+      const base64Current = currentImage.startsWith('data:')
+        ? currentImage.split(',')[1]
+        : currentImage
+      const base64Ideal = idealImage.startsWith('data:')
+        ? idealImage.split(',')[1]
+        : idealImage
 
-      // 段階的モーフィングAPIを呼び出し
-      const result = await morphStages(currentFile, idealFile)
+      // 複数の段階を生成するために、各段階でジョブを実行
+      const stages = [0, 0.25, 0.5, 0.75, 1.0]
+      const generatedImages: ImageData[] = []
 
-      // 結果を状態に設定
-      const images: ImageData[] = result.images.map((img: StageImage) => ({
-        progress: img.progress,
-        image: toDataUrl(img.image),
-      }))
+      for (let i = 0; i < stages.length; i++) {
+        const stage = stages[i]
+
+        setState((prev) => ({
+          ...prev,
+          loadingProgress: Math.round((i / stages.length) * 100),
+          loadingMessage: `シミュレーション生成中 (${i + 1}/${stages.length})...`,
+        }))
+
+        // 非同期ジョブAPIを使用
+        const result = await generateAndWait({
+          base_image: base64Current,
+          target_image: base64Ideal,
+          mode: 'morph',
+          strength: stage,
+        }, {
+          onProgress: (status: GenerationJobStatus) => {
+            const baseProgress = (i / stages.length) * 100
+            const stageProgress = (status.progress / 100) * (100 / stages.length)
+            setState((prev) => ({
+              ...prev,
+              loadingProgress: Math.round(baseProgress + stageProgress),
+            }))
+          },
+        })
+
+        if (result.result_image_url) {
+          generatedImages.push({
+            progress: stage,
+            image: result.result_image_url.startsWith('data:')
+              ? result.result_image_url
+              : `data:image/png;base64,${result.result_image_url}`,
+          })
+        }
+      }
 
       setState((prev) => ({
         ...prev,
-        images,
+        images: generatedImages,
         isLoading: false,
+        loadingProgress: 100,
+        loadingMessage: '',
         error: null,
       }))
     } catch (error) {
@@ -258,6 +306,8 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       setState((prev) => ({
         ...prev,
         isLoading: false,
+        loadingProgress: 0,
+        loadingMessage: '',
         error: errorMessage,
       }))
     }
@@ -454,7 +504,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [])
 
   /**
-   * パーツブレンド実行ハンドラ
+   * パーツブレンド実行ハンドラ（非同期ジョブAPI使用）
    */
   const handlePartsBlend = useCallback(async () => {
     const { currentImage, idealImage } = sourceImages
@@ -480,24 +530,38 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
     setPartsBlendState((prev) => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      // Data URLをFileに変換
-      const currentFile = dataUrlToFile(currentImage, 'current.png')
-      const idealFile = dataUrlToFile(idealImage, 'ideal.png')
+      // Base64データを取得（Data URLプレフィックスを除去）
+      const base64Current = currentImage.startsWith('data:')
+        ? currentImage.split(',')[1]
+        : currentImage
+      const base64Ideal = idealImage.startsWith('data:')
+        ? idealImage.split(',')[1]
+        : idealImage
 
-      // パーツブレンドAPIを呼び出し（選択されたメソッドを使用）
-      const result = await blendParts(
-        currentFile,
-        idealFile,
-        partsBlendState.selection,
-        partsBlendState.method
-      )
+      // 選択されたパーツを配列に変換
+      const selectedParts = (Object.entries(partsBlendState.selection) as [keyof PartsSelection, boolean][])
+        .filter(([, isSelected]) => isSelected)
+        .map(([part]) => part)
 
-      setPartsBlendState((prev) => ({
-        ...prev,
-        image: toDataUrl(result.image),
-        isLoading: false,
-        error: null,
-      }))
+      // 非同期ジョブAPIを使用（パーツモード）
+      const result = await generateAndWait({
+        base_image: base64Current,
+        target_image: base64Ideal,
+        mode: 'parts',
+        parts: selectedParts,
+        strength: 0.7,
+      })
+
+      if (result.result_image_url) {
+        setPartsBlendState((prev) => ({
+          ...prev,
+          image: result.result_image_url!.startsWith('data:')
+            ? result.result_image_url
+            : `data:image/png;base64,${result.result_image_url}`,
+          isLoading: false,
+          error: null,
+        }))
+      }
     } catch (error) {
       console.error('Parts blend error:', error)
 
@@ -514,7 +578,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         error: errorMessage,
       }))
     }
-  }, [sourceImages, partsBlendState.selection, partsBlendState.method])
+  }, [sourceImages, partsBlendState.selection])
 
   /**
    * 選択されたパーツの表示名リストを取得
@@ -577,15 +641,28 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
             </div>
           )}
 
-          {/* ローディング表示 */}
+          {/* ローディング表示（進捗付き） */}
           {state.isLoading && (
             <div
               className="flex flex-col items-center justify-center py-16"
               data-testid="loading"
             >
               <div className="w-12 h-12 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-4"></div>
-              <p className="text-neutral-700 text-base font-serif">シミュレーション画像を生成中...</p>
-              <p className="text-neutral-500 text-sm mt-2">しばらくお待ちください</p>
+              <p className="text-neutral-700 text-base font-serif">
+                {state.loadingMessage || 'シミュレーション画像を生成中...'}
+              </p>
+              {/* 進捗バー */}
+              <div className="w-64 mt-4">
+                <div className="bg-neutral-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${state.loadingProgress}%` }}
+                  />
+                </div>
+                <p className="text-neutral-500 text-sm mt-2 text-center">
+                  {state.loadingProgress}%
+                </p>
+              </div>
             </div>
           )}
 
