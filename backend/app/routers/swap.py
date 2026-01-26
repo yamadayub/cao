@@ -72,7 +72,7 @@ def _encode_bytes_to_base64(image_bytes: bytes) -> str:
     return base64.b64encode(image_bytes).decode("utf-8")
 
 
-@router.post("/generate", response_model=SwapGenerateResponse)
+@router.post("/generate", response_model=SwapResultResponse)
 async def generate_swap(
     request: Request,
     data: SwapGenerateRequest,
@@ -112,10 +112,10 @@ async def generate_swap(
         cached_result = cache.get(cache_key)
         if cached_result is not None:
             logger.info(f"Cache hit for swap request: {cache_key[:16]}...")
-            return SwapGenerateResponse(
-                data=SwapGenerateData(
-                    job_id=cache_key[:16],
+            return SwapResultResponse(
+                data=SwapResultData(
                     status="completed",
+                    swapped_image=_encode_bytes_to_base64(cached_result),
                 )
             )
 
@@ -132,10 +132,11 @@ async def generate_swap(
 
             logger.info(f"Swap completed and cached: {cache_key[:16]}...")
 
-            return SwapGenerateResponse(
-                data=SwapGenerateData(
-                    job_id=cache_key[:16],
+            # Return result directly with swapped image
+            return SwapResultResponse(
+                data=SwapResultData(
                     status="completed",
+                    swapped_image=_encode_bytes_to_base64(result_bytes),
                 )
             )
 

@@ -27,7 +27,6 @@
 import { apiPost, apiGet } from './client';
 import {
   SwapGenerateRequest,
-  SwapGenerateData,
   SwapResultData,
   SwapPartsRequest,
   SwapPartsData,
@@ -38,35 +37,27 @@ import {
 } from './types';
 
 /**
- * デフォルトのポーリング間隔（ミリ秒）
- */
-const DEFAULT_POLL_INTERVAL = 2000;
-
-/**
- * デフォルトの最大待機時間（ミリ秒）
- */
-const DEFAULT_MAX_WAIT_TIME = 120000; // 2分
-
-/**
- * Face Swapジョブを開始
+ * Face Swapを実行
  *
  * @param request - 現在の画像と理想の画像（Base64）
- * @returns ジョブIDとステータス
+ * @returns ステータスとスワップ結果画像
  *
  * @example
  * ```typescript
- * const job = await generateSwap({
+ * const result = await generateSwap({
  *   current_image: base64Current,
  *   ideal_image: base64Ideal,
  * });
- * console.log('Job started:', job.job_id);
+ * if (result.status === 'completed') {
+ *   const imgSrc = `data:image/png;base64,${result.swapped_image}`;
+ * }
  * ```
  */
 export async function generateSwap(
   request: SwapGenerateRequest
-): Promise<SwapGenerateData> {
-  return apiPost<SwapGenerateData>('/api/v1/swap/generate', request, {
-    timeout: 60000, // 60秒
+): Promise<SwapResultData> {
+  return apiPost<SwapResultData>('/api/v1/swap/generate', request, {
+    timeout: 120000, // 120秒（Replicate APIの処理時間を考慮）
   });
 }
 
@@ -89,70 +80,12 @@ export async function getSwapResult(jobId: string): Promise<SwapResultData> {
 }
 
 /**
- * Face Swap完了まで待機
+ * Face Swapを実行（同期的に完了まで待機）
  *
- * @param jobId - ジョブID
- * @param options - ポーリングオプション
- * @returns 完了時の結果データ
- * @throws Error - タイムアウトまたはジョブ失敗時
- *
- * @example
- * ```typescript
- * const result = await waitForSwapCompletion(job.job_id, {
- *   onProgress: (status) => console.log('Status:', status),
- * });
- * ```
- */
-export async function waitForSwapCompletion(
-  jobId: string,
-  options: {
-    pollInterval?: number;
-    maxWaitTime?: number;
-    onProgress?: (status: SwapJobStatus) => void;
-  } = {}
-): Promise<SwapResultData> {
-  const {
-    pollInterval = DEFAULT_POLL_INTERVAL,
-    maxWaitTime = DEFAULT_MAX_WAIT_TIME,
-    onProgress,
-  } = options;
-
-  const startTime = Date.now();
-
-  while (true) {
-    const result = await getSwapResult(jobId);
-
-    // プログレスコールバック
-    if (onProgress) {
-      onProgress(result.status);
-    }
-
-    // 終了状態をチェック
-    if (result.status === 'completed') {
-      return result;
-    }
-
-    if (result.status === 'failed') {
-      throw new Error(result.error || 'Face swap job failed');
-    }
-
-    // タイムアウトチェック
-    if (Date.now() - startTime > maxWaitTime) {
-      throw new Error('Face swap job timed out');
-    }
-
-    // 次のポーリングまで待機
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
-  }
-}
-
-/**
- * Face Swapを実行し完了まで待機
- *
- * generateSwap + waitForSwapCompletion を組み合わせた便利関数
+ * generateSwapのエイリアス。以前のポーリングAPIとの互換性のため提供。
  *
  * @param request - リクエストデータ
- * @param options - ポーリングオプション
+ * @param options - コールバックオプション（互換性のため）
  * @returns 完了時の結果データ（swapped_image含む）
  *
  * @example
@@ -160,8 +93,6 @@ export async function waitForSwapCompletion(
  * const result = await swapAndWait({
  *   current_image: base64Current,
  *   ideal_image: base64Ideal,
- * }, {
- *   onProgress: (status) => setStatus(status),
  * });
  * setSwappedImage(result.swapped_image);
  * ```
@@ -169,21 +100,23 @@ export async function waitForSwapCompletion(
 export async function swapAndWait(
   request: SwapGenerateRequest,
   options: {
-    pollInterval?: number;
-    maxWaitTime?: number;
     onProgress?: (status: SwapJobStatus) => void;
   } = {}
 ): Promise<SwapResultData> {
-  // ジョブ開始
-  const job = await generateSwap(request);
-
-  // 初期プログレスコールバック
+  // コールバックがあれば開始を通知
   if (options.onProgress) {
-    options.onProgress(job.status);
+    options.onProgress('processing');
   }
 
-  // 完了まで待機
-  return waitForSwapCompletion(job.job_id, options);
+  // 同期的にSwapを実行（結果が直接返される）
+  const result = await generateSwap(request);
+
+  // 完了を通知
+  if (options.onProgress) {
+    options.onProgress(result.status);
+  }
+
+  return result;
 }
 
 /**

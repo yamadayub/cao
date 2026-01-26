@@ -127,7 +127,6 @@ export {
 export {
   generateSwap,
   getSwapResult,
-  waitForSwapCompletion,
   swapAndWait,
   applySwapParts,
   previewAllParts,
