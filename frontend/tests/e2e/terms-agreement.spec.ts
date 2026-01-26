@@ -5,6 +5,9 @@ import { test, expect } from '@playwright/test'
  *
  * 参照: /tests/e2e/specs/terms-agreement.spec.md
  * 参照: functional-spec.md セクション 3.3 利用規約同意モーダル
+ *
+ * Note: The simulate page starts on step 1 (ideal image upload),
+ * so we use ideal-image-dropzone for these tests.
  */
 test.describe('利用規約同意', () => {
   /**
@@ -16,8 +19,11 @@ test.describe('利用規約同意', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
 
-    // When: 「現在の顔」アップロードエリアをクリック
-    await page.getByTestId('current-image-dropzone').click()
+    // Wait for the page to be ready
+    await expect(page.getByTestId('ideal-image-dropzone')).toBeVisible()
+
+    // When: 「理想の顔」アップロードエリアをクリック (step 1)
+    await page.getByTestId('ideal-image-dropzone').click()
 
     // Then: 利用規約同意モーダルが表示される
     await expect(page.getByTestId('terms-agreement-modal')).toBeVisible()
@@ -40,8 +46,11 @@ test.describe('利用規約同意', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
 
+    // Wait for the page to be ready
+    await expect(page.getByTestId('ideal-image-dropzone')).toBeVisible()
+
     // モーダルを開く
-    await page.getByTestId('current-image-dropzone').click()
+    await page.getByTestId('ideal-image-dropzone').click()
     await expect(page.getByTestId('terms-agreement-modal')).toBeVisible()
 
     // When: チェックボックスをクリックして同意にチェック
@@ -71,7 +80,11 @@ test.describe('利用規約同意', () => {
     await page.goto('/simulate')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await page.getByTestId('current-image-dropzone').click()
+
+    // Wait for the page to be ready
+    await expect(page.getByTestId('ideal-image-dropzone')).toBeVisible()
+
+    await page.getByTestId('ideal-image-dropzone').click()
     await expect(page.getByTestId('terms-agreement-modal')).toBeVisible()
 
     // When: 「利用規約を読む」リンクをクリック
@@ -100,11 +113,14 @@ test.describe('利用規約同意', () => {
     })
     await page.reload()
 
+    // Wait for the page to be ready
+    await expect(page.getByTestId('ideal-image-dropzone')).toBeVisible()
+
     // Then: 利用規約同意バナーが表示されない
     await expect(page.getByTestId('terms-agreement-banner')).not.toBeVisible()
 
-    // When: アップロードエリアをクリック
-    await page.getByTestId('current-image-dropzone').click()
+    // When: アップロードエリアをクリック（理想の顔 - step 1）
+    await page.getByTestId('ideal-image-dropzone').click()
 
     // Then: モーダルは表示されない（ファイル選択ダイアログが開く想定）
     await expect(page.getByTestId('terms-agreement-modal')).not.toBeVisible()
@@ -118,7 +134,11 @@ test.describe('利用規約同意', () => {
     await page.goto('/simulate')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await page.getByTestId('current-image-dropzone').click()
+
+    // Wait for the page to be ready
+    await expect(page.getByTestId('ideal-image-dropzone')).toBeVisible()
+
+    await page.getByTestId('ideal-image-dropzone').click()
     await expect(page.getByTestId('terms-agreement-modal')).toBeVisible()
 
     // When: モーダルの外側（オーバーレイ）をクリック

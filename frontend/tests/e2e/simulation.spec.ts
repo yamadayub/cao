@@ -6,12 +6,41 @@ import path from 'path'
  *
  * 参照: /tests/e2e/specs/simulation.spec.md
  * 参照: functional-spec.md セクション 3.3, 3.4
+ *
+ * Note: The simulate page has a multi-step wizard flow:
+ * 1. Upload ideal image → click "次へ進む"
+ * 2. Select method (camera or upload)
+ * 3. Upload current image (if upload selected)
+ * 4. Review and generate
  */
 test.describe('シミュレーション生成', () => {
   const TEST_IMAGE_PATH = path.join(__dirname, 'fixtures/valid-face.jpg')
 
   /**
-   * 各テスト前に利用規約同意済み + 画像アップロード済みの状態を作る
+   * Helper: Navigate through the wizard to the review step
+   */
+  async function navigateToReviewStep(page: import('@playwright/test').Page, testImagePath: string) {
+    // Step 1: Upload ideal image
+    const idealInput = page.getByTestId('ideal-image-input')
+    await idealInput.setInputFiles(testImagePath)
+    await expect(page.getByTestId('ideal-image-preview')).toBeVisible()
+
+    // Click proceed button
+    await page.getByTestId('proceed-button').click()
+
+    // Step 2: Select upload method
+    await page.getByTestId('select-upload-button').click()
+
+    // Step 3: Upload current image
+    const currentInput = page.getByTestId('current-image-input')
+    await currentInput.setInputFiles(testImagePath)
+
+    // Should now be on review step
+    await expect(page.getByTestId('generate-button')).toBeVisible()
+  }
+
+  /**
+   * 各テスト前に利用規約同意済みの状態を作る
    */
   test.beforeEach(async ({ page }) => {
     await page.goto('/simulate')
@@ -25,11 +54,8 @@ test.describe('シミュレーション生成', () => {
    * シナリオ1: シミュレーション生成の正常フロー
    */
   test('両方の画像をアップロード後、シミュレーションを生成できる', async ({ page }) => {
-    // Given: 両方の画像をアップロード
-    const currentInput = page.getByTestId('current-image-input')
-    const idealInput = page.getByTestId('ideal-image-input')
-    await currentInput.setInputFiles(TEST_IMAGE_PATH)
-    await idealInput.setInputFiles(TEST_IMAGE_PATH)
+    // Given: Navigate through wizard to review step
+    await navigateToReviewStep(page, TEST_IMAGE_PATH)
 
     // 生成ボタンが活性化されている
     await expect(page.getByTestId('generate-button')).toBeEnabled()
@@ -45,11 +71,8 @@ test.describe('シミュレーション生成', () => {
    * 生成中はボタンが非活性化される
    */
   test('生成中はボタンが非活性化される', async ({ page }) => {
-    // Given: 両方の画像をアップロード
-    const currentInput = page.getByTestId('current-image-input')
-    const idealInput = page.getByTestId('ideal-image-input')
-    await currentInput.setInputFiles(TEST_IMAGE_PATH)
-    await idealInput.setInputFiles(TEST_IMAGE_PATH)
+    // Given: Navigate through wizard to review step
+    await navigateToReviewStep(page, TEST_IMAGE_PATH)
 
     // When: 生成ボタンをクリック
     await page.getByTestId('generate-button').click()
