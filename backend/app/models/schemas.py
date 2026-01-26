@@ -394,3 +394,94 @@ class GenerationResultResponse(SuccessResponse[GenerationResultData]):
     """Response for generation result."""
 
     pass
+
+
+# ============================================
+# Face Swap Schemas
+# ============================================
+
+
+class SwapGenerateRequest(BaseModel):
+    """Request to generate a face swap."""
+
+    current_image: str = Field(..., description="Base64 encoded current face image")
+    ideal_image: str = Field(..., description="Base64 encoded ideal face image")
+
+
+class SwapGenerateData(BaseModel):
+    """Face swap job data."""
+
+    job_id: str = Field(..., description="Unique job identifier")
+    status: Literal["pending", "processing", "completed", "failed"] = Field(
+        ..., description="Current job status"
+    )
+
+
+class SwapGenerateResponse(SuccessResponse[SwapGenerateData]):
+    """Response for face swap job creation."""
+
+    pass
+
+
+class SwapResultData(BaseModel):
+    """Face swap result data."""
+
+    status: Literal["pending", "processing", "completed", "failed"] = Field(
+        ..., description="Current job status"
+    )
+    swapped_image: Optional[str] = Field(
+        None, description="Base64 encoded swapped face image (when completed)"
+    )
+    error: Optional[str] = Field(None, description="Error message (when failed)")
+
+
+class SwapResultResponse(SuccessResponse[SwapResultData]):
+    """Response for face swap result."""
+
+    pass
+
+
+class SwapPartsRequest(BaseModel):
+    """Request to apply parts composition on swapped face."""
+
+    current_image: str = Field(..., description="Base64 encoded current/original face image")
+    swapped_image: str = Field(..., description="Base64 encoded swapped face image")
+    parts: dict[str, float] = Field(
+        ...,
+        description="Parts to apply with intensity: {'eyes': 0.8, 'nose': 1.0, 'lips': 0.5, ...}",
+    )
+
+
+class SwapPartsData(BaseModel):
+    """Swap parts composition result data."""
+
+    result_image: str = Field(..., description="Base64 encoded result image")
+
+
+class SwapPartsResponse(SuccessResponse[SwapPartsData]):
+    """Response for parts composition."""
+
+    pass
+
+
+class SwapPreviewAllRequest(BaseModel):
+    """Request to preview all parts at once."""
+
+    current_image: str = Field(..., description="Base64 encoded current/original face image")
+    swapped_image: str = Field(..., description="Base64 encoded swapped face image")
+    parts: dict[str, float] = Field(
+        ...,
+        description="Parts to apply with intensity: {'left_eye': 0.8, 'right_eye': 0.8, 'nose': 1.0, 'lips': 0.5, ...}",
+    )
+
+
+class SwapPreviewAllData(BaseModel):
+    """Preview all parts result data."""
+
+    result_image: str = Field(..., description="Base64 encoded result image")
+
+
+class SwapPreviewAllResponse(SuccessResponse[SwapPreviewAllData]):
+    """Response for preview all parts."""
+
+    pass

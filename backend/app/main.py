@@ -14,7 +14,7 @@ from slowapi.util import get_remote_address
 
 from app.config import get_settings
 from app.models.schemas import ErrorDetail, ErrorResponse
-from app.routers import analyze, blend, generation, health, morph, shared, simulations
+from app.routers import analyze, blend, generation, health, morph, shared, simulations, swap
 
 settings = get_settings()
 
@@ -104,6 +104,7 @@ app.include_router(blend.router, prefix="/api/v1")
 app.include_router(simulations.router, prefix="/api/v1")
 app.include_router(generation.router, prefix="/api/v1")
 app.include_router(shared.router, prefix="/api/v1")
+app.include_router(swap.router, prefix="/api/v1")
 
 
 @app.get("/")

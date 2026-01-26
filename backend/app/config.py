@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     max_image_size_mb: int = 10
     max_image_dimension: int = 2048
 
+    # Replicate API (Face Swap)
+    replicate_api_token: str = ""
+    swap_cache_ttl: int = 3600  # 1 hour
+    swap_cache_max_size: int = 100
+
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string."""

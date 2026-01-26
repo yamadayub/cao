@@ -4,6 +4,11 @@ Generation worker - processes jobs from the queue.
 This worker polls the database for queued jobs and processes them
 using the generation pipeline.
 
+Supports job modes:
+- morph: Full face morphing
+- parts: Selective parts blending
+- swap: Face swap using Replicate API
+
 Usage:
     python -m app.worker
 
@@ -14,11 +19,13 @@ Or run in the background:
 from __future__ import annotations
 
 import argparse
+import asyncio
+import base64
 import logging
 import signal
 import sys
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Configure logging before imports
 logging.basicConfig(
@@ -57,6 +64,8 @@ class Worker:
         # Lazy imports to avoid circular deps
         self._job_service = None
         self._pipeline = None
+        self._replicate_client = None
+        self._swap_cache = None
 
     @property
     def job_service(self):
@@ -75,6 +84,28 @@ class Worker:
 
             self._pipeline = get_generation_pipeline()
         return self._pipeline
+
+    @property
+    def replicate_client(self):
+        """Lazy load Replicate client."""
+        if self._replicate_client is None:
+            try:
+                from app.services.replicate_client import get_replicate_client
+
+                self._replicate_client = get_replicate_client()
+            except ValueError as e:
+                logger.warning(f"Replicate client not available: {e}")
+                return None
+        return self._replicate_client
+
+    @property
+    def swap_cache(self):
+        """Lazy load swap cache."""
+        if self._swap_cache is None:
+            from app.services.swap_cache import get_swap_cache
+
+            self._swap_cache = get_swap_cache()
+        return self._swap_cache
 
     def start(self):
         """Start the worker loop."""
@@ -136,6 +167,7 @@ class Worker:
     def _execute_job(self, job: Dict[str, Any]):
         """Execute a single job."""
         job_id = job["id"]
+        mode = job["mode"]
 
         def progress_callback(progress: int, message: str):
             """Update job progress."""
@@ -149,7 +181,12 @@ class Worker:
             except Exception as e:
                 logger.warning(f"Failed to update progress: {e}")
 
-        # Run pipeline
+        # Handle swap jobs separately
+        if mode == "swap":
+            self._execute_swap_job(job, progress_callback)
+            return
+
+        # Run pipeline for morph/parts jobs
         result = self.pipeline.generate(
             base_image_data=job["base_image_path"],
             target_image_data=job["target_image_path"],
@@ -171,6 +208,78 @@ class Worker:
         else:
             logger.error(f"Job {job_id} failed: {result.error}")
             self._fail_job(job_id, result.error or "Unknown error")
+
+    def _execute_swap_job(self, job: Dict[str, Any], progress_callback):
+        """Execute a swap job using Replicate API."""
+        job_id = job["id"]
+
+        progress_callback(10, "Starting swap job")
+
+        # Check if Replicate client is available
+        if self.replicate_client is None:
+            self._fail_job(job_id, "Replicate API not configured")
+            return
+
+        try:
+            # Decode images
+            base_image_b64 = job["base_image_path"]
+            target_image_b64 = job["target_image_path"]
+
+            # Check cache
+            cache_key = self.swap_cache.generate_key(base_image_b64, target_image_b64)
+            cached_result = self.swap_cache.get(cache_key)
+
+            if cached_result is not None:
+                logger.info(f"Cache hit for swap job {job_id}")
+                result_b64 = base64.b64encode(cached_result).decode("utf-8")
+                self.job_service.update_job_status(
+                    job_id,
+                    status="succeeded",
+                    progress=100,
+                    result_image_path=result_b64,
+                )
+                return
+
+            progress_callback(30, "Calling Replicate API")
+
+            # Decode base64 images to bytes
+            base_bytes = self._decode_base64(base_image_b64)
+            target_bytes = self._decode_base64(target_image_b64)
+
+            # Run swap using Replicate
+            result_bytes = asyncio.get_event_loop().run_until_complete(
+                self.replicate_client.run_faceswap(
+                    source_image=target_bytes,  # Face to swap FROM
+                    target_image=base_bytes,    # Face to swap ONTO
+                )
+            )
+
+            progress_callback(80, "Processing result")
+
+            # Cache the result
+            self.swap_cache.set(cache_key, result_bytes)
+
+            # Encode result
+            result_b64 = base64.b64encode(result_bytes).decode("utf-8")
+
+            logger.info(f"Swap job {job_id} succeeded")
+            self.job_service.update_job_status(
+                job_id,
+                status="succeeded",
+                progress=100,
+                result_image_path=result_b64,
+            )
+
+        except Exception as e:
+            logger.exception(f"Swap job {job_id} failed: {e}")
+            self._fail_job(job_id, str(e))
+
+    def _decode_base64(self, b64_string: str) -> bytes:
+        """Decode base64 string to bytes."""
+        # Remove data URL prefix if present
+        if "," in b64_string:
+            b64_string = b64_string.split(",", 1)[1]
+        return base64.b64decode(b64_string)
 
     def _fail_job(self, job_id: str, error: str):
         """Mark a job as failed."""
