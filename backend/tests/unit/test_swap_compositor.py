@@ -108,16 +108,11 @@ class TestSwapCompositor:
         # Result should be approximately 127 (middle value)
         assert 120 <= result.mean() <= 134
 
-    @patch("app.services.swap_compositor.get_face_detection_service")
     @patch("app.services.swap_compositor.PartBlender")
     def test_compose_parts_success(
-        self, mock_part_blender_cls, mock_get_face_detection, swap_compositor, sample_bgr_image
+        self, mock_part_blender_cls, swap_compositor, sample_bgr_image
     ):
         """Test successful parts composition."""
-        # Mock face detection
-        mock_detection_service = MagicMock()
-        mock_get_face_detection.return_value = mock_detection_service
-
         # Mock PartBlender
         mock_blender = MagicMock()
         mock_blender.blend.return_value = sample_bgr_image.copy()
