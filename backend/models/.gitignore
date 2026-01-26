@@ -1,0 +1,10 @@
+# Model files (too large for git)
+*.onnx
+*.pth
+*.pt
+*.bin
+*.safetensors
+
+# Keep README
+!README.md
+!.gitignore

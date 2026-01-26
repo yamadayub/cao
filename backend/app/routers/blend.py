@@ -36,9 +36,16 @@ async def blend_parts(
     ideal_image: Optional[UploadFile] = File(None),
     parts: Optional[str] = Form(None),
     method: Optional[str] = Form("auto"),
+    use_bisenet: Optional[bool] = Form(True),
+    use_seamless_clone: Optional[bool] = Form(True),
 ) -> JSONResponse:
     """
     Blend selected facial parts from ideal image onto current image.
+
+    Pipeline:
+    1. BiSeNet for semantic face segmentation (accurate part masks)
+    2. MediaPipe Face Mesh for landmark-based geometric transformation
+    3. OpenCV seamlessClone (Poisson blending) for natural blending
 
     Args:
         current_image: Current face image (base image)
@@ -46,6 +53,10 @@ async def blend_parts(
         parts: JSON string specifying which parts to blend
         method: Blending method - "2d", "3d", or "auto" (default: "auto")
                 "auto" uses 3D if available, falls back to 2D
+        use_bisenet: Use BiSeNet for mask generation (default: True)
+                     Falls back to landmark-based masks if unavailable
+        use_seamless_clone: Use Poisson blending (default: True)
+                            Falls back to multi-band blending if False
 
     Returns:
         Blended image with selected parts applied
@@ -170,8 +181,16 @@ async def blend_parts(
             logger.info("Using 3D blending method")
             blender = get_part_blender_3d_service()
         else:
-            logger.info("Using 2D blending method")
-            blender = get_part_blender_service()
+            logger.info(
+                f"Using 2D blending method (bisenet={use_bisenet}, seamless_clone={use_seamless_clone})"
+            )
+            # Reset to apply new configuration
+            from app.services.part_blender import reset_part_blender_service
+            reset_part_blender_service()
+            blender = get_part_blender_service(
+                use_bisenet=use_bisenet,
+                use_seamless_clone=use_seamless_clone,
+            )
 
         result_img = blender.blend(
             current_img,

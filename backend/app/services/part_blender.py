@@ -1,4 +1,8 @@
-"""Part-by-part face blending service."""
+"""Part-by-part face blending service.
+
+Uses BiSeNet for semantic segmentation, MediaPipe for landmark-based
+geometric transformation, and OpenCV seamlessClone for Poisson blending.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ from pydantic import BaseModel
 from scipy.interpolate import RBFInterpolator
 
 from app.services.face_detection import get_face_detection_service
+from app.services.face_parsing import get_face_parsing_service
 
 # MediaPipe Face Mesh landmark indices for each facial part
 # Reference: https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
@@ -251,11 +256,25 @@ class PartsSelection(BaseModel):
 
 
 class PartBlender:
-    """Service for blending specific facial parts from one face to another."""
+    """Service for blending specific facial parts from one face to another.
 
-    def __init__(self):
-        """Initialize part blender service."""
+    Uses a pipeline of:
+    1. BiSeNet for semantic face segmentation (accurate part masks)
+    2. MediaPipe Face Mesh for landmark-based geometric transformation
+    3. OpenCV seamlessClone (Poisson blending) for natural blending
+    """
+
+    def __init__(self, use_bisenet: bool = True, use_seamless_clone: bool = True):
+        """Initialize part blender service.
+
+        Args:
+            use_bisenet: Use BiSeNet for mask generation (falls back to landmarks if unavailable)
+            use_seamless_clone: Use Poisson blending instead of multi-band blending
+        """
         self.face_service = get_face_detection_service()
+        self.face_parsing = get_face_parsing_service()
+        self.use_bisenet = use_bisenet
+        self.use_seamless_clone = use_seamless_clone
 
     def blend(
         self,
@@ -343,7 +362,10 @@ class PartBlender:
         """
         Blend a single facial part from source to base image.
 
-        Uses centroid/angle alignment + RBF-based warping for natural shape adaptation.
+        Pipeline:
+        1. BiSeNet segmentation for accurate part mask (or landmark fallback)
+        2. MediaPipe landmarks for affine geometric transformation
+        3. OpenCV seamlessClone (Poisson blending) for natural blending
         """
         w, h = img_size
 
@@ -408,11 +430,23 @@ class PartBlender:
         # Warp the aligned source image for fine-grained adjustment
         warped_src = self._rbf_warp(aligned_src, aligned_src_points, dst_points, (w, h))
 
-        # Create soft mask for the part (with exclusions if applicable)
-        exclusion_indices = PART_EXCLUSION_LANDMARKS.get(part_name, [])
-        mask = self._create_soft_mask_with_exclusion(
-            base_landmarks, part_indices, exclusion_indices, (h, w)
-        )
+        # --- MASK GENERATION ---
+        # Use BiSeNet for accurate semantic segmentation if available
+        if self.use_bisenet and self.face_parsing.is_available():
+            # Get BiSeNet mask with dilation and soft edges
+            mask = self.face_parsing.get_part_mask(
+                base_img,
+                part_name,
+                landmarks=base_landmarks,
+                dilate_pixels=5,
+                blur_size=21
+            )
+        else:
+            # Fallback to landmark-based mask
+            exclusion_indices = PART_EXCLUSION_LANDMARKS.get(part_name, [])
+            mask = self._create_soft_mask_with_exclusion(
+                base_landmarks, part_indices, exclusion_indices, (h, w)
+            )
 
         if mask.sum() == 0:
             return base_img
@@ -424,12 +458,79 @@ class PartBlender:
         # Apply color correction to match skin tones
         warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
 
-        # Multi-band blend for natural transition
-        # Use more levels for lips for smoother blending
-        num_levels = 5 if part_name == "lips" else 4
-        result = self._multiband_blend(base_img, warped_src, mask, num_levels=num_levels)
+        # --- BLENDING ---
+        if self.use_seamless_clone:
+            # Use Poisson blending (seamlessClone) for natural blending
+            result = self._seamless_clone_blend(base_img, warped_src, mask, part_name)
+        else:
+            # Fallback to multi-band blending
+            num_levels = 5 if part_name == "lips" else 4
+            result = self._multiband_blend(base_img, warped_src, mask, num_levels=num_levels)
 
         return result
+
+    def _seamless_clone_blend(
+        self,
+        base_img: np.ndarray,
+        src_img: np.ndarray,
+        mask: np.ndarray,
+        part_name: str = "",
+    ) -> np.ndarray:
+        """
+        Blend using OpenCV seamlessClone (Poisson blending).
+
+        Args:
+            base_img: Destination/base image (BGR)
+            src_img: Source image with part to blend (BGR)
+            mask: Binary mask indicating blend region
+            part_name: Name of the part being blended
+
+        Returns:
+            Blended result image
+        """
+        # Ensure images are the same size
+        if base_img.shape != src_img.shape:
+            src_img = cv2.resize(src_img, (base_img.shape[1], base_img.shape[0]))
+
+        # Convert mask to binary for seamlessClone
+        mask_binary = (mask > 127).astype(np.uint8) * 255
+
+        # Find the center of the mask for seamlessClone
+        moments = cv2.moments(mask_binary)
+        if moments["m00"] == 0:
+            # Mask is empty, return base image
+            return base_img
+
+        cx = int(moments["m10"] / moments["m00"])
+        cy = int(moments["m01"] / moments["m00"])
+        center = (cx, cy)
+
+        # Ensure center is within image bounds
+        h, w = base_img.shape[:2]
+        cx = max(1, min(w - 2, cx))
+        cy = max(1, min(h - 2, cy))
+        center = (cx, cy)
+
+        # Ensure mask has content
+        if np.count_nonzero(mask_binary) < 10:
+            return base_img
+
+        try:
+            # Use NORMAL_CLONE for natural blending that preserves texture
+            # NORMAL_CLONE: preserves the src texture while matching dst colors
+            # MIXED_CLONE: tends to pick stronger edge from src or dst
+            result = cv2.seamlessClone(
+                src_img,
+                base_img,
+                mask_binary,
+                center,
+                cv2.NORMAL_CLONE
+            )
+            return result
+        except cv2.error as e:
+            # Fallback to alpha blending if seamlessClone fails
+            print(f"Warning: seamlessClone failed for {part_name}: {e}")
+            return self._alpha_blend_fallback(base_img, src_img, mask)
 
     def _estimate_face_yaw_2d(
         self,
@@ -622,8 +723,19 @@ class PartBlender:
                 (w, h)
             )
 
-            # Create mask using destination landmarks (target face shape)
-            mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
+            # --- MASK GENERATION ---
+            # Use BiSeNet for accurate nose segmentation if available
+            if self.use_bisenet and self.face_parsing.is_available():
+                mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    "nose",
+                    landmarks=base_landmarks,
+                    dilate_pixels=5,
+                    blur_size=21
+                )
+            else:
+                # Fallback to landmark-based mask
+                mask = self._create_soft_mask(base_landmarks, part_indices, (h, w))
 
             if mask.sum() == 0:
                 return None
@@ -631,8 +743,13 @@ class PartBlender:
             # Enhanced color transfer for nose
             warped_src = self._nose_color_transfer(warped_src, base_img, mask)
 
-            # Multi-band blend with more levels for smoother transition
-            result = self._multiband_blend(base_img, warped_src, mask, num_levels=5)
+            # --- BLENDING ---
+            if self.use_seamless_clone:
+                # Use Poisson blending for natural nose integration
+                result = self._seamless_clone_blend(base_img, warped_src, mask, "nose")
+            else:
+                # Fallback to multi-band blend
+                result = self._multiband_blend(base_img, warped_src, mask, num_levels=5)
 
             return result
 
@@ -1408,6 +1525,36 @@ class PartBlender:
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
+    def _alpha_blend_fallback(
+        self,
+        base_img: np.ndarray,
+        src_img: np.ndarray,
+        mask: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Simple alpha blending fallback when seamlessClone fails.
+
+        Args:
+            base_img: Destination/base image
+            src_img: Source image
+            mask: Blend mask (0-255)
+
+        Returns:
+            Blended image
+        """
+        if base_img.shape != src_img.shape:
+            src_img = cv2.resize(src_img, (base_img.shape[1], base_img.shape[0]))
+
+        # Normalize mask
+        alpha = mask.astype(np.float32) / 255.0
+        alpha = np.dstack([alpha, alpha, alpha])
+
+        # Alpha blend
+        result = (src_img.astype(np.float32) * alpha +
+                  base_img.astype(np.float32) * (1 - alpha))
+
+        return np.clip(result, 0, 255).astype(np.uint8)
+
     # Keep legacy methods for backward compatibility
     def _extract_part_mask(
         self,
@@ -1521,9 +1668,29 @@ class PartBlender:
 _part_blender_service: Optional[PartBlender] = None
 
 
-def get_part_blender_service() -> PartBlender:
-    """Get or create part blender service instance."""
+def get_part_blender_service(
+    use_bisenet: bool = True,
+    use_seamless_clone: bool = True,
+) -> PartBlender:
+    """Get or create part blender service instance.
+
+    Args:
+        use_bisenet: Use BiSeNet for mask generation
+        use_seamless_clone: Use Poisson blending instead of multi-band
+
+    Returns:
+        PartBlender service instance
+    """
     global _part_blender_service
     if _part_blender_service is None:
-        _part_blender_service = PartBlender()
+        _part_blender_service = PartBlender(
+            use_bisenet=use_bisenet,
+            use_seamless_clone=use_seamless_clone,
+        )
     return _part_blender_service
+
+
+def reset_part_blender_service():
+    """Reset the global part blender service (for testing/reconfiguration)."""
+    global _part_blender_service
+    _part_blender_service = None
