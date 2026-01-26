@@ -1,0 +1,23 @@
+# Cao Backend - Production Dependencies
+# Generated from pyproject.toml for Heroku deployment
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+opencv-python-headless>=4.9.0.80
+mediapipe==0.10.14
+pillow>=10.2.0
+pillow-heif>=0.16.0
+numpy>=1.26.0
+slowapi>=0.1.9
+python-dotenv>=1.0.0
+supabase>=2.0.0
+PyJWT>=2.8.0
+scipy>=1.11.0
+
+# Note: 3D Part Blending with depth estimation requires torch and transformers
+# These are optional - the 3D mode will work without depth if unavailable
+# To enable depth estimation locally, install:
+# pip install torch transformers accelerate
