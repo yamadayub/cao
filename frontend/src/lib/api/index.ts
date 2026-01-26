@@ -86,6 +86,16 @@ export type {
   CreateGenerationJobRequest,
   GenerationJobStatus,
   GenerationResultData,
+  // Face Swap
+  SwapJobStatus,
+  SwapGenerateRequest,
+  SwapGenerateData,
+  SwapResultData,
+  SwapPartsRequest,
+  SwapPartsData,
+  SwapPartsIntensity,
+  SwapPreviewAllRequest,
+  SwapPreviewAllData,
 } from './types';
 export { ERROR_MESSAGES, getErrorMessage } from './types';
 
@@ -112,3 +122,15 @@ export {
   base64ToFile,
   fileToBase64,
 } from './generation';
+
+// Face Swap API
+export {
+  generateSwap,
+  getSwapResult,
+  waitForSwapCompletion,
+  swapAndWait,
+  applySwapParts,
+  previewAllParts,
+  DEFAULT_PARTS_INTENSITY,
+  ZERO_PARTS_INTENSITY,
+} from './swap';

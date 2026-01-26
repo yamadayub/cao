@@ -393,3 +393,91 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
 export function getErrorMessage(code: ErrorCode): string {
   return ERROR_MESSAGES[code] || ERROR_MESSAGES.INTERNAL_ERROR;
 }
+
+// =============================================================================
+// Face Swap API
+// =============================================================================
+
+/**
+ * Face Swap ジョブステータス
+ */
+export type SwapJobStatus = 'pending' | 'processing' | 'completed' | 'failed';
+
+/**
+ * Face Swap 生成リクエスト
+ */
+export interface SwapGenerateRequest {
+  current_image: string;  // Base64エンコード
+  ideal_image: string;    // Base64エンコード
+}
+
+/**
+ * Face Swap 生成レスポンスデータ
+ */
+export interface SwapGenerateData {
+  job_id: string;
+  status: SwapJobStatus;
+}
+
+export type SwapGenerateResponse = SuccessResponse<SwapGenerateData>;
+
+/**
+ * Face Swap 結果データ
+ */
+export interface SwapResultData {
+  status: SwapJobStatus;
+  swapped_image: string | null;  // Base64エンコード（完了時）
+  error: string | null;
+}
+
+export type SwapResultResponse = SuccessResponse<SwapResultData>;
+
+/**
+ * パーツ強度指定（0.0-1.0）
+ */
+export interface SwapPartsIntensity {
+  left_eye?: number;
+  right_eye?: number;
+  left_eyebrow?: number;
+  right_eyebrow?: number;
+  nose?: number;
+  lips?: number;
+  eyes?: number;       // エイリアス: left_eye + right_eye
+  eyebrows?: number;   // エイリアス: left_eyebrow + right_eyebrow
+}
+
+/**
+ * Face Swap パーツ合成リクエスト
+ */
+export interface SwapPartsRequest {
+  current_image: string;   // Base64エンコード（オリジナル）
+  swapped_image: string;   // Base64エンコード（スワップ結果）
+  parts: SwapPartsIntensity;
+}
+
+/**
+ * Face Swap パーツ合成結果
+ */
+export interface SwapPartsData {
+  result_image: string;  // Base64エンコード
+}
+
+export type SwapPartsResponse = SuccessResponse<SwapPartsData>;
+
+/**
+ * Face Swap プレビュー全体リクエスト
+ */
+export interface SwapPreviewAllRequest {
+  current_image: string;
+  swapped_image: string;
+  parts: SwapPartsIntensity;
+}
+
+/**
+ * Face Swap プレビュー全体結果
+ */
+export interface SwapPreviewAllData {
+  result_image: string;
+}
+
+export type SwapPreviewAllResponse = SuccessResponse<SwapPreviewAllData>;

@@ -9,9 +9,9 @@ import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
 import { type BlendMethod } from '@/lib/api/morph'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
-import { generateAndWait } from '@/lib/api/generation'
+import { swapAndWait, applySwapParts } from '@/lib/api/swap'
 import { ApiError } from '@/lib/api/client'
-import type { PartsSelection, GenerationJobStatus } from '@/lib/api/types'
+import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
 import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
 
@@ -50,10 +50,23 @@ interface ResultState {
  */
 interface PartsBlendState {
   selection: PartsSelection
+  intensity: SwapPartsIntensity  // パーツごとの強度
   method: BlendMethod
   image: string | null
   isLoading: boolean
   error: string | null
+}
+
+/**
+ * デフォルトのパーツ強度（全て1.0）
+ */
+const defaultPartsIntensity: SwapPartsIntensity = {
+  left_eye: 1.0,
+  right_eye: 1.0,
+  left_eyebrow: 1.0,
+  right_eyebrow: 1.0,
+  nose: 1.0,
+  lips: 1.0,
 }
 
 /**
@@ -194,11 +207,15 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   // パーツブレンド状態
   const [partsBlendState, setPartsBlendState] = useState<PartsBlendState>({
     selection: defaultPartsSelection,
+    intensity: defaultPartsIntensity,
     method: 'auto',
     image: null,
     isLoading: false,
     error: null,
   })
+
+  // Face Swapの結果画像（パーツ合成のベース）
+  const [swappedImage, setSwappedImage] = useState<string | null>(null)
 
   // 表示モード（'morph' または 'parts'）
   const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
@@ -212,7 +229,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [state.images, state.currentProgress])
 
   /**
-   * モーフィング画像を生成（非同期ジョブAPI使用）
+   * Face Swap画像を生成（Replicate API使用）
    */
   const generateMorphImages = useCallback(async () => {
     const { currentImage, idealImage } = getStoredImages()
@@ -232,7 +249,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       ...prev,
       isLoading: true,
       loadingProgress: 0,
-      loadingMessage: 'ジョブを作成中...',
+      loadingMessage: 'Face Swapを実行中...',
       error: null
     }))
 
@@ -245,56 +262,65 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         ? idealImage.split(',')[1]
         : idealImage
 
-      // 複数の段階を生成するために、各段階でジョブを実行
-      const stages = [0, 0.25, 0.5, 0.75, 1.0]
-      const generatedImages: ImageData[] = []
+      // Face Swap APIを呼び出し
+      setState((prev) => ({
+        ...prev,
+        loadingProgress: 10,
+        loadingMessage: 'Face Swapを実行中...',
+      }))
 
-      for (let i = 0; i < stages.length; i++) {
-        const stage = stages[i]
+      const swapResult = await swapAndWait({
+        current_image: base64Current,
+        ideal_image: base64Ideal,
+      }, {
+        onProgress: (status: SwapJobStatus) => {
+          let progress = 10
+          if (status === 'processing') progress = 50
+          if (status === 'completed') progress = 90
+          setState((prev) => ({
+            ...prev,
+            loadingProgress: progress,
+          }))
+        },
+      })
 
-        setState((prev) => ({
-          ...prev,
-          loadingProgress: Math.round((i / stages.length) * 100),
-          loadingMessage: `シミュレーション生成中 (${i + 1}/${stages.length})...`,
-        }))
-
-        // 非同期ジョブAPIを使用
-        const result = await generateAndWait({
-          base_image: base64Current,
-          target_image: base64Ideal,
-          mode: 'morph',
-          strength: stage,
-        }, {
-          onProgress: (status: GenerationJobStatus) => {
-            const baseProgress = (i / stages.length) * 100
-            const stageProgress = (status.progress / 100) * (100 / stages.length)
-            setState((prev) => ({
-              ...prev,
-              loadingProgress: Math.round(baseProgress + stageProgress),
-            }))
-          },
-        })
-
-        if (result.result_image_url) {
-          generatedImages.push({
-            progress: stage,
-            image: result.result_image_url.startsWith('data:')
-              ? result.result_image_url
-              : `data:image/png;base64,${result.result_image_url}`,
-          })
-        }
+      if (!swapResult.swapped_image) {
+        throw new Error('Face Swap結果が取得できませんでした')
       }
+
+      // スワップ結果を保存
+      const swappedDataUrl = swapResult.swapped_image.startsWith('data:')
+        ? swapResult.swapped_image
+        : `data:image/png;base64,${swapResult.swapped_image}`
+      setSwappedImage(swappedDataUrl)
+
+      // 結果画像を生成（オリジナル、50%、100%の3段階）
+      const generatedImages: ImageData[] = [
+        {
+          progress: 0,
+          image: currentImage, // オリジナル
+        },
+        {
+          progress: 0.5,
+          image: swappedDataUrl, // 中間（とりあえずスワップ結果）
+        },
+        {
+          progress: 1.0,
+          image: swappedDataUrl, // 完全スワップ
+        },
+      ]
 
       setState((prev) => ({
         ...prev,
         images: generatedImages,
+        currentProgress: 1.0, // デフォルトで100%を表示
         isLoading: false,
         loadingProgress: 100,
         loadingMessage: '',
         error: null,
       }))
     } catch (error) {
-      console.error('Morphing error:', error)
+      console.error('Face Swap error:', error)
 
       let errorMessage = '画像の生成中にエラーが発生しました。'
       if (error instanceof ApiError) {
@@ -504,15 +530,15 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [])
 
   /**
-   * パーツブレンド実行ハンドラ（非同期ジョブAPI使用）
+   * パーツブレンド実行ハンドラ（Face Swap Parts API使用）
    */
   const handlePartsBlend = useCallback(async () => {
-    const { currentImage, idealImage } = sourceImages
+    const { currentImage } = sourceImages
 
-    if (!currentImage || !idealImage) {
+    if (!currentImage || !swappedImage) {
       setPartsBlendState((prev) => ({
         ...prev,
-        error: '画像データが見つかりません。',
+        error: swappedImage ? '画像データが見つかりません。' : 'Face Swapを先に実行してください。',
       }))
       return
     }
@@ -534,30 +560,33 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       const base64Current = currentImage.startsWith('data:')
         ? currentImage.split(',')[1]
         : currentImage
-      const base64Ideal = idealImage.startsWith('data:')
-        ? idealImage.split(',')[1]
-        : idealImage
+      const base64Swapped = swappedImage.startsWith('data:')
+        ? swappedImage.split(',')[1]
+        : swappedImage
 
-      // 選択されたパーツを配列に変換
-      const selectedParts = (Object.entries(partsBlendState.selection) as [keyof PartsSelection, boolean][])
-        .filter(([, isSelected]) => isSelected)
-        .map(([part]) => part)
+      // 選択されたパーツの強度を設定（選択されていないパーツは0）
+      const partsIntensity: SwapPartsIntensity = {
+        left_eye: partsBlendState.selection.left_eye ? partsBlendState.intensity.left_eye : 0,
+        right_eye: partsBlendState.selection.right_eye ? partsBlendState.intensity.right_eye : 0,
+        left_eyebrow: partsBlendState.selection.left_eyebrow ? partsBlendState.intensity.left_eyebrow : 0,
+        right_eyebrow: partsBlendState.selection.right_eyebrow ? partsBlendState.intensity.right_eyebrow : 0,
+        nose: partsBlendState.selection.nose ? partsBlendState.intensity.nose : 0,
+        lips: partsBlendState.selection.lips ? partsBlendState.intensity.lips : 0,
+      }
 
-      // 非同期ジョブAPIを使用（パーツモード）
-      const result = await generateAndWait({
-        base_image: base64Current,
-        target_image: base64Ideal,
-        mode: 'parts',
-        parts: selectedParts,
-        strength: 0.7,
+      // Face Swap Parts APIを使用
+      const result = await applySwapParts({
+        current_image: base64Current,
+        swapped_image: base64Swapped,
+        parts: partsIntensity,
       })
 
-      if (result.result_image_url) {
+      if (result.result_image) {
         setPartsBlendState((prev) => ({
           ...prev,
-          image: result.result_image_url!.startsWith('data:')
-            ? result.result_image_url
-            : `data:image/png;base64,${result.result_image_url}`,
+          image: result.result_image.startsWith('data:')
+            ? result.result_image
+            : `data:image/png;base64,${result.result_image}`,
           isLoading: false,
           error: null,
         }))
@@ -578,7 +607,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         error: errorMessage,
       }))
     }
-  }, [sourceImages, partsBlendState.selection])
+  }, [sourceImages, swappedImage, partsBlendState.selection, partsBlendState.intensity])
 
   /**
    * 選択されたパーツの表示名リストを取得
