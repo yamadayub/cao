@@ -216,6 +216,9 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   // 表示モード（'morph' または 'parts'）
   const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
 
+  // パーツモードの表示切替（'current' または 'applied'）
+  const [partsViewMode, setPartsViewMode] = useState<'current' | 'applied'>('applied')
+
   /**
    * 現在の変化度に対応する画像を取得
    */
@@ -699,21 +702,35 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                     )
                   ) : (
                     // パーツブレンドモードの画像表示
-                    partsBlendState.image ? (
-                      <img
-                        src={partsBlendState.image}
-                        alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
-                        className="w-full h-full object-cover"
-                        data-testid="result-image"
-                      />
-                    ) : partsBlendState.isLoading ? (
+                    partsBlendState.isLoading ? (
                       <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
                         <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
                         <p>処理中...</p>
                       </div>
-                    ) : (
-                      // パーツ未選択時は元の画像を表示
+                    ) : partsViewMode === 'current' ? (
+                      // 現在の画像を表示
                       sourceImages.currentImage ? (
+                        <img
+                          src={sourceImages.currentImage}
+                          alt="現在の顔"
+                          className="w-full h-full object-cover"
+                          data-testid="result-image"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          画像を読み込み中...
+                        </div>
+                      )
+                    ) : (
+                      // 適用後の画像を表示
+                      partsBlendState.image ? (
+                        <img
+                          src={partsBlendState.image}
+                          alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
+                          className="w-full h-full object-cover"
+                          data-testid="result-image"
+                        />
+                      ) : sourceImages.currentImage ? (
                         <img
                           src={sourceImages.currentImage}
                           alt="現在の顔"
@@ -797,6 +814,45 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
               {/* パーツ別適用モード */}
               {viewMode === 'parts' && (
                 <div className="mb-8 space-y-6">
+                  {/* 現在/適用後の切り替えボタン */}
+                  <div className="flex justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setPartsViewMode('current')}
+                      disabled={partsBlendState.isLoading}
+                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        partsViewMode === 'current'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="parts-view-current"
+                    >
+                      現在
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartsViewMode('applied')}
+                      disabled={partsBlendState.isLoading}
+                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        partsViewMode === 'applied'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="parts-view-applied"
+                    >
+                      適用後
+                    </button>
+                  </div>
+
+                  {/* 適用パーツ表示 */}
+                  {partsBlendState.image && partsViewMode === 'applied' && (
+                    <div className="text-center">
+                      <p className="text-sm text-neutral-600">
+                        適用パーツ: <span className="font-medium">{selectedPartsNames.join('、')}</span>
+                      </p>
+                    </div>
+                  )}
+
                   {/* パーツ選択UI */}
                   <div className="bg-white rounded-2xl shadow-sm p-6">
                     <PartsSelector
@@ -863,25 +919,6 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                       </div>
                     )}
                   </div>
-
-                  {/* パーツブレンド結果画像 */}
-                  {partsBlendState.image && (
-                    <div className="bg-white rounded-2xl shadow-elegant p-4" data-testid="parts-blend-result">
-                      <div className="text-center mb-3">
-                        <p className="text-sm text-neutral-600">
-                          適用パーツ: <span className="font-medium">{selectedPartsNames.join('、')}</span>
-                        </p>
-                      </div>
-                      <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
-                        <img
-                          src={partsBlendState.image}
-                          alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
-                          className="w-full h-full object-cover"
-                          data-testid="parts-blend-image"
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
