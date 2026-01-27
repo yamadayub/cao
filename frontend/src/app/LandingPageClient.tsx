@@ -161,14 +161,14 @@ export function LandingPageClient() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 max-w-4xl mx-auto">
             {/* Feature 1 */}
-            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant text-center">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4 mx-auto">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
                 </svg>
               </div>
               <h3 className="font-serif text-base md:text-xl text-neutral-900 mb-1 md:mb-2">
-                高品質なFace Swap
+                高品質なAI合成
               </h3>
               <p className="text-neutral-500 text-xs md:text-sm leading-relaxed">
                 AIによる自然な顔の合成。肌の質感や照明を維持したまま違和感のない仕上がり。
@@ -176,8 +176,8 @@ export function LandingPageClient() {
             </div>
 
             {/* Feature 2 */}
-            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant text-center">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4 mx-auto">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
                 </svg>
@@ -191,8 +191,8 @@ export function LandingPageClient() {
             </div>
 
             {/* Feature 3 */}
-            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant text-center">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4 mx-auto">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
                 </svg>
@@ -201,13 +201,13 @@ export function LandingPageClient() {
                 Before/After比較
               </h3>
               <p className="text-neutral-500 text-xs md:text-sm leading-relaxed">
-                元の顔と変化後を並べて比較。施術者への説明資料としても使えます。
+                元の顔と変化後を切り替えて比較。カウンセリング時の参考資料に。
               </p>
             </div>
 
             {/* Feature 4 */}
-            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant">
-              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-elegant text-center">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary-50 rounded-xl flex items-center justify-center mb-3 md:mb-4 mx-auto">
                 <svg className="w-5 h-5 md:w-6 md:h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                 </svg>
