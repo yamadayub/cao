@@ -45,6 +45,7 @@ PART_TO_BISENET_LABELS: Dict[str, List[int]] = {
     "right_eyebrow": [3],  # right_eyebrow
     "nose": [10],  # nose
     "lips": [11, 12, 13],  # mouth, upper_lip, lower_lip
+    "hair": [17],  # hair
 }
 
 
@@ -186,6 +187,7 @@ class FaceParsingService:
         landmarks: Optional[List[Tuple[float, float]]] = None,
         dilate_pixels: int = 0,
         blur_size: int = 0,
+        exclude_hair: bool = False,
     ) -> np.ndarray:
         """
         Get binary mask for a specific facial part.
@@ -196,6 +198,7 @@ class FaceParsingService:
             landmarks: Optional landmarks for fallback if model not available
             dilate_pixels: Number of pixels to dilate the mask
             blur_size: Gaussian blur kernel size for soft edges (0 = no blur)
+            exclude_hair: If True, subtract hair region from the mask (useful for eyebrows)
 
         Returns:
             Binary mask (H, W) with values 0-255
@@ -219,6 +222,18 @@ class FaceParsingService:
         mask = np.zeros(seg_map.shape, dtype=np.uint8)
         for label_idx in label_indices:
             mask[seg_map == label_idx] = 255
+
+        # Exclude hair region if requested (important for eyebrows)
+        if exclude_hair:
+            hair_mask = np.zeros(seg_map.shape, dtype=np.uint8)
+            hair_mask[seg_map == 17] = 255  # 17 is hair label
+
+            # Dilate hair mask slightly to ensure complete coverage
+            hair_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            hair_mask = cv2.dilate(hair_mask, hair_kernel, iterations=1)
+
+            # Subtract hair from eyebrow mask
+            mask = cv2.subtract(mask, hair_mask)
 
         # Dilate if requested
         if dilate_pixels > 0:

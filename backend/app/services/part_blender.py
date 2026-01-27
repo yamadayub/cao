@@ -433,14 +433,28 @@ class PartBlender:
         # --- MASK GENERATION ---
         # Use BiSeNet for accurate semantic segmentation if available
         if self.use_bisenet and self.face_parsing.is_available():
-            # Get BiSeNet mask with dilation and soft edges
-            mask = self.face_parsing.get_part_mask(
-                base_img,
-                part_name,
-                landmarks=base_landmarks,
-                dilate_pixels=5,
-                blur_size=21
-            )
+            # Special handling for eyebrows: tighter edges and hair exclusion
+            is_eyebrow = part_name in ("left_eyebrow", "right_eyebrow")
+            if is_eyebrow:
+                # Use minimal dilation and blur for tight eyebrow edges
+                # Exclude hair so eyebrows don't show over hair
+                mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    part_name,
+                    landmarks=base_landmarks,
+                    dilate_pixels=1,  # Minimal dilation for tight edges
+                    blur_size=9,  # Smaller blur for sharper edges
+                    exclude_hair=True,  # Prioritize hair over eyebrows
+                )
+            else:
+                # Get BiSeNet mask with dilation and soft edges
+                mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    part_name,
+                    landmarks=base_landmarks,
+                    dilate_pixels=5,
+                    blur_size=21
+                )
         else:
             # Fallback to landmark-based mask
             exclusion_indices = PART_EXCLUSION_LANDMARKS.get(part_name, [])
@@ -454,6 +468,9 @@ class PartBlender:
         # Apply extra feathering for lips to blend better with surrounding skin
         if part_name == "lips":
             mask = self._feather_mask(mask, iterations=3, blur_size=31, erode_size=7)
+        # Apply minimal feathering for eyebrows to smooth edges slightly
+        elif part_name in ("left_eyebrow", "right_eyebrow"):
+            mask = self._feather_mask(mask, iterations=1, blur_size=7, erode_size=2)
 
         # Apply color correction to match skin tones
         warped_src = self._advanced_color_transfer(warped_src, base_img, mask)
