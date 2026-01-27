@@ -6,6 +6,7 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
+import { PartsBlurOverlay, type LoginPromptInfo } from '@/components/features/PartsBlurOverlay'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
 import { ApiError } from '@/lib/api/client'
@@ -193,7 +194,8 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   // モーダル状態
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  const [loginAction, setLoginAction] = useState<'save' | 'share' | null>(null)
+  const [loginAction, setLoginAction] = useState<'save' | 'share' | 'parts-blur' | null>(null)
+  const [partsLoginPromptInfo, setPartsLoginPromptInfo] = useState<LoginPromptInfo | null>(null)
 
   // 元画像のData URL
   const [sourceImages, setSourceImages] = useState<{
@@ -492,6 +494,17 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [router])
 
   /**
+   * パーツ別ブラー画像クリックハンドラ
+   */
+  const handlePartsBlurLoginClick = useCallback((info?: LoginPromptInfo) => {
+    setLoginAction('parts-blur')
+    if (info) {
+      setPartsLoginPromptInfo(info)
+    }
+    setShowLoginModal(true)
+  }, [])
+
+  /**
    * 再試行ハンドラ
    */
   const handleRetry = useCallback(() => {
@@ -724,11 +737,18 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                     ) : (
                       // 適用後の画像を表示
                       partsBlendState.image ? (
-                        <img
-                          src={partsBlendState.image}
-                          alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
-                          className="w-full h-full object-cover"
-                          data-testid="result-image"
+                        // パーツ適用結果がある場合
+                        <PartsBlurOverlay
+                          imageUrl={partsBlendState.image}
+                          altText={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
+                          isAuthenticated={isSignedIn}
+                          onLoginClick={handlePartsBlurLoginClick}
+                          isLoading={false}
+                          showPartsLabel={true}
+                          appliedParts={Object.entries(partsBlendState.selection)
+                            .filter(([, selected]) => selected)
+                            .map(([part]) => part)}
+                          testId="parts-blur-overlay"
                         />
                       ) : sourceImages.currentImage ? (
                         <img
@@ -1084,19 +1104,26 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       {/* ログイン誘導モーダル */}
       <LoginPromptModal
         isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
+        onClose={() => {
+          setShowLoginModal(false)
+          setPartsLoginPromptInfo(null)
+        }}
         onLogin={handleLogin}
         title={
-          loginAction === 'save'
-            ? '保存するにはログインが必要です'
-            : '共有するにはログインが必要です'
+          loginAction === 'parts-blur' && partsLoginPromptInfo
+            ? partsLoginPromptInfo.title
+            : loginAction === 'save'
+              ? '保存するにはログインが必要です'
+              : '共有するにはログインが必要です'
         }
         description={
-          loginAction === 'save'
-            ? 'シミュレーション結果を保存するにはログインが必要です。'
-            : 'シミュレーション結果を共有するにはログインが必要です。'
+          loginAction === 'parts-blur' && partsLoginPromptInfo
+            ? partsLoginPromptInfo.description
+            : loginAction === 'save'
+              ? 'シミュレーション結果を保存するにはログインが必要です。'
+              : 'シミュレーション結果を共有するにはログインが必要です。'
         }
-        testId="login-prompt-modal"
+        testId={loginAction === 'parts-blur' ? 'parts-login-prompt-modal' : 'login-prompt-modal'}
       />
 
       {/* 共有URLモーダル */}
