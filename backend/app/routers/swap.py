@@ -31,7 +31,7 @@ from app.models.schemas import (
 from app.services.replicate_client import ReplicateError, get_replicate_client
 from app.services.swap_cache import get_swap_cache
 from app.services.swap_compositor import get_swap_compositor
-from app.utils.image import bytes_to_cv2, cv2_to_base64
+from app.utils.image import bytes_to_cv2, cv2_to_base64, cv2_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,20 @@ async def generate_swap(
                 source_image=ideal_bytes,  # Face to swap FROM
                 target_image=current_bytes,  # Face to swap ONTO
             )
+
+            # Preserve original hair on swapped result
+            try:
+                current_img = bytes_to_cv2(current_bytes)
+                swapped_img = bytes_to_cv2(result_bytes)
+
+                compositor = get_swap_compositor()
+                final_img = compositor.preserve_hair(current_img, swapped_img)
+
+                result_bytes = cv2_to_bytes(final_img, format="png")
+                logger.info("Hair preserved from original image")
+            except Exception as hair_error:
+                logger.warning(f"Failed to preserve hair, using raw swap result: {hair_error}")
+                # Continue with original result_bytes if hair preservation fails
 
             # Cache result
             cache.set(cache_key, result_bytes)

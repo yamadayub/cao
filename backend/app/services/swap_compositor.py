@@ -10,6 +10,7 @@ from typing import Dict, Optional
 import cv2
 import numpy as np
 
+from app.services.face_parsing import get_face_parsing_service
 from app.services.part_blender import PartBlender, PartsSelection
 
 logger = logging.getLogger(__name__)
@@ -193,6 +194,67 @@ class SwapCompositor:
             Composed image with all selected parts applied.
         """
         return self.compose_parts(original, swapped, parts)
+
+    def preserve_hair(
+        self,
+        original: np.ndarray,
+        swapped: np.ndarray,
+        blur_size: int = 21,
+        dilate_pixels: int = 3,
+    ) -> np.ndarray:
+        """Preserve original hair on swapped face result.
+
+        Uses BiSeNet to detect hair region in original image and composites
+        it onto the swapped result to maintain hair quality.
+
+        Args:
+            original: Original face image (BGR format) - source of hair.
+            swapped: Swapped face image (BGR format) - target to apply hair.
+            blur_size: Gaussian blur size for soft edge blending.
+            dilate_pixels: Pixels to dilate hair mask for coverage.
+
+        Returns:
+            Swapped image with original hair preserved.
+        """
+        # Ensure images have same dimensions
+        if original.shape != swapped.shape:
+            swapped = cv2.resize(swapped, (original.shape[1], original.shape[0]))
+
+        # Get face parsing service
+        face_parsing = get_face_parsing_service()
+
+        if not face_parsing.is_available():
+            logger.warning("BiSeNet not available, skipping hair preservation")
+            return swapped.copy()
+
+        try:
+            # Get hair mask from original image
+            hair_mask = face_parsing.get_part_mask(
+                original,
+                "hair",
+                landmarks=None,
+                dilate_pixels=dilate_pixels,
+                blur_size=blur_size,
+            )
+
+            # If no hair detected, return swapped as-is
+            if hair_mask.sum() == 0:
+                logger.info("No hair detected in original image")
+                return swapped.copy()
+
+            # Normalize mask to float for blending
+            mask_float = hair_mask.astype(np.float32) / 255.0
+            mask_3ch = np.stack([mask_float] * 3, axis=-1)
+
+            # Blend: original hair where mask is white, swapped elsewhere
+            result = (original * mask_3ch + swapped * (1.0 - mask_3ch)).astype(np.uint8)
+
+            logger.info("Hair preserved from original image")
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to preserve hair: {e}")
+            return swapped.copy()
 
 
 # Singleton instance
