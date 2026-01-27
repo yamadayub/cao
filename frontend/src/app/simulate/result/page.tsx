@@ -4,10 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import { ResultSlider } from '@/components/features/ResultSlider'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
-import { type BlendMethod } from '@/lib/api/morph'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
 import { ApiError } from '@/lib/api/client'
@@ -46,12 +44,11 @@ interface ResultState {
 }
 
 /**
- * パーツブレンド状態の型
+ * パーツ適用状態の型
  */
 interface PartsBlendState {
   selection: PartsSelection
   intensity: SwapPartsIntensity  // パーツごとの強度
-  method: BlendMethod
   image: string | null
   isLoading: boolean
   error: string | null
@@ -204,11 +201,10 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
     idealImage: string | null
   }>({ currentImage: null, idealImage: null })
 
-  // パーツブレンド状態
+  // パーツ適用状態
   const [partsBlendState, setPartsBlendState] = useState<PartsBlendState>({
     selection: defaultPartsSelection,
     intensity: defaultPartsIntensity,
-    method: 'auto',
     image: null,
     isLoading: false,
     error: null,
@@ -249,7 +245,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       ...prev,
       isLoading: true,
       loadingProgress: 0,
-      loadingMessage: 'Face Swapを実行中...',
+      loadingMessage: '処理中...',
       error: null
     }))
 
@@ -266,7 +262,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       setState((prev) => ({
         ...prev,
         loadingProgress: 10,
-        loadingMessage: 'Face Swapを実行中...',
+        loadingMessage: '処理中...',
       }))
 
       const swapResult = await swapAndWait({
@@ -294,19 +290,15 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         : `data:image/png;base64,${swapResult.swapped_image}`
       setSwappedImage(swappedDataUrl)
 
-      // 結果画像を生成（オリジナル、50%、100%の3段階）
+      // 結果画像を生成（現在と理想の2段階）
       const generatedImages: ImageData[] = [
         {
           progress: 0,
-          image: currentImage, // オリジナル
-        },
-        {
-          progress: 0.5,
-          image: swappedDataUrl, // 中間（とりあえずスワップ結果）
+          image: currentImage, // 現在
         },
         {
           progress: 1.0,
-          image: swappedDataUrl, // 完全スワップ
+          image: swappedDataUrl, // 理想
         },
       ]
 
@@ -517,20 +509,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [])
 
   /**
-   * ブレンドメソッド変更ハンドラ
-   */
-  const handleMethodChange = useCallback((method: BlendMethod) => {
-    setPartsBlendState((prev) => ({
-      ...prev,
-      method,
-      // メソッドが変更されたら以前の結果をクリア
-      image: null,
-      error: null,
-    }))
-  }, [])
-
-  /**
-   * パーツブレンド実行ハンドラ（Face Swap Parts API使用）
+   * パーツ適用実行ハンドラ（Face Swap Parts API使用）
    */
   const handlePartsBlend = useCallback(async () => {
     const { currentImage } = sourceImages
@@ -723,14 +702,14 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                     partsBlendState.image ? (
                       <img
                         src={partsBlendState.image}
-                        alt={`パーツブレンド結果（${selectedPartsNames.join('、')}）`}
+                        alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
                         className="w-full h-full object-cover"
                         data-testid="result-image"
                       />
                     ) : partsBlendState.isLoading ? (
                       <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
                         <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
-                        <p>パーツをブレンド中...</p>
+                        <p>処理中...</p>
                       </div>
                     ) : (
                       // パーツ未選択時は元の画像を表示
@@ -764,7 +743,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                     }`}
                     data-testid="view-mode-morph"
                   >
-                    モーフィング
+                    全体
                   </button>
                   <button
                     type="button"
@@ -776,24 +755,46 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                     }`}
                     data-testid="view-mode-parts"
                   >
-                    パーツブレンド
+                    パーツ別適用
                   </button>
                 </div>
               </div>
 
-              {/* モーフィングモード */}
+              {/* 全体モード */}
               {viewMode === 'morph' && (
                 <div className="mb-8">
-                  <ResultSlider
-                    value={state.currentProgress}
-                    onChange={handleProgressChange}
-                    disabled={state.isSaving || state.isSharing}
-                    testId="result-slider"
-                  />
+                  <div className="flex justify-center gap-4">
+                    <button
+                      type="button"
+                      onClick={() => handleProgressChange(0)}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        state.currentProgress === 0
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="view-current"
+                    >
+                      現在
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleProgressChange(1.0)}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        state.currentProgress === 1.0
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="view-ideal"
+                    >
+                      理想
+                    </button>
+                  </div>
                 </div>
               )}
 
-              {/* パーツブレンドモード */}
+              {/* パーツ別適用モード */}
               {viewMode === 'parts' && (
                 <div className="mb-8 space-y-6">
                   {/* パーツ選択UI */}
@@ -805,42 +806,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                       testId="parts-selector"
                     />
 
-                    {/* ブレンドメソッド選択 */}
-                    <div className="mt-6 pt-4 border-t border-neutral-100">
-                      <h4 className="text-sm font-medium text-neutral-700 mb-3 text-center">
-                        ブレンド方式
-                      </h4>
-                      <div className="flex justify-center gap-2">
-                        {(['auto', '2d', '3d'] as BlendMethod[]).map((method) => (
-                          <button
-                            key={method}
-                            type="button"
-                            onClick={() => handleMethodChange(method)}
-                            disabled={partsBlendState.isLoading}
-                            className={`
-                              px-4 py-2 text-sm font-medium rounded-full transition-all duration-200
-                              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500
-                              ${
-                                partsBlendState.method === method
-                                  ? 'bg-primary-700 text-white shadow-md'
-                                  : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
-                              }
-                              ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                            `}
-                            data-testid={`blend-method-${method}`}
-                          >
-                            {method === 'auto' ? '自動' : method === '2d' ? '2D' : '3D高精度'}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-xs text-neutral-500 text-center mt-2">
-                        {partsBlendState.method === 'auto' && '利用可能な場合は3D方式を使用します'}
-                        {partsBlendState.method === '2d' && '従来の2D画像処理方式'}
-                        {partsBlendState.method === '3d' && '深度推定による高精度な3D合成（処理に時間がかかります）'}
-                      </p>
-                    </div>
-
-                    {/* パーツブレンド実行ボタン */}
+                    {/* パーツ適用実行ボタン */}
                     <div className="mt-6 flex justify-center">
                       <button
                         type="button"
@@ -882,10 +848,10 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                               />
                             </svg>
-                            ブレンド中...
+                            処理中...
                           </span>
                         ) : (
-                          'パーツをブレンド'
+                          '適用'
                         )}
                       </button>
                     </div>
@@ -909,7 +875,7 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                       <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
                         <img
                           src={partsBlendState.image}
-                          alt={`パーツブレンド結果（${selectedPartsNames.join('、')}）`}
+                          alt={`パーツ適用結果（${selectedPartsNames.join('、')}）`}
                           className="w-full h-full object-cover"
                           data-testid="parts-blend-image"
                         />
