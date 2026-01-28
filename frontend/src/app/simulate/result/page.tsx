@@ -981,19 +981,19 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                 <button
                   type="button"
                   onClick={handleDownload}
-                  disabled={state.isSaving || state.isSharing}
+                  disabled={state.isSharing}
                   className={`
                     px-8 py-3 text-base font-medium rounded-full
                     focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
                     ${
-                      state.isSaving || state.isSharing
+                      state.isSharing
                         ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                        : 'bg-white text-primary-700 border border-primary-300 hover:bg-primary-50 hover:border-primary-400 focus:ring-primary-500'
+                        : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
                     }
                   `}
                   data-testid="download-button"
                 >
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center justify-center gap-2">
                     <svg
                       className="w-5 h-5"
                       fill="none"
@@ -1012,115 +1012,6 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                   </span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={state.isSaving || !!state.savedSimulationId}
-                  className={`
-                    px-8 py-3 text-base font-medium rounded-full
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
-                    ${
-                      state.savedSimulationId
-                        ? 'bg-green-600 text-white cursor-default'
-                        : state.isSaving
-                          ? 'bg-neutral-300 text-neutral-500 cursor-wait'
-                          : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
-                    }
-                  `}
-                  data-testid="save-button"
-                >
-                {state.isSaving ? (
-                  <span className="flex items-center gap-2">
-                    <svg
-                      className="animate-spin h-5 w-5"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    保存中...
-                  </span>
-                ) : state.savedSimulationId ? (
-                  <span className="flex items-center gap-2">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    保存済み
-                  </span>
-                ) : (
-                  '保存'
-                )}
-              </button>
-
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  disabled={state.isSharing}
-                  className={`
-                    px-8 py-3 text-base font-medium rounded-full
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
-                    ${
-                      state.isSharing
-                        ? 'bg-neutral-300 text-neutral-500 cursor-wait'
-                        : 'bg-white text-primary-700 border border-primary-300 hover:bg-primary-50 hover:border-primary-400 focus:ring-primary-500'
-                    }
-                  `}
-                  data-testid="share-button"
-                >
-                {state.isSharing ? (
-                  <span className="flex items-center gap-2">
-                    <svg
-                      className="animate-spin h-5 w-5"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    生成中...
-                  </span>
-                ) : (
-                  '共有URL'
-                )}
-              </button>
             </div>
 
               {/* 新規作成ボタン */}
