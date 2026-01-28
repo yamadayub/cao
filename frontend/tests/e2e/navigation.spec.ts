@@ -16,7 +16,8 @@ test.describe('ナビゲーション', () => {
       await page.waitForTimeout(2000)
 
       // Then: ヘッドラインが表示される
-      await expect(page.locator('text=/理想の自分を.*AIでシミュレーション/i')).toBeVisible({ timeout: 10000 })
+      // 「理想の顔写真と」「あなたの顔写真を組み合わせて」「顔全体・パーツ別の変化をシミュレーション」
+      await expect(page.locator('text=/理想の顔写真と/i')).toBeVisible({ timeout: 10000 })
     })
 
     test('「今すぐ試す」ボタンをクリックするとシミュレーションページに遷移する', async ({ page }) => {
@@ -112,15 +113,15 @@ test.describe('ナビゲーション', () => {
       // Then: 使い方セクションが表示される
       await expect(page.locator('text=/使い方/i')).toBeVisible({ timeout: 10000 })
 
-      // 3ステップが表示される
-      await expect(page.locator('text=/現在の顔をアップロード/i')).toBeVisible()
+      // 3ステップが表示される (順序: 理想→現在→結果)
       await expect(page.locator('text=/理想の顔をアップロード/i')).toBeVisible()
+      await expect(page.locator('text=/現在の自分の顔をアップロード/i')).toBeVisible()
       await expect(page.locator('text=/結果を確認/i')).toBeVisible()
     })
   })
 
   test.describe('特徴セクション', () => {
-    test('特徴セクションに3つの特徴が表示される', async ({ page }) => {
+    test('特徴セクションに4つの特徴が表示される', async ({ page }) => {
       // Given: ランディングページにアクセス
       await page.goto('/')
       await page.waitForTimeout(2000)
@@ -128,10 +129,11 @@ test.describe('ナビゲーション', () => {
       // Then: 特徴セクションが表示される
       await expect(page.locator('h2:has-text("特徴")')).toBeVisible({ timeout: 10000 })
 
-      // 3つの特徴が表示される
-      await expect(page.locator('text=/段階的な変化を確認/i')).toBeVisible()
-      await expect(page.locator('text=/スライダーで自由に調整/i')).toBeVisible()
-      await expect(page.locator('text=/施術者と.*共有/i')).toBeVisible()
+      // 4つの特徴が表示される
+      await expect(page.locator('text=/高品質なAI合成/i')).toBeVisible()
+      await expect(page.locator('text=/パーツ別シミュレーション/i')).toBeVisible()
+      await expect(page.locator('text=/Before.*After比較/i')).toBeVisible()
+      await expect(page.locator('text=/プライバシー保護/i')).toBeVisible()
     })
   })
 })
