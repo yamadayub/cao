@@ -41,3 +41,9 @@ npm-debug.log*
 # Misc
 .vercel
 *.tsbuildinfo
+
+# Model files
+*.pth
+*.onnx
+buffalo_l.zip
+

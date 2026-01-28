@@ -7,7 +7,11 @@ interface HeaderProps {
   variant?: 'default' | 'transparent'
 }
 
-function HeaderAuthSection() {
+interface HeaderAuthSectionProps {
+  onAuthStateChange?: (isSignedIn: boolean) => void
+}
+
+function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
   const [isReady, setIsReady] = useState(false)
   const [isSignedIn, setIsSignedIn] = useState(false)
   const [ClerkComponents, setClerkComponents] = useState<{
@@ -25,7 +29,9 @@ function HeaderAuthSection() {
         // 代わりにClerkクライアントを使用
         const win = window as unknown as { Clerk?: { user?: unknown } }
         if (win.Clerk) {
-          setIsSignedIn(!!win.Clerk.user)
+          const signedIn = !!win.Clerk.user
+          setIsSignedIn(signedIn)
+          onAuthStateChange?.(signedIn)
           setClerkComponents({
             UserButton: clerk.UserButton,
             SignInButton: clerk.SignInButton as React.ComponentType<{ mode: string; children: React.ReactNode }>,
@@ -36,7 +42,9 @@ function HeaderAuthSection() {
           setTimeout(() => {
             const win2 = window as unknown as { Clerk?: { user?: unknown } }
             if (win2.Clerk) {
-              setIsSignedIn(!!win2.Clerk.user)
+              const signedIn = !!win2.Clerk.user
+              setIsSignedIn(signedIn)
+              onAuthStateChange?.(signedIn)
               setClerkComponents({
                 UserButton: clerk.UserButton,
                 SignInButton: clerk.SignInButton as React.ComponentType<{ mode: string; children: React.ReactNode }>,
@@ -52,7 +60,7 @@ function HeaderAuthSection() {
     }
 
     checkClerk()
-  }, [])
+  }, [onAuthStateChange])
 
   if (!isReady || !ClerkComponents) {
     // Clerkがまだ準備できていない場合はログインボタンを表示
@@ -94,6 +102,7 @@ function HeaderAuthSection() {
 export function Header({ variant = 'default' }: HeaderProps) {
   const [mounted, setMounted] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [isSignedIn, setIsSignedIn] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -127,13 +136,15 @@ export function Header({ variant = 'default' }: HeaderProps) {
 
           {/* Navigation */}
           <nav className="flex items-center gap-3 md:gap-8">
-            {mounted && <HeaderAuthSection />}
-            <Link
-              href="/simulate"
-              className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
-            >
-              今すぐ試す
-            </Link>
+            {mounted && <HeaderAuthSection onAuthStateChange={setIsSignedIn} />}
+            {!isSignedIn && (
+              <Link
+                href="/simulate"
+                className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
+              >
+                今すぐ試す
+              </Link>
+            )}
           </nav>
         </div>
       </div>

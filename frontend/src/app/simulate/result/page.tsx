@@ -512,6 +512,39 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   }, [generateMorphImages])
 
   /**
+   * 画像ダウンロードハンドラ
+   */
+  const handleDownload = useCallback(() => {
+    let imageToDownload: string | null = null
+    let filename = 'cao-simulation'
+
+    if (viewMode === 'morph') {
+      // モーフィングモードでは現在表示中の画像をダウンロード
+      imageToDownload = currentImage
+      filename = state.currentProgress === 0 ? 'cao-current' : 'cao-ideal'
+    } else {
+      // パーツモードでは適用後の画像または現在の画像をダウンロード
+      if (partsViewMode === 'applied' && partsBlendState.image) {
+        imageToDownload = partsBlendState.image
+        filename = 'cao-parts-applied'
+      } else {
+        imageToDownload = sourceImages.currentImage
+        filename = 'cao-current'
+      }
+    }
+
+    if (!imageToDownload) return
+
+    // Data URLからダウンロード
+    const link = document.createElement('a')
+    link.href = imageToDownload
+    link.download = `${filename}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }, [viewMode, currentImage, state.currentProgress, partsViewMode, partsBlendState.image, sourceImages.currentImage])
+
+  /**
    * パーツ選択変更ハンドラ
    */
   const handlePartsSelectionChange = useCallback((selection: PartsSelection) => {
@@ -942,8 +975,43 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
                 </div>
               )}
 
-              {/* 保存・共有ボタン */}
+              {/* ダウンロード・保存・共有ボタン */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
+                {/* ダウンロードボタン */}
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  disabled={state.isSaving || state.isSharing}
+                  className={`
+                    px-8 py-3 text-base font-medium rounded-full
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
+                    ${
+                      state.isSaving || state.isSharing
+                        ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
+                        : 'bg-white text-primary-700 border border-primary-300 hover:bg-primary-50 hover:border-primary-400 focus:ring-primary-500'
+                    }
+                  `}
+                  data-testid="download-button"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                      />
+                    </svg>
+                    ダウンロード
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleSave}
