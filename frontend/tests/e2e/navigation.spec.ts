@@ -129,11 +129,11 @@ test.describe('ナビゲーション', () => {
       // Then: 特徴セクションが表示される
       await expect(page.locator('h2:has-text("特徴")')).toBeVisible({ timeout: 10000 })
 
-      // 4つの特徴が表示される
-      await expect(page.locator('text=/高品質なAI合成/i')).toBeVisible()
-      await expect(page.locator('text=/パーツ別シミュレーション/i')).toBeVisible()
-      await expect(page.locator('text=/Before.*After比較/i')).toBeVisible()
-      await expect(page.locator('text=/プライバシー保護/i')).toBeVisible()
+      // 4つの特徴が表示される (見出し要素で検索)
+      await expect(page.locator('h3:has-text("高品質なAI合成")')).toBeVisible()
+      await expect(page.locator('h3:has-text("パーツ別シミュレーション")')).toBeVisible()
+      await expect(page.locator('h3:has-text("Before/After比較")')).toBeVisible()
+      await expect(page.locator('h3:has-text("プライバシー保護")')).toBeVisible()
     })
   })
 })
