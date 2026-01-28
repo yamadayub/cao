@@ -1,13 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export interface LoginPromptModalProps {
   /** モーダル表示状態 */
   isOpen: boolean
   /** モーダルを閉じるコールバック */
   onClose: () => void
-  /** ログインボタンクリック時のコールバック */
+  /** ログインボタンクリック時のコールバック（フォールバック用） */
   onLogin: () => void
   /** モーダルのタイトル */
   title?: string
@@ -32,6 +32,28 @@ export function LoginPromptModal({
 }: LoginPromptModalProps) {
   const modalRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const [SignInButton, setSignInButton] = useState<React.ComponentType<{
+    mode: string
+    children: React.ReactNode
+  }> | null>(null)
+
+  /**
+   * Clerkのコンポーネントを動的にロード
+   */
+  useEffect(() => {
+    const loadClerk = async () => {
+      try {
+        const clerk = await import('@clerk/nextjs')
+        setSignInButton(() => clerk.SignInButton as React.ComponentType<{
+          mode: string
+          children: React.ReactNode
+        }>)
+      } catch {
+        console.warn('Clerk is not available')
+      }
+    }
+    loadClerk()
+  }, [])
 
   /**
    * ESCキーでモーダルを閉じる
@@ -150,14 +172,27 @@ export function LoginPromptModal({
 
           {/* ボタン群 */}
           <div className="flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={onLogin}
-              className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-              data-testid={testId ? `${testId}-login-button` : undefined}
-            >
-              ログインする
-            </button>
+            {SignInButton ? (
+              <SignInButton mode="modal">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                  data-testid={testId ? `${testId}-login-button` : undefined}
+                >
+                  ログインする
+                </button>
+              </SignInButton>
+            ) : (
+              <button
+                type="button"
+                onClick={onLogin}
+                className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                data-testid={testId ? `${testId}-login-button` : undefined}
+              >
+                ログインする
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

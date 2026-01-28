@@ -118,6 +118,7 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 
 /**
  * Clerkの状態を安全に取得するカスタムフック
+ * ログイン状態の変更を検知して自動更新
  */
 function useClerkState() {
   const [clerkState, setClerkState] = useState<{
@@ -131,7 +132,7 @@ function useClerkState() {
   })
 
   useEffect(() => {
-    const checkClerk = () => {
+    const updateClerkState = () => {
       const win = window as unknown as { Clerk?: ClerkInstance }
       if (win.Clerk) {
         const clerk = win.Clerk
@@ -150,15 +151,41 @@ function useClerkState() {
     }
 
     // 初回チェック
-    checkClerk()
+    updateClerkState()
 
     // Clerkがまだロードされていない場合は少し待って再試行
-    const timer = setTimeout(checkClerk, 500)
-    const timer2 = setTimeout(checkClerk, 1500)
+    const timer = setTimeout(updateClerkState, 500)
+    const timer2 = setTimeout(updateClerkState, 1500)
+
+    // Clerkの認証状態変更を監視（ポーリング）
+    // Clerkのモーダルログイン後に状態を更新するため
+    const pollInterval = setInterval(() => {
+      const win = window as unknown as { Clerk?: ClerkInstance }
+      if (win.Clerk) {
+        const currentSignedIn = !!win.Clerk.user
+        setClerkState(prev => {
+          if (prev.isSignedIn !== currentSignedIn) {
+            return {
+              isSignedIn: currentSignedIn,
+              user: win.Clerk?.user || null,
+              getToken: async () => {
+                try {
+                  return win.Clerk?.session?.getToken() || null
+                } catch {
+                  return null
+                }
+              },
+            }
+          }
+          return prev
+        })
+      }
+    }, 1000)
 
     return () => {
       clearTimeout(timer)
       clearTimeout(timer2)
+      clearInterval(pollInterval)
     }
   }, [])
 
