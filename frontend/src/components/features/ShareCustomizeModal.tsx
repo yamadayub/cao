@@ -125,19 +125,35 @@ export function ShareCustomizeModal({
     window.open(lineUrl, '_blank', 'noopener,noreferrer')
   }, [shareUrl])
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!shareImageUrl) return
-    const link = document.createElement('a')
-    link.href = shareImageUrl
-    link.download = 'cao-share.png'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+
+    try {
+      // 外部URLの場合はfetchしてBlobとしてダウンロード
+      const response = await fetch(shareImageUrl)
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = 'cao-share.png'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Blob URLを解放
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      // フォールバック: 新しいタブで開く
+      window.open(shareImageUrl, '_blank', 'noopener,noreferrer')
+    }
   }, [shareImageUrl])
 
-  const handleInstagramShare = useCallback(() => {
+  const handleInstagramShare = useCallback(async () => {
     if (shareImageUrl) {
-      handleDownload()
+      await handleDownload()
+      // Instagramはダウンロード後に手動でアップロードする必要がある旨を案内
+      alert('画像をダウンロードしました。Instagramアプリで画像をアップロードしてください。')
     }
   }, [shareImageUrl, handleDownload])
 
