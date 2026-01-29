@@ -357,9 +357,21 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       console.log('swapResult.status:', swapResult.status)
       console.log('swapResult.swapped_image exists:', !!swapResult.swapped_image)
       console.log('swapResult.swapped_image length:', swapResult.swapped_image?.length)
+      console.log('swapResult.swapped_image first 100 chars:', swapResult.swapped_image?.substring(0, 100))
 
       if (!swapResult.swapped_image) {
         throw new Error('Face Swap結果が取得できませんでした')
+      }
+
+      // Validate that the string is valid base64
+      const base64Pattern = /^[A-Za-z0-9+/=]+$/
+      const cleanBase64 = swapResult.swapped_image.startsWith('data:')
+        ? swapResult.swapped_image.split(',')[1]
+        : swapResult.swapped_image
+
+      if (!base64Pattern.test(cleanBase64)) {
+        console.error('Invalid base64 characters detected in response')
+        throw new Error('画像データの形式が不正です。もう一度お試しください。')
       }
 
       // スワップ結果を保存（JPEG形式で返却される）
@@ -367,17 +379,29 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         ? swapResult.swapped_image
         : `data:image/jpeg;base64,${swapResult.swapped_image}`
 
+      console.log('Data URL length:', swappedDataUrl.length)
+      console.log('Data URL prefix:', swappedDataUrl.substring(0, 30))
+
       // 画像が実際に読み込めるかを検証
       console.log('Validating image data URL...')
       await new Promise<void>((resolve, reject) => {
         const img = new Image()
+        const timeoutId = setTimeout(() => {
+          console.error('Image load timeout after 10 seconds')
+          reject(new Error('画像の読み込みがタイムアウトしました。もう一度お試しください。'))
+        }, 10000)
+
         img.onload = () => {
+          clearTimeout(timeoutId)
           console.log('Image validated successfully:', img.width, 'x', img.height)
           resolve()
         }
         img.onerror = (e) => {
+          clearTimeout(timeoutId)
           console.error('Image validation failed:', e)
-          reject(new Error('画像データの読み込みに失敗しました。もう一度お試しください。'))
+          console.error('Image naturalWidth:', img.naturalWidth)
+          console.error('Image naturalHeight:', img.naturalHeight)
+          reject(new Error('画像データの読み込みに失敗しました。画像形式を確認してください。'))
         }
         img.src = swappedDataUrl
       })
