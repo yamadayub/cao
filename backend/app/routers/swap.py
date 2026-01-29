@@ -135,11 +135,17 @@ async def generate_swap(
                 compositor = get_swap_compositor()
                 final_img = compositor.preserve_hair(current_img, swapped_img)
 
-                result_bytes = cv2_to_bytes(final_img, format="png")
-                logger.info("Hair preserved from original image")
+                # Use JPEG with quality 85 to reduce response size (PNG ~2MB -> JPEG ~300KB)
+                result_bytes = cv2_to_bytes(final_img, format="jpeg")
+                logger.info("Hair preserved from original image (JPEG format)")
             except Exception as hair_error:
                 logger.warning(f"Failed to preserve hair, using raw swap result: {hair_error}")
-                # Continue with original result_bytes if hair preservation fails
+                # Convert raw result to JPEG for smaller response
+                try:
+                    raw_img = bytes_to_cv2(result_bytes)
+                    result_bytes = cv2_to_bytes(raw_img, format="jpeg")
+                except Exception:
+                    pass  # Keep original bytes if conversion fails
 
             # Cache result
             cache.set(cache_key, result_bytes)

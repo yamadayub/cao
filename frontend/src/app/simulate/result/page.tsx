@@ -362,10 +362,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         throw new Error('Face Swap結果が取得できませんでした')
       }
 
-      // スワップ結果を保存
+      // スワップ結果を保存（JPEG形式で返却される）
       const swappedDataUrl = swapResult.swapped_image.startsWith('data:')
         ? swapResult.swapped_image
-        : `data:image/png;base64,${swapResult.swapped_image}`
+        : `data:image/jpeg;base64,${swapResult.swapped_image}`
 
       // 画像が実際に読み込めるかを検証
       console.log('Validating image data URL...')
