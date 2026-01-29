@@ -28,9 +28,9 @@ export interface ShareCustomizeModalProps {
 }
 
 const TEMPLATE_OPTIONS: Array<{ value: ShareTemplate; label: string; description: string }> = [
-  { value: 'before_after', label: 'Before/After', description: '変化がわかりやすい比較画像' },
-  { value: 'single', label: '単体', description: '結果のみを表示' },
-  { value: 'parts_highlight', label: 'パーツハイライト', description: '変更箇所を強調' },
+  { value: 'before_after', label: 'Before/After', description: '比較画像' },
+  { value: 'single', label: '単体', description: '結果のみ' },
+  { value: 'parts_highlight', label: 'パーツ', description: '変更箇所強調' },
 ]
 
 const PRIVACY_WARNINGS = [
@@ -58,7 +58,6 @@ export function ShareCustomizeModal({
 }: ShareCustomizeModalProps) {
   const [template, setTemplate] = useState<ShareTemplate>('before_after')
   const [caption, setCaption] = useState('')
-  const [showShareOptions, setShowShareOptions] = useState(false)
   const [privacyAgreed, setPrivacyAgreed] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -67,7 +66,6 @@ export function ShareCustomizeModal({
     if (!isOpen) {
       setTemplate('before_after')
       setCaption('')
-      setShowShareOptions(false)
       setPrivacyAgreed(false)
     }
   }, [isOpen])
@@ -85,11 +83,9 @@ export function ShareCustomizeModal({
 
   const handleSubmit = useCallback(async () => {
     await onCreateShare({ template, caption })
-    setShowShareOptions(true)
   }, [template, caption, onCreateShare])
 
   const handleCaptionChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    // 140文字以内に制限
     setCaption(e.target.value.slice(0, 140))
   }, [])
 
@@ -114,15 +110,6 @@ export function ShareCustomizeModal({
     window.open(lineUrl, '_blank', 'noopener,noreferrer')
   }, [shareUrl])
 
-  const handleInstagramShare = useCallback(() => {
-    // Instagramはネイティブシェアが必要
-    // 画像をダウンロードしてからシェアを促す
-    if (shareImageUrl) {
-      handleDownload()
-      alert('画像を保存しました。Instagramアプリで共有してください。')
-    }
-  }, [shareImageUrl])
-
   const handleDownload = useCallback(() => {
     if (!shareImageUrl) return
     const link = document.createElement('a')
@@ -133,8 +120,28 @@ export function ShareCustomizeModal({
     document.body.removeChild(link)
   }, [shareImageUrl])
 
-  const captionError = caption.length > 140 ? 'キャプションは140文字以内で入力してください' : ''
-  const isSubmitDisabled = isCreating || caption.length > 140
+  const handleInstagramShare = useCallback(() => {
+    if (shareImageUrl) {
+      handleDownload()
+    }
+  }, [shareImageUrl, handleDownload])
+
+  const handleCopyUrl = useCallback(async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+    } catch {
+      // フォールバック
+      const textArea = document.createElement('textarea')
+      textArea.value = shareUrl
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+  }, [shareUrl])
+
+  const isShareReady = !!shareUrl && !!shareImageUrl
 
   if (!isOpen) {
     return null
@@ -150,66 +157,59 @@ export function ShareCustomizeModal({
     >
       <div
         ref={modalRef}
-        className="relative w-full max-w-lg bg-white rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         role="document"
       >
         {/* ヘッダー */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-lg font-bold text-gray-900">
-            {!showShareOptions ? 'シェア画像を作成' : 'シェア先を選択'}
+            {!isShareReady ? 'シェア画像を作成' : 'シェア'}
           </h2>
           <button
             type="button"
             onClick={onClose}
             data-testid={testId ? `${testId}-close` : undefined}
-            className="p-1 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
+            className="p-2 -mr-2 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-full"
             aria-label="閉じる"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
         {/* コンテンツ */}
-        <div className="p-4 max-h-[70vh] overflow-y-auto">
-          {!showShareOptions ? (
-            <>
+        <div className="p-5 max-h-[75vh] overflow-y-auto">
+          {!isShareReady ? (
+            /* 作成画面 */
+            <div className="space-y-5">
               {/* プレビュー */}
               <div
                 data-testid={testId ? `${testId}-preview` : undefined}
-                className="mb-4 rounded-lg overflow-hidden bg-gray-100"
+                className="rounded-xl overflow-hidden bg-gray-50 border border-gray-100"
               >
-                <div className="flex gap-2 p-2">
-                  <img
-                    src={sourceImage}
-                    alt="変更前"
-                    className="w-1/2 aspect-square object-cover rounded"
-                  />
-                  <img
-                    src={resultImage}
-                    alt="変更後"
-                    className="w-1/2 aspect-square object-cover rounded"
-                  />
+                <div className="flex">
+                  <div className="flex-1 p-2">
+                    <img
+                      src={sourceImage}
+                      alt="変更前"
+                      className="w-full aspect-square object-cover rounded-lg"
+                    />
+                    <p className="text-xs text-gray-500 text-center mt-1">Before</p>
+                  </div>
+                  <div className="flex-1 p-2">
+                    <img
+                      src={resultImage}
+                      alt="変更後"
+                      className="w-full aspect-square object-cover rounded-lg"
+                    />
+                    <p className="text-xs text-gray-500 text-center mt-1">After</p>
+                  </div>
                 </div>
               </div>
 
               {/* テンプレート選択 */}
-              <div
-                data-testid={testId ? `${testId}-templates` : undefined}
-                className="mb-4"
-              >
+              <div data-testid={testId ? `${testId}-templates` : undefined}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   テンプレート
                 </label>
@@ -222,54 +222,44 @@ export function ShareCustomizeModal({
                       data-testid={testId ? `${testId}-template-${option.value}` : undefined}
                       data-selected={template === option.value}
                       className={`
-                        p-3 rounded-lg border-2 text-center transition-all
-                        focus:outline-none focus:ring-2 focus:ring-blue-500
+                        py-3 px-2 rounded-xl border-2 text-center transition-all
+                        focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1
                         ${template === option.value
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                          ? 'border-primary-600 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 hover:border-gray-300 text-gray-600'
                         }
                       `}
                     >
-                      <div className="text-sm font-medium">{option.label}</div>
+                      <div className="text-sm font-medium leading-tight">{option.label}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{option.description}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* キャプション入力 */}
-              <div className="mb-4">
-                <label
-                  htmlFor="share-caption"
-                  className="block text-sm font-medium text-gray-700 mb-2"
-                >
-                  キャプション（任意）
+              <div>
+                <label htmlFor="share-caption" className="block text-sm font-medium text-gray-700 mb-2">
+                  キャプション
+                  <span className="text-gray-400 font-normal ml-1">（任意）</span>
                 </label>
                 <textarea
                   id="share-caption"
                   value={caption}
                   onChange={handleCaptionChange}
                   maxLength={140}
-                  placeholder="キャプション（任意）"
-                  rows={3}
+                  placeholder="シェア時に表示するメッセージを入力..."
+                  rows={2}
                   data-testid={testId ? `${testId}-caption` : undefined}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl resize-none text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-gray-400"
                 />
-                <div className="flex justify-between items-center mt-1">
+                <div className="text-right mt-1">
                   <span
                     data-testid={testId ? `${testId}-caption-count` : undefined}
-                    className={`text-xs ${caption.length >= 120 ? 'text-amber-600' : 'text-gray-500'}`}
+                    className={`text-xs ${caption.length >= 120 ? 'text-amber-600' : 'text-gray-400'}`}
                   >
                     {caption.length}/140
                   </span>
-                  {captionError && (
-                    <span
-                      data-testid={testId ? `${testId}-caption-error` : undefined}
-                      role="alert"
-                      className="text-xs text-red-600"
-                    >
-                      {captionError}
-                    </span>
-                  )}
                 </div>
               </div>
 
@@ -277,147 +267,187 @@ export function ShareCustomizeModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitDisabled}
+                disabled={isCreating}
                 data-testid={testId ? `${testId}-create-button` : undefined}
                 className={`
-                  w-full py-3 px-4 rounded-lg font-semibold text-base
+                  w-full py-3.5 px-4 rounded-xl font-semibold text-base
                   transition-all duration-200
-                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                  ${isSubmitDisabled
-                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                  focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500
+                  ${isCreating
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98]'
                   }
                 `}
               >
-                {isCreating ? '作成中...' : 'シェア画像を作成'}
+                {isCreating ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    作成中...
+                  </span>
+                ) : (
+                  'プレビューを作成'
+                )}
               </button>
-            </>
+            </div>
           ) : (
-            <>
+            /* シェア画面（プレビュー付き） */
+            <div className="space-y-5">
+              {/* シェア画像プレビュー */}
+              <div
+                data-testid={testId ? `${testId}-share-preview` : undefined}
+                className="rounded-xl overflow-hidden bg-gray-50 border border-gray-100"
+              >
+                <img
+                  src={shareImageUrl}
+                  alt="シェア画像プレビュー"
+                  className="w-full"
+                />
+              </div>
+
               {/* プライバシー警告 */}
               <div
                 data-testid={testId ? `${testId}-privacy-warning` : undefined}
-                className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg"
+                className="p-4 bg-amber-50 border border-amber-100 rounded-xl"
               >
-                <ul className="space-y-1 text-sm text-amber-800 mb-3">
+                <ul className="space-y-1.5 text-sm text-amber-800 mb-3">
                   {PRIVACY_WARNINGS.map((warning, index) => (
                     <li key={index} className="flex items-start gap-2">
-                      <svg
-                        className="w-4 h-4 mt-0.5 flex-shrink-0"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                        aria-hidden="true"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                          clipRule="evenodd"
-                        />
+                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
-                      <span>{warning}</span>
+                      <span className="leading-tight">{warning}</span>
                     </li>
                   ))}
                 </ul>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={privacyAgreed}
                     onChange={(e) => setPrivacyAgreed(e.target.checked)}
                     data-testid={testId ? `${testId}-privacy-checkbox` : undefined}
-                    className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                    className="w-4 h-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
                   />
-                  <span className="text-sm font-medium text-gray-900">
-                    上記を理解しました
-                  </span>
+                  <span className="text-sm font-medium text-gray-900">上記を理解しました</span>
                 </label>
               </div>
 
-              {/* シェアボタン群 */}
-              <div
-                data-testid={testId ? `${testId}-share-buttons` : undefined}
-                className="grid grid-cols-2 gap-3"
-              >
-                <button
-                  type="button"
-                  onClick={handleTwitterShare}
-                  disabled={!privacyAgreed}
-                  data-testid={testId ? `${testId}-share-twitter` : undefined}
-                  className={`
-                    flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium
-                    transition-all duration-200
-                    ${privacyAgreed
-                      ? 'bg-black text-white hover:bg-gray-800'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                  Xでシェア
-                </button>
+              {/* シェアボタン群（アイコンのみ） */}
+              <div data-testid={testId ? `${testId}-share-buttons` : undefined}>
+                <p className="text-sm font-medium text-gray-700 mb-3">シェア先</p>
+                <div className="flex justify-center gap-4">
+                  {/* X (Twitter) */}
+                  <button
+                    type="button"
+                    onClick={handleTwitterShare}
+                    disabled={!privacyAgreed}
+                    data-testid={testId ? `${testId}-share-twitter` : undefined}
+                    title="Xでシェア"
+                    className={`
+                      w-14 h-14 flex items-center justify-center rounded-full
+                      transition-all duration-200
+                      ${privacyAgreed
+                        ? 'bg-black text-white hover:bg-gray-800 active:scale-95'
+                        : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      }
+                    `}
+                  >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleLineShare}
-                  disabled={!privacyAgreed}
-                  data-testid={testId ? `${testId}-share-line` : undefined}
-                  className={`
-                    flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium
-                    transition-all duration-200
-                    ${privacyAgreed
-                      ? 'bg-green-500 text-white hover:bg-green-600'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386a.63.63 0 0 1-.63-.629V8.108a.63.63 0 0 1 .63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016a.63.63 0 0 1-.63.63.629.629 0 0 1-.511-.26l-2.4-3.255v2.885c0 .349-.283.63-.63.63a.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.2 0 .385.098.5.26l2.415 3.254V8.108c0-.345.285-.63.63-.63s.626.285.626.63v4.771zm-5.741 0a.63.63 0 0 1-.63.63.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.349 0 .63.285.63.63v4.771zm-2.466.63H4.917a.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.349 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.63-.629.63M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314" />
-                  </svg>
-                  LINEでシェア
-                </button>
+                  {/* LINE */}
+                  <button
+                    type="button"
+                    onClick={handleLineShare}
+                    disabled={!privacyAgreed}
+                    data-testid={testId ? `${testId}-share-line` : undefined}
+                    title="LINEでシェア"
+                    className={`
+                      w-14 h-14 flex items-center justify-center rounded-full
+                      transition-all duration-200
+                      ${privacyAgreed
+                        ? 'bg-[#06C755] text-white hover:bg-[#05b34d] active:scale-95'
+                        : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      }
+                    `}
+                  >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386a.63.63 0 0 1-.63-.629V8.108a.63.63 0 0 1 .63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016a.63.63 0 0 1-.63.63.629.629 0 0 1-.511-.26l-2.4-3.255v2.885c0 .349-.283.63-.63.63a.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.2 0 .385.098.5.26l2.415 3.254V8.108c0-.345.285-.63.63-.63s.626.285.626.63v4.771zm-5.741 0a.63.63 0 0 1-.63.63.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.349 0 .63.285.63.63v4.771zm-2.466.63H4.917a.63.63 0 0 1-.63-.63V8.108a.63.63 0 0 1 .63-.63c.349 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.281.63-.629.63M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.258 1.058.59.12.301.079.766.038 1.08l-.164 1.02c-.045.301-.24 1.186 1.049.645 1.291-.539 6.916-4.078 9.436-6.975C23.176 14.393 24 12.458 24 10.314" />
+                    </svg>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleInstagramShare}
-                  disabled={!privacyAgreed}
-                  data-testid={testId ? `${testId}-share-instagram` : undefined}
-                  className={`
-                    flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium
-                    transition-all duration-200
-                    ${privacyAgreed
-                      ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white hover:opacity-90'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                    }
-                  `}
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
-                  </svg>
-                  Instagramでシェア
-                </button>
+                  {/* Instagram */}
+                  <button
+                    type="button"
+                    onClick={handleInstagramShare}
+                    disabled={!privacyAgreed}
+                    data-testid={testId ? `${testId}-share-instagram` : undefined}
+                    title="Instagramでシェア（画像を保存）"
+                    className={`
+                      w-14 h-14 flex items-center justify-center rounded-full
+                      transition-all duration-200
+                      ${privacyAgreed
+                        ? 'bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white hover:opacity-90 active:scale-95'
+                        : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      }
+                    `}
+                  >
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
+                    </svg>
+                  </button>
 
+                  {/* ダウンロード */}
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    disabled={!privacyAgreed}
+                    data-testid={testId ? `${testId}-download` : undefined}
+                    title="画像をダウンロード"
+                    className={`
+                      w-14 h-14 flex items-center justify-center rounded-full
+                      transition-all duration-200
+                      ${privacyAgreed
+                        ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:scale-95'
+                        : 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                      }
+                    `}
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* URLコピー */}
+              <div className="pt-2">
                 <button
                   type="button"
-                  onClick={handleDownload}
+                  onClick={handleCopyUrl}
                   disabled={!privacyAgreed}
-                  data-testid={testId ? `${testId}-download` : undefined}
+                  data-testid={testId ? `${testId}-copy-url` : undefined}
                   className={`
-                    flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium
+                    w-full py-3 px-4 rounded-xl text-sm font-medium
+                    flex items-center justify-center gap-2
                     transition-all duration-200
                     ${privacyAgreed
-                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      ? 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200'
+                      : 'bg-gray-50 text-gray-300 cursor-not-allowed border border-gray-100'
                     }
                   `}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  画像をダウンロード
+                  URLをコピー
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
