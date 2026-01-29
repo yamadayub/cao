@@ -17,6 +17,19 @@ supabase>=2.0.0
 PyJWT>=2.8.0
 scipy>=1.11.0
 
+# BiSeNet face parsing (ONNX runtime for efficient inference)
+onnxruntime>=1.16.0
+
+# Replicate API for face swap
+replicate>=0.20.0
+
+# In-memory caching with TTL
+cachetools>=5.3.0
+
+# Note: BiSeNet face parsing requires the face_parsing.onnx model file.
+# Download from: https://github.com/zllrunning/face-parsing.PyTorch
+# Place in backend/models/face_parsing.onnx
+
 # Note: 3D Part Blending with depth estimation requires torch and transformers
 # These are optional - the 3D mode will work without depth if unavailable
 # To enable depth estimation locally, install:
