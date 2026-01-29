@@ -125,25 +125,23 @@ async def generate_swap(
                 target_image=current_bytes,  # Face to swap ONTO
             )
 
+            # Convert result to OpenCV format first
+            swapped_img = bytes_to_cv2(result_bytes)
+            logger.info(f"Swapped image shape: {swapped_img.shape}")
+
             # Preserve original hair on swapped result
             try:
                 current_img = bytes_to_cv2(current_bytes)
-                swapped_img = bytes_to_cv2(result_bytes)
-
                 compositor = get_swap_compositor()
                 final_img = compositor.preserve_hair(current_img, swapped_img)
-
-                # Use JPEG with quality 85 to reduce response size (PNG ~2MB -> JPEG ~300KB)
-                result_bytes = cv2_to_bytes(final_img, format="jpeg")
-                logger.info("Hair preserved from original image (JPEG format)")
+                logger.info("Hair preserved from original image")
             except Exception as hair_error:
                 logger.warning(f"Failed to preserve hair, using raw swap result: {hair_error}")
-                # Convert raw result to JPEG for smaller response
-                try:
-                    raw_img = bytes_to_cv2(result_bytes)
-                    result_bytes = cv2_to_bytes(raw_img, format="jpeg")
-                except Exception:
-                    pass  # Keep original bytes if conversion fails
+                final_img = swapped_img
+
+            # Always convert to JPEG for consistent format and smaller size
+            result_bytes = cv2_to_bytes(final_img, format="jpeg")
+            logger.info(f"Final JPEG size: {len(result_bytes)} bytes")
 
             # Cache result
             cache.set(cache_key, result_bytes)

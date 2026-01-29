@@ -374,10 +374,23 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         throw new Error('画像データの形式が不正です。もう一度お試しください。')
       }
 
-      // スワップ結果を保存（JPEG形式で返却される）
+      // Detect image format from base64 magic bytes
+      // JPEG starts with /9j/ (FFD8 in hex), PNG starts with iVBORw (89504E47 in hex)
+      let mimeType = 'image/jpeg' // default to JPEG
+      if (cleanBase64.startsWith('iVBORw')) {
+        mimeType = 'image/png'
+        console.log('Detected PNG format from base64')
+      } else if (cleanBase64.startsWith('/9j/')) {
+        mimeType = 'image/jpeg'
+        console.log('Detected JPEG format from base64')
+      } else {
+        console.warn('Could not detect image format from base64, assuming JPEG')
+      }
+
+      // スワップ結果を保存
       const swappedDataUrl = swapResult.swapped_image.startsWith('data:')
         ? swapResult.swapped_image
-        : `data:image/jpeg;base64,${swapResult.swapped_image}`
+        : `data:${mimeType};base64,${swapResult.swapped_image}`
 
       console.log('Data URL length:', swappedDataUrl.length)
       console.log('Data URL prefix:', swappedDataUrl.substring(0, 30))
