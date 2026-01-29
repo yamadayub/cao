@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
@@ -267,6 +267,9 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   // Face Swapの結果画像（パーツ合成のベース）
   const [swappedImage, setSwappedImage] = useState<string | null>(null)
 
+  // API呼び出し中かどうかのref（重複リクエスト防止）
+  const isGeneratingRef = useRef(false)
+
   // 表示モード（'morph' または 'parts'）
   const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
 
@@ -285,9 +288,17 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
    * Face Swap画像を生成（Replicate API使用）
    */
   const generateMorphImages = useCallback(async () => {
+    // 重複リクエスト防止
+    if (isGeneratingRef.current) {
+      console.log('Already generating, skipping duplicate request')
+      return
+    }
+    isGeneratingRef.current = true
+
     const { currentImage, idealImage } = getStoredImages()
 
     if (!currentImage || !idealImage) {
+      isGeneratingRef.current = false
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -385,6 +396,8 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         loadingMessage: '',
         error: errorMessage,
       }))
+    } finally {
+      isGeneratingRef.current = false
     }
   }, [])
 
