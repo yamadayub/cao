@@ -1,0 +1,41 @@
+# Exclude test files
+tests/
+backend/tests/
+frontend/tests/
+
+# Exclude frontend (handled by Vercel)
+frontend/
+node_modules/
+
+# Exclude documentation
+docs/
+*.md
+
+# Exclude development files
+.git/
+.github/
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Exclude local virtual environment
+venv/
+.venv/
+env/
+.env.local
+
+# Exclude large model files if any
+*.pth
+*.onnx
+*.zip
+
+# Exclude test results
+test-results/
+
+# Exclude Supabase local files (migrations are handled separately)
+supabase/.temp/
