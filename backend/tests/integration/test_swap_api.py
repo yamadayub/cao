@@ -97,12 +97,12 @@ class TestSwapGenerateEndpoint:
             },
         )
 
-        # Should return success with job info (swapped_image is retrieved via GET endpoint)
+        # Should return success with swapped_image (synchronous API)
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
         assert data["data"]["status"] == "completed"
-        assert data["data"]["job_id"] is not None
+        assert data["data"]["swapped_image"] is not None
 
     @patch("app.routers.swap.get_replicate_client")
     @patch("app.routers.swap.get_swap_cache")
