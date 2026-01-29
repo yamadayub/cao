@@ -1,5 +1,6 @@
 """FastAPI Application Entry Point."""
 
+import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -26,6 +27,7 @@ from app.routers import (
     swap,
 )
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Rate limiter setup
@@ -86,6 +88,33 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def handle_options_and_cors(request: Request, call_next) -> Response:
+    """Handle OPTIONS requests explicitly to ensure CORS always works."""
+    origin = request.headers.get("origin", "")
+
+    # Log all OPTIONS requests for debugging
+    if request.method == "OPTIONS":
+        logger.info(f"OPTIONS request: path={request.url.path}, origin={origin}")
+        logger.info(f"OPTIONS headers: {dict(request.headers)}")
+
+        # Return CORS headers for all OPTIONS requests
+        response = Response(
+            content="OK",
+            status_code=200,
+            headers={
+                "Access-Control-Allow-Origin": origin or "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID",
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Max-Age": "600",
+            }
+        )
+        return response
+
+    return await call_next(request)
 
 
 @app.middleware("http")
