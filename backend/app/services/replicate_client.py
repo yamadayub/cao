@@ -146,7 +146,7 @@ class ReplicateClient:
                         # Final attempt also rate limited
                         raise ReplicateError(
                             "サーバーが混雑しています。しばらく待ってからお試しください。"
-                        )
+                        ) from None
                 elif attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
 

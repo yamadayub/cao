@@ -3,7 +3,6 @@
 from typing import Optional
 
 from fastapi import Header, HTTPException
-from fastapi.responses import JSONResponse
 
 from app.models.schemas import ErrorCodes, ErrorDetail, ErrorResponse
 
