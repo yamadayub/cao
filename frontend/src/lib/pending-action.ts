@@ -12,7 +12,7 @@ import type { PartsSelection } from '@/lib/api/types'
 /**
  * 保留アクションの種類
  */
-export type PendingActionType = 'parts-blur' | 'download' | 'save' | 'share'
+export type PendingActionType = 'parts-blur' | 'download' | 'save' | 'share' | 'sns-share'
 
 /**
  * 保留アクションの情報
@@ -116,6 +116,11 @@ export function getLoginPromptMessage(actionType: PendingActionType): {
       return {
         title: '共有するにはログインが必要です',
         description: 'ログインすると、シミュレーション結果を共有できます。',
+      }
+    case 'sns-share':
+      return {
+        title: 'SNSにシェアするにはログインが必要です',
+        description: 'ログインすると、シミュレーション結果をSNSでシェアできます。',
       }
     default:
       return {
