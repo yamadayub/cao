@@ -13,6 +13,13 @@ import { ApiError } from '@/lib/api/client'
 import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
 import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
+import {
+  savePendingAction,
+  getPendingAction,
+  clearPendingAction,
+  getLoginPromptMessage,
+  type PendingActionType,
+} from '@/lib/pending-action'
 
 // Clerkの型定義
 interface ClerkInstance {
@@ -123,10 +130,14 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 function useClerkState() {
   const [clerkState, setClerkState] = useState<{
     isSignedIn: boolean
+    wasSignedIn: boolean // 直前のログイン状態（ログイン完了検知用）
+    justLoggedIn: boolean // ログインが完了したかどうか
     user: { primaryEmailAddress?: { emailAddress: string } | null } | null
     getToken: () => Promise<string | null>
   }>({
     isSignedIn: false,
+    wasSignedIn: false,
+    justLoggedIn: false,
     user: null,
     getToken: async () => null,
   })
@@ -136,8 +147,10 @@ function useClerkState() {
       const win = window as unknown as { Clerk?: ClerkInstance }
       if (win.Clerk) {
         const clerk = win.Clerk
-        setClerkState({
+        setClerkState(prev => ({
           isSignedIn: !!clerk.user,
+          wasSignedIn: prev.isSignedIn,
+          justLoggedIn: false,
           user: clerk.user || null,
           getToken: async () => {
             try {
@@ -146,7 +159,7 @@ function useClerkState() {
               return null
             }
           },
-        })
+        }))
       }
     }
 
@@ -164,9 +177,13 @@ function useClerkState() {
       if (win.Clerk) {
         const currentSignedIn = !!win.Clerk.user
         setClerkState(prev => {
+          // ログイン状態が変化した場合のみ更新
           if (prev.isSignedIn !== currentSignedIn) {
+            const justLoggedIn = !prev.isSignedIn && currentSignedIn
             return {
               isSignedIn: currentSignedIn,
+              wasSignedIn: prev.isSignedIn,
+              justLoggedIn,
               user: win.Clerk?.user || null,
               getToken: async () => {
                 try {
@@ -189,7 +206,12 @@ function useClerkState() {
     }
   }, [])
 
-  return clerkState
+  // justLoggedInフラグをリセット
+  const resetJustLoggedIn = useCallback(() => {
+    setClerkState(prev => ({ ...prev, justLoggedIn: false }))
+  }, [])
+
+  return { ...clerkState, resetJustLoggedIn }
 }
 
 /**
@@ -197,11 +219,13 @@ function useClerkState() {
  */
 interface SimulationResultContentProps {
   isSignedIn: boolean
+  justLoggedIn: boolean
+  resetJustLoggedIn: () => void
   user: { primaryEmailAddress?: { emailAddress: string } | null } | null
   getToken: () => Promise<string | null>
 }
 
-function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResultContentProps) {
+function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, user, getToken }: SimulationResultContentProps) {
   const router = useRouter()
 
   // 状態管理
@@ -383,6 +407,11 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   const handleSave = useCallback(async () => {
     if (!isSignedIn) {
       setLoginAction('save')
+      savePendingAction({
+        type: 'save',
+        viewMode,
+        partsSelection: partsBlendState.selection,
+      })
       setShowLoginModal(true)
       return
     }
@@ -442,6 +471,11 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
   const handleShare = useCallback(async () => {
     if (!isSignedIn) {
       setLoginAction('share')
+      savePendingAction({
+        type: 'share',
+        viewMode,
+        partsSelection: partsBlendState.selection,
+      })
       setShowLoginModal(true)
       return
     }
@@ -525,11 +559,16 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
    */
   const handlePartsBlurLoginClick = useCallback((info?: LoginPromptInfo) => {
     setLoginAction('parts-blur')
+    savePendingAction({
+      type: 'parts-blur',
+      viewMode: 'parts',
+      partsSelection: partsBlendState.selection,
+    })
     if (info) {
       setPartsLoginPromptInfo(info)
     }
     setShowLoginModal(true)
-  }, [])
+  }, [partsBlendState.selection])
 
   /**
    * 再試行ハンドラ
@@ -663,6 +702,59 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
       }))
     }
   }, [sourceImages, swappedImage, partsBlendState.selection, partsBlendState.intensity])
+
+  /**
+   * ログイン完了時に保留アクションを実行
+   */
+  useEffect(() => {
+    if (!justLoggedIn) return
+
+    const pendingAction = getPendingAction()
+    if (!pendingAction) {
+      resetJustLoggedIn()
+      return
+    }
+
+    // 保留アクションをクリア
+    clearPendingAction()
+    resetJustLoggedIn()
+
+    // 表示モードを復元
+    if (pendingAction.viewMode) {
+      setViewMode(pendingAction.viewMode)
+    }
+
+    // パーツ選択状態を復元
+    if (pendingAction.partsSelection) {
+      setPartsBlendState(prev => ({
+        ...prev,
+        selection: pendingAction.partsSelection!,
+      }))
+    }
+
+    // アクションを実行
+    switch (pendingAction.type) {
+      case 'parts-blur':
+        // パーツモードに切り替え、ブラーは認証済みなので自動解除
+        setViewMode('parts')
+        setPartsViewMode('applied')
+        break
+      case 'download':
+        // ダウンロードを実行（少し遅延させてUIの更新を待つ）
+        setTimeout(() => {
+          handleDownload()
+        }, 100)
+        break
+      case 'save':
+        // 保存を実行
+        handleSave()
+        break
+      case 'share':
+        // 共有を実行
+        handleShare()
+        break
+    }
+  }, [justLoggedIn, resetJustLoggedIn, handleDownload, handleSave, handleShare])
 
   /**
    * 選択されたパーツの表示名リストを取得
@@ -1093,21 +1185,23 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
         onClose={() => {
           setShowLoginModal(false)
           setPartsLoginPromptInfo(null)
+          // モーダルを閉じた場合は保留アクションをクリア
+          clearPendingAction()
         }}
         onLogin={handleLogin}
         title={
           loginAction === 'parts-blur' && partsLoginPromptInfo
             ? partsLoginPromptInfo.title
-            : loginAction === 'save'
-              ? '保存するにはログインが必要です'
-              : '共有するにはログインが必要です'
+            : loginAction
+              ? getLoginPromptMessage(loginAction).title
+              : 'ログインが必要です'
         }
         description={
           loginAction === 'parts-blur' && partsLoginPromptInfo
             ? partsLoginPromptInfo.description
-            : loginAction === 'save'
-              ? 'シミュレーション結果を保存するにはログインが必要です。'
-              : 'シミュレーション結果を共有するにはログインが必要です。'
+            : loginAction
+              ? getLoginPromptMessage(loginAction).description
+              : 'この機能を使用するにはログインが必要です。'
         }
         testId={loginAction === 'parts-blur' ? 'parts-login-prompt-modal' : 'login-prompt-modal'}
       />
@@ -1133,11 +1227,13 @@ function SimulationResultContent({ isSignedIn, user, getToken }: SimulationResul
  * 参照: business-spec.md UC-004, UC-005, UC-006, UC-007
  */
 export default function SimulationResultPage() {
-  const { isSignedIn, user, getToken } = useClerkState()
+  const { isSignedIn, justLoggedIn, resetJustLoggedIn, user, getToken } = useClerkState()
 
   return (
     <SimulationResultContent
       isSignedIn={isSignedIn}
+      justLoggedIn={justLoggedIn}
+      resetJustLoggedIn={resetJustLoggedIn}
       user={user}
       getToken={getToken}
     />
