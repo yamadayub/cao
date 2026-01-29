@@ -333,11 +333,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         loadingMessage: '処理中...',
       }))
 
+      console.log('Starting Face Swap API call...')
+      console.log('current_image length:', base64Current.length)
+      console.log('ideal_image length:', base64Ideal.length)
+
       const swapResult = await swapAndWait({
         current_image: base64Current,
         ideal_image: base64Ideal,
       }, {
         onProgress: (status: SwapJobStatus) => {
+          console.log('Swap progress:', status)
           let progress = 10
           if (status === 'processing') progress = 50
           if (status === 'completed') progress = 90
@@ -347,6 +352,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
           }))
         },
       })
+
+      console.log('Face Swap API response received')
+      console.log('swapResult.status:', swapResult.status)
+      console.log('swapResult.swapped_image exists:', !!swapResult.swapped_image)
+      console.log('swapResult.swapped_image length:', swapResult.swapped_image?.length)
 
       if (!swapResult.swapped_image) {
         throw new Error('Face Swap結果が取得できませんでした')
@@ -381,10 +391,18 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       }))
     } catch (error) {
       console.error('Face Swap error:', error)
+      console.error('Error type:', error?.constructor?.name)
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        code: error instanceof ApiError ? error.code : undefined,
+      })
 
       let errorMessage = '画像の生成中にエラーが発生しました。'
       if (error instanceof ApiError) {
         errorMessage = error.localizedMessage
+        console.error('ApiError code:', error.code)
+        console.error('ApiError statusCode:', error.statusCode)
       } else if (error instanceof Error) {
         errorMessage = error.message
       }
