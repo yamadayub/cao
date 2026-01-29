@@ -133,14 +133,20 @@ class ReplicateClient:
             except Exception as e:
                 last_error = e
                 error_str = str(e)
-                logger.warning(f"Face swap attempt {attempt + 1} failed: {e}")
+                logger.warning(f"Face swap attempt {attempt + 1} failed: {type(e).__name__}")
+                logger.warning(f"  Details:\n{error_str}")
 
                 # Check for rate limit (429) errors - need longer wait
                 if "429" in error_str or "throttled" in error_str.lower():
-                    wait_time = 15.0  # Wait 15 seconds on rate limit
+                    wait_time = 20.0  # Wait 20 seconds on rate limit
                     logger.info(f"Rate limited, waiting {wait_time}s before retry")
                     if attempt < max_retries - 1:
                         await asyncio.sleep(wait_time)
+                    else:
+                        # Final attempt also rate limited
+                        raise ReplicateError(
+                            "サーバーが混雑しています。しばらく待ってからお試しください。"
+                        )
                 elif attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
 
