@@ -481,3 +481,51 @@ export interface SwapPreviewAllData {
 }
 
 export type SwapPreviewAllResponse = SuccessResponse<SwapPreviewAllData>;
+
+// =============================================================================
+// SNS Share API
+// =============================================================================
+
+/**
+ * シェアテンプレートタイプ
+ */
+export type ShareTemplate = 'before_after' | 'single' | 'parts_highlight';
+
+/**
+ * SNSシェア作成リクエスト
+ */
+export interface CreateSnsShareRequest {
+  source_image: string;       // Base64エンコード
+  result_image: string;       // Base64エンコード
+  template: ShareTemplate;
+  caption?: string;           // 最大140文字
+  applied_parts?: string[];   // パーツハイライト用
+}
+
+/**
+ * SNSシェア作成レスポンスデータ
+ */
+export interface SnsShareData {
+  share_id: string;
+  share_url: string;
+  share_image_url: string;
+  og_image_url: string;
+  expires_at: string;
+}
+
+export type CreateSnsShareResponse = SuccessResponse<SnsShareData>;
+
+/**
+ * SNSシェア取得レスポンスデータ
+ */
+export interface GetSnsShareData {
+  share_id: string;
+  share_image_url: string;
+  caption: string | null;
+  template: ShareTemplate;
+  created_at: string;
+  expires_at: string;
+  is_expired: boolean;
+}
+
+export type GetSnsShareResponse = SuccessResponse<GetSnsShareData>;

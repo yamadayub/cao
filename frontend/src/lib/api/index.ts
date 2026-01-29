@@ -96,6 +96,11 @@ export type {
   SwapPartsIntensity,
   SwapPreviewAllRequest,
   SwapPreviewAllData,
+  // SNS Share
+  ShareTemplate,
+  CreateSnsShareRequest,
+  SnsShareData,
+  GetSnsShareData,
 } from './types';
 export { ERROR_MESSAGES, getErrorMessage } from './types';
 
@@ -133,3 +138,13 @@ export {
   DEFAULT_PARTS_INTENSITY,
   ZERO_PARTS_INTENSITY,
 } from './swap';
+
+// SNS Share API
+export {
+  createSnsShare,
+  getSnsShare,
+  generateTwitterShareUrl,
+  generateLineShareUrl,
+  getInstagramShareInfo,
+} from './share';
+export type { CreateSnsShareParams } from './share';

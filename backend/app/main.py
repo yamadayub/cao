@@ -20,6 +20,7 @@ from app.routers import (
     generation,
     health,
     morph,
+    share,
     shared,
     simulations,
     swap,
@@ -113,6 +114,7 @@ app.include_router(blend.router, prefix="/api/v1")
 app.include_router(simulations.router, prefix="/api/v1")
 app.include_router(generation.router, prefix="/api/v1")
 app.include_router(shared.router, prefix="/api/v1")
+app.include_router(share.router, prefix="/api/v1")
 app.include_router(swap.router, prefix="/api/v1")
 
 

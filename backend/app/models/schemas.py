@@ -485,3 +485,57 @@ class SwapPreviewAllResponse(SuccessResponse[SwapPreviewAllData]):
     """Response for preview all parts."""
 
     pass
+
+
+# ============================================
+# SNS Share Schemas
+# ============================================
+
+
+class CreateSnsShareRequest(BaseModel):
+    """Request to create an SNS share image."""
+
+    simulation_id: Optional[str] = Field(None, description="Optional saved simulation ID")
+    source_image: str = Field(..., description="Base64 encoded source/current face image")
+    result_image: str = Field(..., description="Base64 encoded result face image")
+    template: Literal["before_after", "single", "parts_highlight"] = Field(
+        ..., description="Share image template type"
+    )
+    caption: Optional[str] = Field(None, max_length=140, description="Optional caption (max 140 chars)")
+    applied_parts: Optional[List[str]] = Field(None, description="Applied parts for parts_highlight template")
+
+
+class SnsShareData(BaseModel):
+    """SNS share creation result data."""
+
+    share_id: str = Field(..., description="Unique share identifier (UUID)")
+    share_url: str = Field(..., description="Full share URL for SNS")
+    share_image_url: str = Field(..., description="URL to generated share image")
+    og_image_url: str = Field(..., description="URL to OGP image")
+    expires_at: datetime = Field(..., description="Share expiration timestamp")
+
+
+class CreateSnsShareResponse(SuccessResponse[SnsShareData]):
+    """Response for SNS share creation."""
+
+    pass
+
+
+class GetSnsShareData(BaseModel):
+    """SNS share data for retrieval."""
+
+    share_id: str = Field(..., description="Share identifier")
+    share_image_url: str = Field(..., description="URL to share image")
+    caption: Optional[str] = Field(None, description="Share caption")
+    template: Literal["before_after", "single", "parts_highlight"] = Field(
+        ..., description="Template type used"
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    expires_at: datetime = Field(..., description="Expiration timestamp")
+    is_expired: bool = Field(..., description="Whether share has expired")
+
+
+class GetSnsShareResponse(SuccessResponse[GetSnsShareData]):
+    """Response for SNS share retrieval."""
+
+    pass

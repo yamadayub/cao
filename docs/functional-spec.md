@@ -103,6 +103,9 @@ type ErrorCode =
 | `/api/v1/simulations/{id}/share` | POST | 必要 | 共有URL生成 |
 | `/api/v1/shared/{token}` | GET | 不要 | 共有シミュレーション取得 |
 | `/api/v1/blend/parts` | POST | 不要 | パーツ別ブレンド |
+| `/api/v1/share/create` | POST | 必要 | シェア画像作成 |
+| `/api/v1/share/{share_id}` | GET | 不要 | シェアデータ取得 |
+| `/share/{share_id}` | GET | 不要 | SNSシェアページ（OGP対応） |
 
 ---
 
@@ -558,6 +561,117 @@ interface PartsBlendResponse {
 
 ---
 
+#### 2.3.12 シェア画像作成
+
+```
+POST /api/v1/share/create
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**リクエスト**
+```typescript
+interface CreateShareRequest {
+  simulation_id?: string;           // 保存済みシミュレーションID（任意）
+  source_image: string;             // 元画像（base64）
+  result_image: string;             // 結果画像（base64）
+  template: 'before_after' | 'single' | 'parts_highlight';  // テンプレート
+  caption?: string;                 // キャプション（最大140文字）
+  applied_parts?: string[];         // 適用パーツ（parts_highlightテンプレート時）
+}
+```
+
+**レスポンス**
+```typescript
+interface CreateShareResponse {
+  success: true;
+  data: {
+    share_id: string;               // UUID形式のシェアID
+    share_url: string;              // https://cao.app/share/{share_id}
+    share_image_url: string;        // 生成されたシェア画像のURL
+    og_image_url: string;           // OGP用画像URL
+    expires_at: string;             // 有効期限（ISO 8601、30日後）
+  };
+}
+```
+
+**テンプレート仕様**
+| テンプレート | サイズ | レイアウト | 最適SNS |
+|-------------|--------|-----------|---------|
+| before_after | 1200x630px | 左:現在、右:結果、下部:キャプション+ロゴ | X/Twitter、OGP |
+| single | 1080x1080px | 中央:結果画像、下部:キャプション+ロゴ | Instagram投稿 |
+| parts_highlight | 1080x1350px | 上部:結果、右側:適用パーツリスト | Instagramストーリーズ |
+
+**エラーケース**
+| エラーコード | 条件 | メッセージ |
+|-------------|------|-----------|
+| UNAUTHORIZED | 未認証 | Authentication required |
+| VALIDATION_ERROR | キャプションが140文字超 | Caption must be 140 characters or less |
+| VALIDATION_ERROR | 無効なテンプレート | Invalid template type |
+| PROCESSING_ERROR | 画像生成失敗 | Failed to generate share image |
+
+---
+
+#### 2.3.13 シェアデータ取得
+
+```
+GET /api/v1/share/{share_id}
+```
+
+**レスポンス**
+```typescript
+interface GetShareResponse {
+  success: true;
+  data: {
+    share_id: string;
+    share_image_url: string;        // シェア画像URL
+    caption: string | null;
+    template: 'before_after' | 'single' | 'parts_highlight';
+    created_at: string;             // ISO 8601
+    expires_at: string;             // ISO 8601
+    is_expired: boolean;
+  };
+}
+```
+
+**エラーケース**
+| エラーコード | 条件 | メッセージ |
+|-------------|------|-----------|
+| NOT_FOUND | 無効なshare_id | Share not found |
+| EXPIRED | 有効期限切れ | Share has expired |
+
+---
+
+#### 2.3.14 SNSシェアページ（OGP対応）
+
+```
+GET /share/{share_id}
+```
+
+**レスポンス**: HTML（Next.js Server Component）
+
+**OGPメタタグ**
+```html
+<meta property="og:title" content="Caoで美容シミュレーション" />
+<meta property="og:description" content="{caption}" />
+<meta property="og:image" content="{og_image_url}" />
+<meta property="og:url" content="https://cao.app/share/{share_id}" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Caoで美容シミュレーション" />
+<meta name="twitter:description" content="{caption}" />
+<meta name="twitter:image" content="{og_image_url}" />
+```
+
+**ページ構成**
+1. シェア画像表示
+2. キャプション表示（設定されている場合）
+3. 「あなたも試してみる」CTAボタン → `/simulate`へ遷移
+4. Caoサービス説明
+5. 利用規約・プライバシーポリシーリンク
+
+---
+
 ## 3. 画面仕様
 
 ### 3.1 画面一覧
@@ -572,6 +686,9 @@ interface PartsBlendResponse {
 | SCR-006 | `/mypage` | マイページ | 必要 |
 | SCR-007 | `/terms` | 利用規約画面 | 不要 |
 | SCR-008 | `/privacy` | プライバシーポリシー画面 | 不要 |
+| SCR-009 | `/simulate/result` (シェアセクション) | シェア画像選択 | 必要 |
+| SCR-010 | `/simulate/result/share` | シェア画像カスタマイズ画面 | 必要 |
+| SCR-011 | `/share/{share_id}` | SNSシェアページ | 不要 |
 
 ---
 
@@ -1059,6 +1176,201 @@ interface PartsBlendResponse {
 
 ---
 
+### 3.8 SCR-009: シェア画像選択（結果画面内セクション）
+
+#### ワイヤーフレーム
+```
++----------------------------------------------------------+
+|  シェア                                                   |
++----------------------------------------------------------+
+|                                                          |
+|  シェアする画像を選択してください                         |
+|                                                          |
+|  ┌─────────┐  ┌─────────┐  ┌─────────┐                  |
+|  │         │  │         │  │         │                  |
+|  │ [全体]  │  │[パーツA]│  │[パーツB]│                  |
+|  │  結果   │  │  結果   │  │  結果   │                  |
+|  │         │  │         │  │         │                  |
+|  ├─────────┤  ├─────────┤  ├─────────┤                  |
+|  │ ○ 選択  │  │ ○ 選択  │  │ ○ 選択  │                  |
+|  └─────────┘  └─────────┘  └─────────┘                  |
+|                                                          |
+|  ┌──────────────────────────────────────────────┐       |
+|  │        [  この画像をシェア  ]                 │       |
+|  └──────────────────────────────────────────────┘       |
+|                                                          |
++----------------------------------------------------------+
+```
+
+#### インタラクション
+| 要素 | アクション | 結果 |
+|------|-----------|------|
+| 画像サムネイル | クリック | 選択状態をトグル（ハイライト表示） |
+| 「この画像をシェア」ボタン | クリック | SCR-010へ遷移 |
+
+#### 表示条件
+- 認証済みユーザーのみ表示
+- シミュレーション結果が存在する場合のみ
+
+---
+
+### 3.9 SCR-010: シェア画像カスタマイズ画面
+
+#### ワイヤーフレーム
+```
++----------------------------------------------------------+
+|  [Logo: Cao]                    [ユーザー名] [マイページ] |
++----------------------------------------------------------+
+|                                                          |
+|    シェア画像を作成                                      |
+|                                                          |
+|    ┌────────────────────────────────────────────┐       |
+|    │                                            │       |
+|    │              [プレビュー画像]               │       |
+|    │                                            │       |
+|    │    ┌──────────┬──────────┐                │       |
+|    │    │  Before  │  After   │                │       |
+|    │    └──────────┴──────────┘                │       |
+|    │                                            │       |
+|    │    「キャプションテキスト」                 │       |
+|    │                        Cao ロゴ           │       |
+|    └────────────────────────────────────────────┘       |
+|                                                          |
+|    テンプレート選択                                      |
+|    ┌───────────┐ ┌───────────┐ ┌───────────┐           |
+|    │ Before/   │ │   単体    │ │  パーツ   │           |
+|    │  After    │ │   結果    │ │ハイライト │           |
+|    │ (1200x630)│ │(1080x1080)│ │(1080x1350)│           |
+|    │ ◉ 選択中  │ │ ○        │ │ ○        │           |
+|    └───────────┘ └───────────┘ └───────────┘           |
+|                                                          |
+|    キャプション（任意）                                  |
+|    ┌────────────────────────────────────────────┐       |
+|    │ 理想の自分にまた一歩近づきました！          │       |
+|    └────────────────────────────────────────────┘       |
+|    0/140文字                                             |
+|                                                          |
+|    ┌──────────────────────────────────────────────┐     |
+|    │        [  シェア画像を作成  ]                │     |
+|    └──────────────────────────────────────────────┘     |
+|                                                          |
+|    [← 戻る]                                              |
+|                                                          |
++----------------------------------------------------------+
+```
+
+#### インタラクション
+| 要素 | アクション | 結果 |
+|------|-----------|------|
+| テンプレートカード | クリック | テンプレートを選択、プレビュー更新 |
+| キャプション入力 | 入力 | リアルタイムでプレビュー更新 |
+| 「シェア画像を作成」ボタン | クリック | シェア先選択ダイアログ表示 |
+| 「戻る」リンク | クリック | 前の画面に戻る |
+
+#### シェア先選択ダイアログ
+```
++------------------------------------------+
+|         シェア先を選択                   |
++------------------------------------------+
+|                                          |
+|  ⚠ プライバシーに関する注意事項          |
+|  ・シェアした画像は誰でも閲覧できます    |
+|  ・一度シェアした画像は削除できない      |
+|    場合があります                        |
+|  ・他人の写真を無断でシェアしないで      |
+|    ください                              |
+|                                          |
+|  ☐ 上記を理解しました                   |
+|                                          |
+|  ┌────────────────────────────────┐     |
+|  │  [X] Xでシェア                  │     |
+|  └────────────────────────────────┘     |
+|  ┌────────────────────────────────┐     |
+|  │  [LINE] LINEでシェア            │     |
+|  └────────────────────────────────┘     |
+|  ┌────────────────────────────────┐     |
+|  │  [IG] Instagramでシェア         │     |
+|  │      （画像ダウンロード）        │     |
+|  └────────────────────────────────┘     |
+|  ┌────────────────────────────────┐     |
+|  │  [↓] 画像をダウンロード         │     |
+|  └────────────────────────────────┘     |
+|                                          |
+|  [キャンセル]                            |
+|                                          |
++------------------------------------------+
+```
+
+#### シェアボタン動作
+| シェア先 | 動作 |
+|---------|------|
+| X（Twitter） | Web Intent URL開く: `https://twitter.com/intent/tweet?text={caption}&url={share_url}` |
+| LINE | LINE Share URL開く: `https://social-plugins.line.me/lineit/share?url={share_url}` |
+| Instagram | 画像ダウンロード + 「Instagramを開く」ボタン表示 |
+| ダウンロード | PNG形式で画像をダウンロード |
+
+---
+
+### 3.10 SCR-011: SNSシェアページ
+
+#### ワイヤーフレーム
+```
++----------------------------------------------------------+
+|  [Logo: Cao]                                              |
++----------------------------------------------------------+
+|                                                          |
+|    ┌────────────────────────────────────────────┐       |
+|    │                                            │       |
+|    │              [シェア画像]                  │       |
+|    │                                            │       |
+|    │    ┌──────────┬──────────┐                │       |
+|    │    │  Before  │  After   │                │       |
+|    │    └──────────┴──────────┘                │       |
+|    │                                            │       |
+|    └────────────────────────────────────────────┘       |
+|                                                          |
+|    「理想の自分にまた一歩近づきました！」                 |
+|                                                          |
+|    ───────────────────────────────────────────           |
+|                                                          |
+|    Caoは、AIを使って理想の自分をシミュレーション         |
+|    できるサービスです。                                  |
+|                                                          |
+|    ┌──────────────────────────────────────────────┐     |
+|    │      [  あなたも試してみる  ]                │     |
+|    └──────────────────────────────────────────────┘     |
+|                                                          |
++----------------------------------------------------------+
+|  [Footer: 利用規約 | プライバシーポリシー | お問い合わせ]|
++----------------------------------------------------------+
+```
+
+#### エラー画面（無効なURL/期限切れ）
+```
++----------------------------------------------------------+
+|  [Logo: Cao]                                              |
++----------------------------------------------------------+
+|                                                          |
+|                        ⚠                                 |
+|                                                          |
+|         このページは存在しないか                         |
+|         期限切れです                                     |
+|                                                          |
+|    ┌──────────────────────────────────────────────┐     |
+|    │      [  新しくシミュレーションを作成  ]       │     |
+|    └──────────────────────────────────────────────┘     |
+|                                                          |
++----------------------------------------------------------+
+```
+
+#### インタラクション
+| 要素 | アクション | 結果 |
+|------|-----------|------|
+| 「あなたも試してみる」ボタン | クリック | `/simulate` へ遷移 |
+| 「新しくシミュレーションを作成」ボタン | クリック | `/simulate` へ遷移 |
+
+---
+
 ## 4. データモデル
 
 ### 4.1 ER図
@@ -1089,6 +1401,22 @@ interface PartsBlendResponse {
 │ is_public BOOLEAN                                           │
 │ created_at TIMESTAMPTZ                                      │
 │ updated_at TIMESTAMPTZ                                      │
+└─────────────────────────────────────────────────────────────┘
+        │
+        │ 1:N (optional)
+        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                         shares                              │
+├─────────────────────────────────────────────────────────────┤
+│ id (PK) UUID                                                │
+│ user_id (FK) UUID                                           │
+│ simulation_id (FK, nullable) UUID                           │
+│ share_image_path TEXT                                       │
+│ og_image_path TEXT                                          │
+│ template TEXT                                               │
+│ caption TEXT (nullable)                                     │
+│ created_at TIMESTAMPTZ                                      │
+│ expires_at TIMESTAMPTZ                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1189,6 +1517,45 @@ CREATE TRIGGER set_updated_at
   EXECUTE FUNCTION update_updated_at();
 ```
 
+#### shares テーブル
+```sql
+CREATE TABLE shares (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  simulation_id UUID REFERENCES simulations(id) ON DELETE SET NULL,
+  share_image_path TEXT NOT NULL,
+  og_image_path TEXT NOT NULL,
+  template TEXT NOT NULL CHECK (template IN ('before_after', 'single', 'parts_highlight')),
+  caption TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')
+);
+
+-- Indexes
+CREATE INDEX idx_shares_user_id ON shares(user_id);
+CREATE INDEX idx_shares_created_at ON shares(created_at DESC);
+CREATE INDEX idx_shares_expires_at ON shares(expires_at);
+
+-- RLS Policy
+ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own shares"
+  ON shares FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own shares"
+  ON shares FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Anyone can view non-expired shares by id"
+  ON shares FOR SELECT
+  USING (expires_at > NOW());
+
+-- キャプション文字数制限
+ALTER TABLE shares ADD CONSTRAINT check_caption_length
+  CHECK (caption IS NULL OR char_length(caption) <= 140);
+```
+
 ### 4.3 JSONBスキーマ
 
 #### result_images
@@ -1233,14 +1600,19 @@ cao-storage/
 │       └── ideal/
 │           └── {filename}.{ext}
 │
-└── results/                    # 生成結果（認証必須、共有時は公開）
-    └── {user_id}/
-        └── {simulation_id}/
-            ├── 0.png
-            ├── 25.png
-            ├── 50.png
-            ├── 75.png
-            └── 100.png
+├── results/                    # 生成結果（認証必須、共有時は公開）
+│   └── {user_id}/
+│       └── {simulation_id}/
+│           ├── 0.png
+│           ├── 25.png
+│           ├── 50.png
+│           ├── 75.png
+│           └── 100.png
+│
+└── shares/                     # シェア画像（公開、有効期限あり）
+    └── {share_id}/
+        ├── share.png           # シェア画像（テンプレート適用済み）
+        └── og.png              # OGP用画像
 ```
 
 #### Storage Policy
@@ -1276,6 +1648,29 @@ CREATE POLICY "Anyone can view public results"
       SELECT 1 FROM simulations
       WHERE is_public = TRUE
       AND id::text = (storage.foldername(name))[2]
+    )
+  );
+
+-- shares バケット: 有効期限内であれば誰でもアクセス可
+CREATE POLICY "Users can upload own share images"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'shares' AND
+    EXISTS (
+      SELECT 1 FROM shares
+      WHERE id::text = (storage.foldername(name))[1]
+      AND user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Anyone can view non-expired share images"
+  ON storage.objects FOR SELECT
+  USING (
+    bucket_id = 'shares' AND
+    EXISTS (
+      SELECT 1 FROM shares
+      WHERE id::text = (storage.foldername(name))[1]
+      AND expires_at > NOW()
     )
   );
 ```
@@ -1429,6 +1824,12 @@ CREATE POLICY "Anyone can view public results"
 | E2E-012 | UC-011 | パーツ別ブレンド（エラー: 顔未検出） |
 | E2E-013 | UC-011 | パーツ別ブレンド生成（未認証・ブラー表示） |
 | E2E-014 | UC-012 | ブラー画像タップからログイン・結果閲覧 |
+| E2E-015 | UC-013 | シェア画像選択（認証済み） |
+| E2E-016 | UC-014 | シェア画像カスタマイズ（テンプレート変更、キャプション入力） |
+| E2E-017 | UC-015 | SNSシェア（Xへのシェア） |
+| E2E-018 | UC-015 | シェア画像ダウンロード |
+| E2E-019 | UC-016 | SNSシェアページ閲覧（有効なURL） |
+| E2E-020 | UC-016 | SNSシェアページ閲覧（無効なURL/期限切れ） |
 
 ---
 
@@ -1439,3 +1840,4 @@ CREATE POLICY "Anyone can view public results"
 | 1.0.0 | 2025-01-23 | 初版作成 | Spec Agent |
 | 1.1.0 | 2025-01-25 | パーツ別ブレンドAPI（2.3.11）追加、E2E-011/012追加 | Spec Agent |
 | 1.2.0 | 2025-01-27 | パーツ別結果のブラー表示仕様追加（SCR-003更新）、E2E-013/014追加 | Spec Agent |
+| 1.3.0 | 2025-01-29 | SNSシェア機能追加: API（2.3.12〜2.3.14）、画面（SCR-009〜SCR-011）、データモデル（shares）、E2E-015〜020追加 | Spec Agent |
