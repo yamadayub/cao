@@ -1,14 +1,25 @@
 """Unit tests for share image generator service."""
 
 import pytest
-import numpy as np
-from PIL import Image
-from io import BytesIO
 import base64
+from io import BytesIO
+
+from PIL import Image
+
+from app.services.share_image_generator import (
+    ShareImageGenerator,
+    TEMPLATE_DIMENSIONS,
+    get_share_image_generator,
+)
 
 
 class TestShareImageGenerator:
     """Test cases for ShareImageGenerator class."""
+
+    @pytest.fixture
+    def generator(self):
+        """Create a ShareImageGenerator instance."""
+        return ShareImageGenerator()
 
     @pytest.fixture
     def sample_image(self):
@@ -28,58 +39,153 @@ class TestShareImageGenerator:
         """Convert sample image to base64."""
         return base64.b64encode(sample_image_bytes).decode("utf-8")
 
-    def test_before_after_template_dimensions(self):
+    def test_generator_instance(self, generator):
+        """Generator should be instantiated correctly."""
+        assert generator is not None
+        assert isinstance(generator, ShareImageGenerator)
+
+    def test_get_share_image_generator_returns_instance(self):
+        """get_share_image_generator should return an instance."""
+        generator = get_share_image_generator()
+        assert isinstance(generator, ShareImageGenerator)
+
+    def test_before_after_template_generates_correct_dimensions(
+        self, generator, sample_base64_image
+    ):
         """Before/After template should produce 1200x630 image."""
-        expected_width = 1200
-        expected_height = 630
-        assert expected_width == 1200
-        assert expected_height == 630
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="before_after",
+        )
 
-    def test_single_template_dimensions(self):
+        result_img = Image.open(BytesIO(result_bytes))
+        assert result_img.width == 1200
+        assert result_img.height == 630
+
+    def test_single_template_generates_correct_dimensions(
+        self, generator, sample_base64_image
+    ):
         """Single template should produce 1080x1080 image."""
-        expected_width = 1080
-        expected_height = 1080
-        assert expected_width == expected_height
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="single",
+        )
 
-    def test_parts_highlight_template_dimensions(self):
+        result_img = Image.open(BytesIO(result_bytes))
+        assert result_img.width == 1080
+        assert result_img.height == 1080
+
+    def test_parts_highlight_template_generates_correct_dimensions(
+        self, generator, sample_base64_image
+    ):
         """Parts highlight template should produce 1080x1350 image."""
-        expected_width = 1080
-        expected_height = 1350
-        assert expected_width == 1080
-        assert expected_height == 1350
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="parts_highlight",
+        )
+
+        result_img = Image.open(BytesIO(result_bytes))
+        assert result_img.width == 1080
+        assert result_img.height == 1350
+
+    def test_generate_returns_valid_png_bytes(self, generator, sample_base64_image):
+        """Generated image should be valid PNG bytes."""
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="before_after",
+        )
+
+        # Should be bytes
+        assert isinstance(result_bytes, bytes)
+
+        # Should start with PNG magic number
+        assert result_bytes[:8] == b"\x89PNG\r\n\x1a\n"
+
+        # Should be loadable as image
+        img = Image.open(BytesIO(result_bytes))
+        assert img.format == "PNG"
+
+    def test_generate_with_caption(self, generator, sample_base64_image):
+        """Should generate image with caption."""
+        caption = "Test caption text"
+
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="before_after",
+            caption=caption,
+        )
+
+        # Should complete without error
+        img = Image.open(BytesIO(result_bytes))
+        assert img.width == 1200
+        assert img.height == 630
+
+    def test_generate_with_applied_parts(self, generator, sample_base64_image):
+        """Should generate parts_highlight template with applied parts."""
+        applied_parts = ["left_eye", "right_eye", "nose"]
+
+        result_bytes = generator.generate(
+            source_image=sample_base64_image,
+            result_image=sample_base64_image,
+            template="parts_highlight",
+            applied_parts=applied_parts,
+        )
+
+        img = Image.open(BytesIO(result_bytes))
+        assert img.width == 1080
+        assert img.height == 1350
+
+    def test_generate_with_data_url_prefix(self, generator, sample_image_bytes):
+        """Should handle base64 images with data URL prefix."""
+        base64_data = base64.b64encode(sample_image_bytes).decode("utf-8")
+        data_url = f"data:image/png;base64,{base64_data}"
+
+        result_bytes = generator.generate(
+            source_image=data_url,
+            result_image=data_url,
+            template="before_after",
+        )
+
+        img = Image.open(BytesIO(result_bytes))
+        assert img.width == 1200
+
+    def test_generate_with_invalid_template_raises_error(
+        self, generator, sample_base64_image
+    ):
+        """Should raise error for invalid template."""
+        with pytest.raises(ValueError, match="Unknown template"):
+            generator.generate(
+                source_image=sample_base64_image,
+                result_image=sample_base64_image,
+                template="invalid_template",
+            )
 
 
 class TestTemplateLayouts:
     """Test cases for template layout specifications."""
 
-    def test_before_after_layout_structure(self):
-        """Before/After template should have left and right sections."""
-        layout = {
-            "left": {"content": "source_image", "position": (0, 0)},
-            "right": {"content": "result_image", "position": (600, 0)},
-            "bottom": {"content": "caption_and_logo"},
-        }
-        assert "left" in layout
-        assert "right" in layout
-        assert "bottom" in layout
+    def test_template_dimensions_dict_has_all_templates(self):
+        """TEMPLATE_DIMENSIONS should have all three templates."""
+        assert "before_after" in TEMPLATE_DIMENSIONS
+        assert "single" in TEMPLATE_DIMENSIONS
+        assert "parts_highlight" in TEMPLATE_DIMENSIONS
 
-    def test_single_layout_structure(self):
-        """Single template should have centered image."""
-        layout = {
-            "center": {"content": "result_image"},
-            "bottom": {"content": "caption_and_logo"},
-        }
-        assert "center" in layout
-        assert "bottom" in layout
+    def test_before_after_dimensions(self):
+        """Before/After template should be 1200x630."""
+        assert TEMPLATE_DIMENSIONS["before_after"] == (1200, 630)
 
-    def test_parts_highlight_layout_structure(self):
-        """Parts highlight template should have image and parts list."""
-        layout = {
-            "top": {"content": "result_image"},
-            "side": {"content": "applied_parts_list"},
-        }
-        assert "top" in layout
-        assert "side" in layout
+    def test_single_dimensions(self):
+        """Single template should be 1080x1080."""
+        assert TEMPLATE_DIMENSIONS["single"] == (1080, 1080)
+
+    def test_parts_highlight_dimensions(self):
+        """Parts highlight template should be 1080x1350."""
+        assert TEMPLATE_DIMENSIONS["parts_highlight"] == (1080, 1350)
 
 
 class TestCaptionValidation:
@@ -110,51 +216,86 @@ class TestCaptionValidation:
         assert len(caption) < 140
 
 
-class TestLogoPlacement:
-    """Test cases for Cao logo placement."""
-
-    def test_logo_should_be_placed_in_bottom_right(self):
-        """Logo should be placed in bottom-right corner."""
-        logo_position = "bottom_right"
-        assert logo_position == "bottom_right"
-
-    def test_logo_should_have_consistent_size(self):
-        """Logo should have consistent size across templates."""
-        logo_height = 40  # pixels
-        assert logo_height > 0
-
-
 class TestImageProcessing:
     """Test cases for image processing utilities."""
+
+    @pytest.fixture
+    def generator(self):
+        """Create a ShareImageGenerator instance."""
+        return ShareImageGenerator()
 
     @pytest.fixture
     def sample_image(self):
         """Create a sample test image."""
         return Image.new("RGB", (512, 512), color=(255, 128, 64))
 
-    def test_resize_image_maintains_aspect_ratio(self, sample_image):
-        """Resizing should maintain aspect ratio."""
+    def test_fit_image_maintains_aspect_ratio(self, generator, sample_image):
+        """_fit_image should maintain aspect ratio."""
+        result = generator._fit_image(sample_image, 300, 300)
+
         original_ratio = sample_image.width / sample_image.height
-        # Target is 600x600 (for before_after half width)
-        target_width = 600
-        target_height = int(target_width / original_ratio)
+        result_ratio = result.width / result.height
 
-        assert target_width / target_height == pytest.approx(original_ratio, rel=0.01)
+        assert abs(original_ratio - result_ratio) < 0.01
 
-    def test_base64_decode_produces_valid_image(self):
-        """Base64 decoding should produce valid image data."""
-        # Create a minimal PNG
+    def test_fit_image_respects_max_dimensions(self, generator, sample_image):
+        """_fit_image should not exceed max dimensions."""
+        result = generator._fit_image(sample_image, 300, 200)
+
+        assert result.width <= 300
+        assert result.height <= 200
+
+    def test_fit_image_with_wide_image(self, generator):
+        """_fit_image should handle wide images correctly."""
+        wide_img = Image.new("RGB", (1000, 500), color="red")
+        result = generator._fit_image(wide_img, 600, 600)
+
+        assert result.width == 600
+        assert result.height == 300
+
+    def test_fit_image_with_tall_image(self, generator):
+        """_fit_image should handle tall images correctly."""
+        tall_img = Image.new("RGB", (500, 1000), color="blue")
+        result = generator._fit_image(tall_img, 600, 600)
+
+        assert result.width == 300
+        assert result.height == 600
+
+    def test_base64_decode_produces_valid_image(self, generator):
+        """_decode_base64_image should produce valid PIL Image."""
         img = Image.new("RGB", (10, 10), color="red")
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         base64_data = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-        # Decode and verify
-        decoded = base64.b64decode(base64_data)
-        img_from_base64 = Image.open(BytesIO(decoded))
+        result = generator._decode_base64_image(base64_data)
 
-        assert img_from_base64.width == 10
-        assert img_from_base64.height == 10
+        assert isinstance(result, Image.Image)
+        assert result.width == 10
+        assert result.height == 10
+
+
+class TestPartDisplayNames:
+    """Test cases for part display name mapping."""
+
+    @pytest.fixture
+    def generator(self):
+        """Create a ShareImageGenerator instance."""
+        return ShareImageGenerator()
+
+    def test_get_part_display_name_for_known_parts(self, generator):
+        """_get_part_display_name should return correct names for known parts."""
+        assert generator._get_part_display_name("left_eye") == "Left Eye"
+        assert generator._get_part_display_name("right_eye") == "Right Eye"
+        assert generator._get_part_display_name("left_eyebrow") == "Left Eyebrow"
+        assert generator._get_part_display_name("right_eyebrow") == "Right Eyebrow"
+        assert generator._get_part_display_name("nose") == "Nose"
+        assert generator._get_part_display_name("lips") == "Lips"
+
+    def test_get_part_display_name_for_unknown_parts(self, generator):
+        """_get_part_display_name should handle unknown parts gracefully."""
+        result = generator._get_part_display_name("some_new_part")
+        assert result == "Some New Part"
 
 
 class TestShareIdGeneration:
