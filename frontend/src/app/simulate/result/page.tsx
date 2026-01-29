@@ -366,6 +366,22 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       const swappedDataUrl = swapResult.swapped_image.startsWith('data:')
         ? swapResult.swapped_image
         : `data:image/png;base64,${swapResult.swapped_image}`
+
+      // 画像が実際に読み込めるかを検証
+      console.log('Validating image data URL...')
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          console.log('Image validated successfully:', img.width, 'x', img.height)
+          resolve()
+        }
+        img.onerror = (e) => {
+          console.error('Image validation failed:', e)
+          reject(new Error('画像データの読み込みに失敗しました。もう一度お試しください。'))
+        }
+        img.src = swappedDataUrl
+      })
+
       setSwappedImage(swappedDataUrl)
 
       // 結果画像を生成（現在と理想の2段階）
