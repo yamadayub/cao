@@ -6,11 +6,10 @@ import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
-import { ShareCustomizeModal } from '@/components/features/ShareCustomizeModal'
 import { PartsBlurOverlay, type LoginPromptInfo } from '@/components/features/PartsBlurOverlay'
+import { ShareButton } from '@/components/features/ShareButton'
 import { createSimulation, createShareUrl } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
-import { createSnsShare, type CreateSnsShareParams } from '@/lib/api/share'
 import { ApiError } from '@/lib/api/client'
 import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
 import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
@@ -247,22 +246,8 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   // モーダル状態
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  const [showSnsShareModal, setShowSnsShareModal] = useState(false)
-  const [loginAction, setLoginAction] = useState<'save' | 'share' | 'sns-share' | 'parts-blur' | null>(null)
+  const [loginAction, setLoginAction] = useState<'save' | 'share' | 'parts-blur' | null>(null)
   const [partsLoginPromptInfo, setPartsLoginPromptInfo] = useState<LoginPromptInfo | null>(null)
-
-  // SNSシェア状態
-  const [snsShareState, setSnsShareState] = useState<{
-    isCreating: boolean
-    shareUrl: string | null
-    shareImageUrl: string | null
-    error: string | null
-  }>({
-    isCreating: false,
-    shareUrl: null,
-    shareImageUrl: null,
-    error: null,
-  })
 
   // 元画像のData URL
   const [sourceImages, setSourceImages] = useState<{
@@ -553,23 +538,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId])
 
   /**
-   * SNSシェアボタンクリックハンドラ
-   */
-  const handleSnsShare = useCallback(() => {
-    if (!isSignedIn) {
-      setLoginAction('sns-share')
-      savePendingAction({
-        type: 'sns-share',
-        viewMode,
-        partsSelection: partsBlendState.selection,
-      })
-      setShowLoginModal(true)
-      return
-    }
-    setShowSnsShareModal(true)
-  }, [isSignedIn, viewMode, partsBlendState.selection])
-
-  /**
    * SNSシェア用の画像を取得
    */
   const getShareImage = useCallback((): string => {
@@ -583,69 +551,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   }, [viewMode, currentImage, partsBlendState.image, sourceImages.currentImage])
 
   /**
-   * SNSシェア作成ハンドラー
+   * 適用パーツのリストを取得
    */
-  const handleCreateSnsShare = useCallback(async (data: {
-    template: CreateSnsShareParams['template']
-    caption: string
-  }) => {
-    setSnsShareState(prev => ({ ...prev, isCreating: true, error: null }))
-
-    try {
-      const token = await getToken()
-      if (!token) {
-        throw new Error('認証トークンを取得できませんでした')
-      }
-
-      // Base64データを取得（Data URLプレフィックスを除去）
-      const source = sourceImages.currentImage || ''
-      const result = getShareImage()
-
-      const base64Source = source.startsWith('data:')
-        ? source.split(',')[1]
-        : source
-      const base64Result = result.startsWith('data:')
-        ? result.split(',')[1]
-        : result
-
-      // 適用パーツを取得
-      const appliedParts = viewMode === 'parts'
-        ? Object.entries(partsBlendState.selection)
-            .filter(([, selected]) => selected)
-            .map(([part]) => part)
-        : undefined
-
-      const shareResult = await createSnsShare({
-        sourceImage: base64Source,
-        resultImage: base64Result,
-        template: data.template,
-        caption: data.caption,
-        appliedParts,
-      }, token)
-
-      setSnsShareState({
-        isCreating: false,
-        shareUrl: shareResult.share_url,
-        shareImageUrl: shareResult.share_image_url,
-        error: null,
-      })
-    } catch (error) {
-      console.error('SNS Share error:', error)
-
-      let errorMessage = 'シェアの作成に失敗しました。'
-      if (error instanceof ApiError) {
-        errorMessage = error.localizedMessage
-      } else if (error instanceof Error) {
-        errorMessage = error.message
-      }
-
-      setSnsShareState(prev => ({
-        ...prev,
-        isCreating: false,
-        error: errorMessage,
-      }))
+  const getAppliedParts = useCallback((): string[] => {
+    if (viewMode === 'parts') {
+      return Object.entries(partsBlendState.selection)
+        .filter(([, selected]) => selected)
+        .map(([part]) => part)
     }
-  }, [getToken, sourceImages.currentImage, getShareImage, viewMode, partsBlendState.selection])
+    return []
+  }, [viewMode, partsBlendState.selection])
 
   /**
    * 新規作成ボタンクリックハンドラ
@@ -863,10 +778,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       case 'share':
         // 共有を実行
         handleShare()
-        break
-      case 'sns-share':
-        // SNSシェアモーダルを開く
-        setShowSnsShareModal(true)
         break
     }
   }, [justLoggedIn, resetJustLoggedIn, handleDownload, handleSave, handleShare])
@@ -1209,15 +1120,23 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 </div>
               )}
 
-              {/* ダウンロード・SNSシェアボタン */}
-              <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
+              {/* ダウンロード・シェアボタン */}
+              <div className="flex flex-col gap-4 max-w-md mx-auto mb-6">
+                {/* シェアボタン（Web Share API / クリップボードコピー） */}
+                <ShareButton
+                  beforeImage={sourceImages.currentImage || ''}
+                  afterImage={getShareImage()}
+                  appliedParts={getAppliedParts()}
+                  testId="share-button"
+                />
+
                 {/* ダウンロードボタン */}
                 <button
                   type="button"
                   onClick={handleDownload}
                   disabled={state.isSharing}
                   className={`
-                    px-8 py-3 text-base font-medium rounded-full
+                    w-full px-8 py-3 text-base font-medium rounded-xl
                     focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
                     ${
                       state.isSharing
@@ -1243,41 +1162,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       />
                     </svg>
                     ダウンロード
-                  </span>
-                </button>
-
-                {/* SNSシェアボタン */}
-                <button
-                  type="button"
-                  onClick={handleSnsShare}
-                  disabled={state.isSharing}
-                  className={`
-                    px-8 py-3 text-base font-medium rounded-full
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
-                    ${
-                      state.isSharing
-                        ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed'
-                        : 'bg-primary-700 text-white hover:bg-primary-800 hover:shadow-elegant focus:ring-primary-500'
-                    }
-                  `}
-                  data-testid="sns-share-button"
-                >
-                  <span className="flex items-center justify-center gap-2">
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
-                      />
-                    </svg>
-                    SNSでシェア
                   </span>
                 </button>
               </div>
@@ -1361,28 +1245,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         shareUrl={state.shareUrl || ''}
         onClose={() => setShowShareModal(false)}
         testId="share-url-modal"
-      />
-
-      {/* SNSシェアカスタマイズモーダル */}
-      <ShareCustomizeModal
-        isOpen={showSnsShareModal}
-        sourceImage={sourceImages.currentImage || ''}
-        resultImage={getShareImage()}
-        onCreateShare={handleCreateSnsShare}
-        isCreating={snsShareState.isCreating}
-        shareUrl={snsShareState.shareUrl || undefined}
-        shareImageUrl={snsShareState.shareImageUrl || undefined}
-        onClose={() => {
-          setShowSnsShareModal(false)
-          // モーダルを閉じる時にシェア状態をリセット
-          setSnsShareState({
-            isCreating: false,
-            shareUrl: null,
-            shareImageUrl: null,
-            error: null,
-          })
-        }}
-        testId="sns-share-modal"
       />
       </main>
 
