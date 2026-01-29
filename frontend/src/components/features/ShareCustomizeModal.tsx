@@ -49,9 +49,9 @@ const TEMPLATE_OPTIONS: Array<{ value: ShareTemplate; label: string; icon: React
 ]
 
 const PRIVACY_WARNINGS = [
-  'Anyone can view shared images',
-  'Shared images may not be deletable',
-  'Do not share photos of others without permission',
+  '共有した画像は誰でも閲覧できます',
+  '共有した画像は削除できない場合があります',
+  '他人の写真を無断で共有しないでください',
 ]
 
 /**
@@ -178,7 +178,7 @@ export function ShareCustomizeModal({
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-800 tracking-tight">
-            {!isShareReady ? 'Create Share Image' : 'Share'}
+            {!isShareReady ? 'シェア画像を作成' : 'シェア'}
           </h2>
           <button
             type="button"
@@ -210,7 +210,7 @@ export function ShareCustomizeModal({
                       alt="変更前"
                       className="w-full aspect-square object-cover rounded-lg"
                     />
-                    <p className="text-xs text-gray-500 text-center mt-1">Before</p>
+                    <p className="text-xs text-gray-500 text-center mt-1">変更前</p>
                   </div>
                   <div className="flex-1 p-2">
                     <img
@@ -218,15 +218,15 @@ export function ShareCustomizeModal({
                       alt="変更後"
                       className="w-full aspect-square object-cover rounded-lg"
                     />
-                    <p className="text-xs text-gray-500 text-center mt-1">After</p>
+                    <p className="text-xs text-gray-500 text-center mt-1">変更後</p>
                   </div>
                 </div>
               </div>
 
               {/* テンプレート選択 */}
               <div data-testid={testId ? `${testId}-templates` : undefined}>
-                <label className="block text-xs font-medium text-gray-500 mb-2 tracking-wide uppercase">
-                  Layout
+                <label className="block text-xs font-medium text-gray-500 mb-2 tracking-wide">
+                  レイアウト
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {TEMPLATE_OPTIONS.map((option) => (
@@ -255,16 +255,16 @@ export function ShareCustomizeModal({
 
               {/* キャプション入力 */}
               <div>
-                <label htmlFor="share-caption" className="block text-xs font-medium text-gray-500 mb-2 tracking-wide uppercase">
-                  Caption
-                  <span className="text-gray-400 font-normal normal-case ml-1">（optional）</span>
+                <label htmlFor="share-caption" className="block text-xs font-medium text-gray-500 mb-2 tracking-wide">
+                  キャプション
+                  <span className="text-gray-400 font-normal ml-1">（任意）</span>
                 </label>
                 <textarea
                   id="share-caption"
                   value={caption}
                   onChange={handleCaptionChange}
                   maxLength={140}
-                  placeholder="Add a message..."
+                  placeholder="メッセージを入力..."
                   rows={2}
                   data-testid={testId ? `${testId}-caption` : undefined}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-lg resize-none text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-gray-400"
@@ -301,10 +301,10 @@ export function ShareCustomizeModal({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    Creating...
+                    作成中...
                   </span>
                 ) : (
-                  'Create Preview'
+                  'プレビューを作成'
                 )}
               </button>
             </div>
@@ -344,13 +344,13 @@ export function ShareCustomizeModal({
                     data-testid={testId ? `${testId}-privacy-checkbox` : undefined}
                     className="w-3.5 h-3.5 text-gray-900 rounded border-gray-300 focus:ring-gray-500"
                   />
-                  <span className="text-xs font-medium text-gray-600">I understand</span>
+                  <span className="text-xs font-medium text-gray-600">上記に同意します</span>
                 </label>
               </div>
 
               {/* シェアボタン群（アイコンのみ） */}
               <div data-testid={testId ? `${testId}-share-buttons` : undefined}>
-                <p className="text-xs font-medium text-gray-500 mb-3 tracking-wide uppercase">Share to</p>
+                <p className="text-xs font-medium text-gray-500 mb-3 tracking-wide">シェア先</p>
                 <div className="flex justify-center gap-3">
                   {/* X (Twitter) */}
                   <button
@@ -421,7 +421,7 @@ export function ShareCustomizeModal({
                     onClick={handleDownload}
                     disabled={!privacyAgreed}
                     data-testid={testId ? `${testId}-download` : undefined}
-                    title="Download"
+                    title="ダウンロード"
                     className={`
                       w-12 h-12 flex items-center justify-center rounded-full
                       transition-all duration-200
@@ -458,7 +458,7 @@ export function ShareCustomizeModal({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  Copy URL
+                  URLをコピー
                 </button>
               </div>
             </div>
