@@ -35,12 +35,13 @@ _shares_store: dict = {}
 def _get_base_urls() -> tuple[str, str]:
     """Get base URLs for share and storage."""
     settings = get_settings()
-    if settings.is_production:
-        base_url = "https://cao.app"
-        storage_base = settings.supabase_url.replace(".supabase.co", ".supabase.co/storage/v1/object/public") if settings.supabase_url else "https://storage.cao.app"
+    # Use configured frontend URL
+    base_url = settings.frontend_url
+    # Storage base from Supabase URL
+    if settings.supabase_url:
+        storage_base = settings.supabase_url.replace(".supabase.co", ".supabase.co/storage/v1/object/public")
     else:
-        base_url = "http://localhost:3000"
-        storage_base = settings.supabase_url.replace(".supabase.co", ".supabase.co/storage/v1/object/public") if settings.supabase_url else "http://localhost:3000/storage"
+        storage_base = f"{base_url}/storage"
     return base_url, storage_base
 
 

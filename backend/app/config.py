@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     debug: bool = True
     api_version: str = "1.0.0"
 
+    # Frontend URL (for share URLs)
+    frontend_url: str = "http://localhost:3000"
+
     # CORS
     cors_origins: str = "http://localhost:3000"
 
