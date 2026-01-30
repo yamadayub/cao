@@ -596,7 +596,7 @@ interface CreateShareResponse {
 **シェア画像タイプ仕様**
 | タイプ | サイズ | レイアウト | 説明 |
 |--------|--------|-----------|------|
-| before_after | 1200x630px | 左:元の顔、右:結果、下部:ロゴ | Before/After比較画像 |
+| before_after | 1080x1080px | 横並び:元の顔と結果、下部:ロゴ | Before/After比較画像 |
 | result_only | 1080x1080px | 中央:結果画像、下部:ロゴ | 結果のみの画像 |
 
 **エラーケース**
@@ -1749,3 +1749,4 @@ CREATE POLICY "Anyone can view non-expired share images"
 | 1.2.0 | 2025-01-27 | パーツ別結果のブラー表示仕様追加（SCR-003更新）、E2E-013/014追加 | Spec Agent |
 | 1.3.0 | 2025-01-29 | SNSシェア機能追加: API（2.3.12〜2.3.14）、画面（SCR-009〜SCR-011）、データモデル（shares）、E2E-015〜020追加 | Spec Agent |
 | 1.3.1 | 2025-01-30 | シェア機能簡素化: share_typeを「before_after」「result_only」の2択に変更、SCR-009をシェア画像タイプ選択ダイアログに変更、SCR-010削除、captionフィールド削除 | Spec Agent |
+| 1.3.2 | 2025-01-30 | シェア機能にログイン必須を追加、Before/After画像サイズを1080x1080pxに変更 | Spec Agent |
