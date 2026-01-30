@@ -72,12 +72,12 @@ describe('Header', () => {
       expect(logo.getAttribute('href')).toBe('/')
     })
 
-    it('「今すぐ試す」ボタンを表示する', () => {
+    it('「今すぐ試す」ボタンは表示しない（ログインボタンのみ）', () => {
       render(<Header />)
 
-      const ctaButton = screen.getByRole('link', { name: '今すぐ試す' })
-      expect(ctaButton).toBeDefined()
-      expect(ctaButton.getAttribute('href')).toBe('/simulate')
+      // 「今すぐ試す」ボタンは削除されたので存在しない
+      const ctaButton = screen.queryByRole('link', { name: '今すぐ試す' })
+      expect(ctaButton).toBeNull()
     })
   })
 
@@ -98,12 +98,16 @@ describe('Header', () => {
       expect(loginLink.getAttribute('href')).toBe('/mypage')
     })
 
-    it('「今すぐ試す」ボタンは非表示', () => {
+    it('ロゴとログインボタンのみ表示', () => {
       render(<Header />)
 
-      // 認証済みの場合は「今すぐ試す」ボタンは表示されない
+      // 「今すぐ試す」ボタンは存在しない
       const ctaButton = screen.queryByRole('link', { name: '今すぐ試す' })
       expect(ctaButton).toBeNull()
+
+      // ログインボタンは表示される
+      const loginLink = screen.getByRole('link', { name: 'ログイン' })
+      expect(loginLink).toBeDefined()
     })
 
     it('ロゴをクリックするとトップページへ遷移できる', () => {

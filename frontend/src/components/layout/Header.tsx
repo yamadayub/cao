@@ -8,19 +8,9 @@ interface HeaderProps {
   variant?: 'default' | 'transparent'
 }
 
-interface HeaderAuthSectionProps {
-  onAuthStateChange?: (isSignedIn: boolean) => void
-}
-
-function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
+function HeaderAuthSection() {
   const { isLoaded, isSignedIn } = useAuth()
   const { loaded: clerkLoaded } = useClerk()
-
-  useEffect(() => {
-    if (isLoaded) {
-      onAuthStateChange?.(!!isSignedIn)
-    }
-  }, [isLoaded, isSignedIn, onAuthStateChange])
 
   // Clerkがまだロードされていない場合
   if (!isLoaded || !clerkLoaded) {
@@ -29,7 +19,7 @@ function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
     )
   }
 
-  // 常に「ログイン」ボタン/リンクを表示
+  // 常に「ログイン」ボタンを表示
   // - 未認証: クリックでログインモーダル表示
   // - 認証済み: クリックでマイページへ遷移
   return (
@@ -37,13 +27,13 @@ function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
       {isSignedIn ? (
         <Link
           href="/mypage"
-          className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
+          className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
         >
           ログイン
         </Link>
       ) : (
         <SignInButton mode="modal">
-          <button className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300">
+          <button className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3">
             ログイン
           </button>
         </SignInButton>
@@ -55,7 +45,6 @@ function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
 export function Header({ variant = 'default' }: HeaderProps) {
   const [mounted, setMounted] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const [isSignedIn, setIsSignedIn] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -89,15 +78,7 @@ export function Header({ variant = 'default' }: HeaderProps) {
 
           {/* Navigation */}
           <nav className="flex items-center gap-3 md:gap-8">
-            {mounted && <HeaderAuthSection onAuthStateChange={setIsSignedIn} />}
-            {!isSignedIn && (
-              <Link
-                href="/simulate"
-                className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
-              >
-                今すぐ試す
-              </Link>
-            )}
+            {mounted && <HeaderAuthSection />}
           </nav>
         </div>
       </div>
