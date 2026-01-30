@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useAuth, useClerk, SignInButton } from '@clerk/nextjs'
+import { useAuth, useClerk, SignInButton, UserButton } from '@clerk/nextjs'
 
 interface HeaderProps {
   variant?: 'default' | 'transparent'
@@ -21,16 +21,26 @@ function HeaderAuthSection() {
 
   // ヘッダー右上のボタン
   // - 未認証: 「ログイン」ボタン → クリックでログインモーダル表示
-  // - 認証済み: 「マイページ」ボタン → クリックでマイページへ遷移
+  // - 認証済み: Clerkアイコン → メニューからマイページ/サインアウト
   return (
     <>
       {isSignedIn ? (
-        <Link
-          href="/mypage"
-          className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
+        <UserButton
+          afterSignOutUrl="/"
+          appearance={{
+            elements: {
+              avatarBox: 'w-10 h-10',
+            },
+          }}
         >
-          マイページ
-        </Link>
+          <UserButton.MenuItems>
+            <UserButton.Link
+              label="マイページ"
+              labelIcon={<span>📋</span>}
+              href="/mypage"
+            />
+          </UserButton.MenuItems>
+        </UserButton>
       ) : (
         <SignInButton mode="modal">
           <button className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3">

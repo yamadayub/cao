@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth, useUser } from '@clerk/nextjs'
+import { useAuth, useUser, useClerk } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/layout/Header'
@@ -23,6 +23,7 @@ export function MypageClient({ testId }: MypageClientProps) {
   const router = useRouter()
   const { getToken, isSignedIn } = useAuth()
   const { user } = useUser()
+  const { signOut } = useClerk()
 
   // State
   const [simulations, setSimulations] = useState<SimulationSummary[]>([])
@@ -226,11 +227,19 @@ export function MypageClient({ testId }: MypageClientProps) {
             </h1>
             <div className="inline-block bg-white rounded-xl shadow-elegant px-6 py-3">
               <p
-                className="text-neutral-700"
+                className="text-neutral-700 mb-3"
                 data-testid={testId ? `${testId}-user-email` : undefined}
               >
                 {userEmail}
               </p>
+              <button
+                type="button"
+                onClick={() => signOut({ redirectUrl: '/' })}
+                className="text-sm text-neutral-500 hover:text-neutral-700 underline transition-colors"
+                data-testid={testId ? `${testId}-sign-out` : undefined}
+              >
+                サインアウト
+              </button>
             </div>
           </div>
 

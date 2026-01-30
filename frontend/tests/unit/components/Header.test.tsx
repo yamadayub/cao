@@ -15,15 +15,26 @@ const mockUseAuth = vi.fn()
 const mockUseClerk = vi.fn()
 const mockSignInButton = vi.fn()
 
-vi.mock('@clerk/nextjs', () => ({
-  useAuth: () => mockUseAuth(),
-  useClerk: () => mockUseClerk(),
-  SignInButton: ({ children, mode }: { children: React.ReactNode; mode?: string }) => {
-    mockSignInButton({ mode })
-    return <div data-testid="sign-in-button" data-mode={mode}>{children}</div>
-  },
-  UserButton: () => <div data-testid="user-button" />,
-}))
+vi.mock('@clerk/nextjs', () => {
+  // UserButton mock with MenuItems support
+  const MockUserButton = ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="user-button">{children}</div>
+  )
+  MockUserButton.MenuItems = ({ children }: { children?: React.ReactNode }) => <>{children}</>
+  MockUserButton.Link = ({ label, href }: { label: string; labelIcon?: React.ReactNode; href: string }) => (
+    <a href={href} data-testid="user-button-link">{label}</a>
+  )
+
+  return {
+    useAuth: () => mockUseAuth(),
+    useClerk: () => mockUseClerk(),
+    SignInButton: ({ children, mode }: { children: React.ReactNode; mode?: string }) => {
+      mockSignInButton({ mode })
+      return <div data-testid="sign-in-button" data-mode={mode}>{children}</div>
+    },
+    UserButton: MockUserButton,
+  }
+})
 
 // Next.js router mock
 vi.mock('next/navigation', () => ({
@@ -89,25 +100,33 @@ describe('Header', () => {
       })
     })
 
-    it('マイページボタンを表示する', () => {
+    it('Clerkのユーザーアイコンを表示する', () => {
       render(<Header />)
 
-      // 認証済みは「マイページ」リンクが表示される
-      const mypageLink = screen.getByRole('link', { name: 'マイページ' })
+      // 認証済みはUserButtonが表示される
+      const userButton = screen.getByTestId('user-button')
+      expect(userButton).toBeDefined()
+    })
+
+    it('メニューからマイページへのリンクがある', () => {
+      render(<Header />)
+
+      // マイページへのリンクがある
+      const mypageLink = screen.getByTestId('user-button-link')
       expect(mypageLink).toBeDefined()
       expect(mypageLink.getAttribute('href')).toBe('/mypage')
     })
 
-    it('ロゴとマイページボタンのみ表示', () => {
+    it('ロゴとユーザーアイコンのみ表示', () => {
       render(<Header />)
 
       // 「今すぐ試す」ボタンは存在しない
       const ctaButton = screen.queryByRole('link', { name: '今すぐ試す' })
       expect(ctaButton).toBeNull()
 
-      // マイページボタンは表示される
-      const mypageLink = screen.getByRole('link', { name: 'マイページ' })
-      expect(mypageLink).toBeDefined()
+      // UserButtonが表示される
+      const userButton = screen.getByTestId('user-button')
+      expect(userButton).toBeDefined()
     })
 
     it('ロゴをクリックするとトップページへ遷移できる', () => {
@@ -166,7 +185,7 @@ describe('Header - 共通ヘッダー仕様', () => {
     mockUseClerk.mockReturnValue({ loaded: true })
   })
 
-  it('未認証時は「ログイン」、認証済み時は「マイページ」を表示', () => {
+  it('未認証時は「ログイン」ボタン、認証済み時はユーザーアイコンを表示', () => {
     // 未認証時
     mockUseAuth.mockReturnValue({
       isLoaded: true,
@@ -177,14 +196,14 @@ describe('Header - 共通ヘッダー仕様', () => {
     const loginElement = screen.getByText('ログイン')
     expect(loginElement).toBeDefined()
 
-    // 認証済み時は「マイページ」
+    // 認証済み時はUserButton
     mockUseAuth.mockReturnValue({
       isLoaded: true,
       isSignedIn: true,
     })
 
     rerender(<Header />)
-    const mypageElement = screen.getByText('マイページ')
-    expect(mypageElement).toBeDefined()
+    const userButton = screen.getByTestId('user-button')
+    expect(userButton).toBeDefined()
   })
 })
