@@ -866,6 +866,32 @@ class PartBlender:
                 print(f"Warning: No eyebrow mask detected for {part_name}")
                 return None
 
+            # --- GET EYE MASK TO PROTECT EYE REGION ---
+            # seamlessClone can affect areas outside the mask, so we need to
+            # explicitly protect the eye region and restore it after blending
+            eye_part = "left_eye" if part_name == "left_eyebrow" else "right_eye"
+            eye_mask = None
+            if self.use_bisenet and self.face_parsing.is_available():
+                eye_mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    eye_part,
+                    landmarks=base_landmarks,
+                    dilate_pixels=5,  # Expand eye region for safety
+                    blur_size=15,  # Soft edges for smooth restoration
+                )
+
+            # Also subtract eye region from eyebrow mask to avoid overlap
+            if eye_mask is not None and eye_mask.sum() > 0:
+                # Dilate eye mask for safety margin
+                eye_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+                eye_mask_dilated = cv2.dilate(eye_mask, eye_kernel, iterations=1)
+                # Subtract from eyebrow mask
+                mask = cv2.subtract(mask, eye_mask_dilated)
+
+            if mask.sum() == 0:
+                print(f"Warning: Eyebrow mask empty after eye exclusion for {part_name}")
+                return None
+
             # Apply slight feathering for natural edges
             mask = self._feather_mask(mask, iterations=1, blur_size=9, erode_size=1)
 
@@ -874,10 +900,19 @@ class PartBlender:
             src_corrected = self._advanced_color_transfer(src_img, base_img, mask)
 
             # --- BLENDING ---
-            if self.use_seamless_clone:
-                result = self._seamless_clone_blend(base_img, src_corrected, mask, part_name)
-            else:
-                result = self._multiband_blend(base_img, src_corrected, mask, num_levels=4)
+            # Use alpha blending instead of seamlessClone for eyebrows
+            # to prevent affecting the eye region
+            # seamlessClone uses Poisson blending which can affect areas outside the mask
+            result = self._alpha_blend_fallback(base_img, src_corrected, mask)
+
+            # --- RESTORE EYE REGION ---
+            # Even with alpha blending, ensure the eye region is completely preserved
+            if eye_mask is not None and eye_mask.sum() > 0:
+                # Create soft blend mask for eye restoration
+                eye_blend_mask = eye_mask.astype(np.float32) / 255.0
+                eye_blend_mask = np.stack([eye_blend_mask] * 3, axis=-1)
+                # Restore original eye region
+                result = (base_img * eye_blend_mask + result * (1.0 - eye_blend_mask)).astype(np.uint8)
 
             print(f"Eyebrow blended successfully: {part_name} (mask pixels: {np.count_nonzero(mask)})")
             return result
