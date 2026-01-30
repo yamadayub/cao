@@ -1210,7 +1210,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 <ShareButton
                   beforeImage={sourceImages.currentImage || ''}
                   afterImage={getShareImage()}
-                  appliedParts={getAppliedParts()}
                   testId="share-button"
                 />
 

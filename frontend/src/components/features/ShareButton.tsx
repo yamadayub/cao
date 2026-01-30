@@ -90,7 +90,7 @@ export function ShareButton({
         setMessage('');
       }, 3000);
     }
-  }, [beforeImage, afterImage, appliedParts]);
+  }, [beforeImage, afterImage]);
 
   const isProcessing = state === 'generating' || state === 'sharing';
 
