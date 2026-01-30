@@ -89,25 +89,25 @@ describe('Header', () => {
       })
     })
 
-    it('ログインボタンを表示する（マイページへのリンク）', () => {
+    it('マイページボタンを表示する', () => {
       render(<Header />)
 
-      // 認証済みでも「ログイン」ボタン/リンクが表示される
-      const loginLink = screen.getByRole('link', { name: 'ログイン' })
-      expect(loginLink).toBeDefined()
-      expect(loginLink.getAttribute('href')).toBe('/mypage')
+      // 認証済みは「マイページ」リンクが表示される
+      const mypageLink = screen.getByRole('link', { name: 'マイページ' })
+      expect(mypageLink).toBeDefined()
+      expect(mypageLink.getAttribute('href')).toBe('/mypage')
     })
 
-    it('ロゴとログインボタンのみ表示', () => {
+    it('ロゴとマイページボタンのみ表示', () => {
       render(<Header />)
 
       // 「今すぐ試す」ボタンは存在しない
       const ctaButton = screen.queryByRole('link', { name: '今すぐ試す' })
       expect(ctaButton).toBeNull()
 
-      // ログインボタンは表示される
-      const loginLink = screen.getByRole('link', { name: 'ログイン' })
-      expect(loginLink).toBeDefined()
+      // マイページボタンは表示される
+      const mypageLink = screen.getByRole('link', { name: 'マイページ' })
+      expect(mypageLink).toBeDefined()
     })
 
     it('ロゴをクリックするとトップページへ遷移できる', () => {
@@ -166,7 +166,7 @@ describe('Header - 共通ヘッダー仕様', () => {
     mockUseClerk.mockReturnValue({ loaded: true })
   })
 
-  it('常に「ログイン」というテキストのボタン/リンクが表示される', () => {
+  it('未認証時は「ログイン」、認証済み時は「マイページ」を表示', () => {
     // 未認証時
     mockUseAuth.mockReturnValue({
       isLoaded: true,
@@ -174,17 +174,17 @@ describe('Header - 共通ヘッダー仕様', () => {
     })
 
     const { rerender } = render(<Header />)
-    let loginElement = screen.getByText('ログイン')
+    const loginElement = screen.getByText('ログイン')
     expect(loginElement).toBeDefined()
 
-    // 認証済み時も同じ
+    // 認証済み時は「マイページ」
     mockUseAuth.mockReturnValue({
       isLoaded: true,
       isSignedIn: true,
     })
 
     rerender(<Header />)
-    loginElement = screen.getByText('ログイン')
-    expect(loginElement).toBeDefined()
+    const mypageElement = screen.getByText('マイページ')
+    expect(mypageElement).toBeDefined()
   })
 })

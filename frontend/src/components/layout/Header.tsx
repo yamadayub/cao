@@ -19,9 +19,9 @@ function HeaderAuthSection() {
     )
   }
 
-  // 常に「ログイン」ボタンを表示
-  // - 未認証: クリックでログインモーダル表示
-  // - 認証済み: クリックでマイページへ遷移
+  // ヘッダー右上のボタン
+  // - 未認証: 「ログイン」ボタン → クリックでログインモーダル表示
+  // - 認証済み: 「マイページ」ボタン → クリックでマイページへ遷移
   return (
     <>
       {isSignedIn ? (
@@ -29,7 +29,7 @@ function HeaderAuthSection() {
           href="/mypage"
           className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3"
         >
-          ログイン
+          マイページ
         </Link>
       ) : (
         <SignInButton mode="modal">
