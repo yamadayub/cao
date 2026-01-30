@@ -207,16 +207,6 @@ export function SnsShareViewClient({ shareId, testId }: SnsShareViewClientProps)
           />
         </div>
 
-        {/* キャプション */}
-        {shareData?.caption && (
-          <div
-            className="bg-white rounded-xl shadow-sm p-4 mb-6"
-            data-testid={testId ? `${testId}-caption` : undefined}
-          >
-            <p className="text-gray-700">{shareData.caption}</p>
-          </div>
-        )}
-
         {/* CTA */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-6 text-center text-white">
           <h2 className="text-xl font-bold mb-2">

@@ -487,7 +487,14 @@ export type SwapPreviewAllResponse = SuccessResponse<SwapPreviewAllData>;
 // =============================================================================
 
 /**
- * シェアテンプレートタイプ
+ * シェア画像タイプ
+ * - before_after: Before/After比較画像（1200x630px）
+ * - result_only: 結果のみ画像（1080x1080px）
+ */
+export type ShareType = 'before_after' | 'result_only';
+
+/**
+ * @deprecated ShareTemplateはShareTypeに置き換えられました
  */
 export type ShareTemplate = 'before_after' | 'single' | 'parts_highlight';
 
@@ -497,9 +504,7 @@ export type ShareTemplate = 'before_after' | 'single' | 'parts_highlight';
 export interface CreateSnsShareRequest {
   source_image: string;       // Base64エンコード
   result_image: string;       // Base64エンコード
-  template: ShareTemplate;
-  caption?: string;           // 最大140文字
-  applied_parts?: string[];   // パーツハイライト用
+  share_type: ShareType;
 }
 
 /**
@@ -521,8 +526,7 @@ export type CreateSnsShareResponse = SuccessResponse<SnsShareData>;
 export interface GetSnsShareData {
   share_id: string;
   share_image_url: string;
-  caption: string | null;
-  template: ShareTemplate;
+  share_type: ShareType;
   created_at: string;
   expires_at: string;
   is_expired: boolean;

@@ -97,6 +97,7 @@ export type {
   SwapPreviewAllRequest,
   SwapPreviewAllData,
   // SNS Share
+  ShareType,
   ShareTemplate,
   CreateSnsShareRequest,
   SnsShareData,

@@ -1,12 +1,18 @@
 /**
  * シェア画像生成（Canvas API）
  *
- * クライアントサイドで Before/After 比較画像を生成
+ * クライアントサイドで Before/After 比較画像または結果のみ画像を生成
  * URL埋め込みでブランド認知
  */
 
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 630;
+export type ShareImageType = 'before_after' | 'result_only';
+
+// Before/After比較画像サイズ (OGP最適)
+const BEFORE_AFTER_WIDTH = 1200;
+const BEFORE_AFTER_HEIGHT = 630;
+
+// 結果のみ画像サイズ (Instagram最適)
+const RESULT_ONLY_SIZE = 1080;
 
 /**
  * Base64画像をImageElementとして読み込む
@@ -79,19 +85,15 @@ function roundedRect(
 }
 
 /**
- * シェア画像を生成
- *
- * @param beforeImage - 変更前画像（base64またはURL）
- * @param afterImage - 変更後画像（base64またはURL）
- * @returns PNG形式のBlob
+ * Before/After比較画像を生成
  */
-export async function generateShareImage(
+async function generateBeforeAfterImage(
   beforeImage: string,
   afterImage: string
 ): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = CANVAS_HEIGHT;
+  canvas.width = BEFORE_AFTER_WIDTH;
+  canvas.height = BEFORE_AFTER_HEIGHT;
   const ctx = canvas.getContext('2d');
 
   if (!ctx) {
@@ -99,11 +101,11 @@ export async function generateShareImage(
   }
 
   // 背景（グラデーション）
-  const gradient = ctx.createLinearGradient(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const gradient = ctx.createLinearGradient(0, 0, BEFORE_AFTER_WIDTH, BEFORE_AFTER_HEIGHT);
   gradient.addColorStop(0, '#FAFAFA');
   gradient.addColorStop(1, '#F0F0F0');
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillRect(0, 0, BEFORE_AFTER_WIDTH, BEFORE_AFTER_HEIGHT);
 
   // 画像を読み込み
   const [beforeImg, afterImg] = await Promise.all([
@@ -178,7 +180,7 @@ export async function generateShareImage(
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '18px Arial, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText('cao-staging.style-elements.jp', CANVAS_WIDTH - 120, brandY);
+  ctx.fillText('cao-staging.style-elements.jp', BEFORE_AFTER_WIDTH - 120, brandY);
 
   // Blobとして返す
   return new Promise((resolve, reject) => {
@@ -194,4 +196,101 @@ export async function generateShareImage(
       0.9
     );
   });
+}
+
+/**
+ * 結果のみ画像を生成
+ */
+async function generateResultOnlyImage(resultImage: string): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = RESULT_ONLY_SIZE;
+  canvas.height = RESULT_ONLY_SIZE;
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    throw new Error('Canvas context not available');
+  }
+
+  // 背景（グラデーション）
+  const gradient = ctx.createLinearGradient(0, 0, RESULT_ONLY_SIZE, RESULT_ONLY_SIZE);
+  gradient.addColorStop(0, '#FAFAFA');
+  gradient.addColorStop(1, '#F0F0F0');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, RESULT_ONLY_SIZE, RESULT_ONLY_SIZE);
+
+  // 画像を読み込み
+  const resultImg = await loadImage(resultImage);
+
+  // 画像サイズ・位置（中央に大きく配置）
+  const imageSize = 800;
+  const imageX = (RESULT_ONLY_SIZE - imageSize) / 2;
+  const imageY = 80;
+  const radius = 20;
+
+  // 結果画像（角丸クリッピング）
+  ctx.save();
+  roundedRect(ctx, imageX, imageY, imageSize, imageSize, radius);
+  ctx.clip();
+  drawCroppedImage(ctx, resultImg, imageX, imageY, imageSize, imageSize);
+  ctx.restore();
+
+  // 結果画像の枠線
+  ctx.strokeStyle = '#E5E5E5';
+  ctx.lineWidth = 2;
+  roundedRect(ctx, imageX, imageY, imageSize, imageSize, radius);
+  ctx.stroke();
+
+  // ブランドロゴ + URL（下部）
+  const brandY = RESULT_ONLY_SIZE - 60;
+
+  // ロゴテキスト
+  ctx.fillStyle = '#374151';
+  ctx.font = 'bold 32px Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Cao', 140, brandY);
+
+  // サブテキスト
+  ctx.fillStyle = '#6B7280';
+  ctx.font = '22px Arial, sans-serif';
+  ctx.fillText('- 美容シミュレーション', 210, brandY);
+
+  // URL（右寄せ）
+  ctx.fillStyle = '#9CA3AF';
+  ctx.font = '20px Arial, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('cao-staging.style-elements.jp', RESULT_ONLY_SIZE - 140, brandY);
+
+  // Blobとして返す
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create blob'));
+        }
+      },
+      'image/png',
+      0.9
+    );
+  });
+}
+
+/**
+ * シェア画像を生成
+ *
+ * @param beforeImage - 変更前画像（base64またはURL）
+ * @param afterImage - 変更後画像（base64またはURL）
+ * @param shareType - シェア画像タイプ（デフォルト: before_after）
+ * @returns PNG形式のBlob
+ */
+export async function generateShareImage(
+  beforeImage: string,
+  afterImage: string,
+  shareType: ShareImageType = 'before_after'
+): Promise<Blob> {
+  if (shareType === 'result_only') {
+    return generateResultOnlyImage(afterImage);
+  }
+  return generateBeforeAfterImage(beforeImage, afterImage);
 }

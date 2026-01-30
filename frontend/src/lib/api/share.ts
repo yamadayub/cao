@@ -1,14 +1,14 @@
 /**
  * SNS Share API
  *
- * UC-013〜UC-016: シェア画像の作成・取得
+ * UC-013〜UC-014: シェア画像の作成・取得
  */
 
 import { apiGet, apiPost } from './client';
 import type {
   SnsShareData,
   GetSnsShareData,
-  ShareTemplate,
+  ShareType,
 } from './types';
 
 // =============================================================================
@@ -18,9 +18,7 @@ import type {
 export interface CreateSnsShareParams {
   sourceImage: string;        // Base64エンコード
   resultImage: string;        // Base64エンコード
-  template: ShareTemplate;
-  caption?: string;           // 最大140文字
-  appliedParts?: string[];    // パーツハイライト用
+  shareType: ShareType;       // 'before_after' | 'result_only'
 }
 
 // =============================================================================
@@ -44,9 +42,7 @@ export async function createSnsShare(
     {
       source_image: params.sourceImage,
       result_image: params.resultImage,
-      template: params.template,
-      caption: params.caption,
-      applied_parts: params.appliedParts,
+      share_type: params.shareType,
     },
     { authToken }
   );
