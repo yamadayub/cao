@@ -384,6 +384,20 @@ class PartBlender:
                 return result
             # Fall back to standard alignment if pose compensation fails
 
+        # For eyebrows, use direct mask-based blending (simpler, more accurate)
+        # Since the swapped image is already aligned to the base face,
+        # we just need to extract the eyebrow region at the BASE image's eyebrow position
+        if part_name in ("left_eyebrow", "right_eyebrow"):
+            result = self._blend_eyebrow_direct(
+                base_img, src_img,
+                base_landmarks,
+                part_name,
+                img_size
+            )
+            if result is not None:
+                return result
+            # Fall back to standard alignment if direct blending fails
+
         # Calculate centroid and angle for alignment using key landmarks
         src_centroid, src_angle, src_scale = self._calculate_part_geometry(
             src_landmarks, alignment_indices, part_name
@@ -772,6 +786,104 @@ class PartBlender:
 
         except (IndexError, KeyError, TypeError) as e:
             print(f"Warning: Direct landmark mapping failed: {e}")
+            return None
+
+    def _blend_eyebrow_direct(
+        self,
+        base_img: np.ndarray,
+        src_img: np.ndarray,
+        base_landmarks: List[Tuple[float, float]],
+        part_name: str,
+        img_size: Tuple[int, int],
+    ) -> Optional[np.ndarray]:
+        """
+        Blend eyebrow using direct mask-based approach.
+
+        Since the swapped image is already aligned to the base face,
+        we extract the eyebrow region at the BASE image's eyebrow position
+        from the SWAPPED image. This avoids complex warping that can cause
+        misalignment.
+
+        Key approach:
+        1. Get eyebrow mask from BASE image (current face position)
+        2. Extract that same region from SWAPPED image
+        3. Exclude hair regions (hair takes priority)
+        4. Apply color correction
+        5. Blend using Poisson blending
+
+        Args:
+            base_img: Base/current face image (BGR)
+            src_img: Swapped face image (BGR) - already aligned to base
+            base_landmarks: Landmarks from base image
+            part_name: 'left_eyebrow' or 'right_eyebrow'
+            img_size: (width, height) of output image
+
+        Returns:
+            Blended result or None if blending fails
+        """
+        w, h = img_size
+
+        try:
+            # Ensure images are same size
+            if src_img.shape != base_img.shape:
+                src_img = cv2.resize(src_img, (base_img.shape[1], base_img.shape[0]))
+
+            # --- MASK GENERATION ---
+            # Get eyebrow mask from BASE image (this is where we want the eyebrow)
+            if self.use_bisenet and self.face_parsing.is_available():
+                # Get BiSeNet mask from BASE image with hair exclusion
+                mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    part_name,
+                    landmarks=base_landmarks,
+                    dilate_pixels=2,  # Slight dilation for coverage
+                    blur_size=11,  # Soft edges
+                    exclude_hair=True,  # Prioritize hair over eyebrows
+                )
+
+                # Additional: get hair mask for stronger exclusion
+                hair_mask = self.face_parsing.get_part_mask(
+                    base_img,
+                    "hair",
+                    landmarks=None,
+                    dilate_pixels=3,  # Expand hair region
+                    blur_size=0,
+                )
+
+                # Ensure hair has absolute priority by subtracting dilated hair
+                if hair_mask.sum() > 0:
+                    # Dilate hair mask more for safety margin
+                    hair_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+                    hair_mask_dilated = cv2.dilate(hair_mask, hair_kernel, iterations=1)
+                    # Subtract from eyebrow mask
+                    mask = cv2.subtract(mask, hair_mask_dilated)
+            else:
+                # Fallback to landmark-based mask
+                eyebrow_indices = FACIAL_PART_LANDMARKS[part_name]
+                mask = self._create_soft_mask(base_landmarks, eyebrow_indices, (h, w))
+
+            if mask.sum() == 0:
+                print(f"Warning: No eyebrow mask detected for {part_name}")
+                return None
+
+            # Apply slight feathering for natural edges
+            mask = self._feather_mask(mask, iterations=1, blur_size=9, erode_size=1)
+
+            # --- COLOR CORRECTION ---
+            # Apply color transfer to match skin tones around eyebrows
+            src_corrected = self._advanced_color_transfer(src_img, base_img, mask)
+
+            # --- BLENDING ---
+            if self.use_seamless_clone:
+                result = self._seamless_clone_blend(base_img, src_corrected, mask, part_name)
+            else:
+                result = self._multiband_blend(base_img, src_corrected, mask, num_levels=4)
+
+            print(f"Eyebrow blended successfully: {part_name} (mask pixels: {np.count_nonzero(mask)})")
+            return result
+
+        except Exception as e:
+            print(f"Warning: Direct eyebrow blending failed for {part_name}: {e}")
             return None
 
     def _nose_color_transfer(
