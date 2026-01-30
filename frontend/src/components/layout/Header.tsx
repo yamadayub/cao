@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useAuth, useClerk, UserButton, SignInButton } from '@clerk/nextjs'
+import { useAuth, useClerk, SignInButton } from '@clerk/nextjs'
 
 interface HeaderProps {
   variant?: 'default' | 'transparent'
@@ -29,24 +29,18 @@ function HeaderAuthSection({ onAuthStateChange }: HeaderAuthSectionProps) {
     )
   }
 
+  // 常に「ログイン」ボタン/リンクを表示
+  // - 未認証: クリックでログインモーダル表示
+  // - 認証済み: クリックでマイページへ遷移
   return (
     <>
       {isSignedIn ? (
-        <>
-          <Link
-            href="/simulate"
-            className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
-          >
-            シミュレーション
-          </Link>
-          <Link
-            href="/mypage"
-            className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
-          >
-            マイページ
-          </Link>
-          <UserButton afterSignOutUrl="/" />
-        </>
+        <Link
+          href="/mypage"
+          className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300"
+        >
+          ログイン
+        </Link>
       ) : (
         <SignInButton mode="modal">
           <button className="hidden md:inline text-sm text-neutral-600 hover:text-primary-700 transition-colors duration-300">
