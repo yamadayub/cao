@@ -117,15 +117,15 @@ export function ShareButton({
           w-full py-3 px-4 rounded-xl font-medium text-sm
           flex items-center justify-center gap-2
           transition-all duration-200
-          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500
+          focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-400
           ${
             isProcessing
-              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              ? 'bg-primary-100 text-primary-400 cursor-not-allowed'
               : state === 'success'
-              ? 'bg-green-500 text-white'
+              ? 'bg-primary-600 text-white'
               : state === 'error'
-              ? 'bg-red-500 text-white'
-              : 'bg-gray-900 text-white hover:bg-gray-800 active:scale-[0.98]'
+              ? 'bg-red-400 text-white'
+              : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98]'
           }
           ${className}
         `}
