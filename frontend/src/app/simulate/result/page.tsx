@@ -246,7 +246,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   // モーダル状態
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  const [loginAction, setLoginAction] = useState<'save' | 'share' | 'parts-blur' | null>(null)
+  const [loginAction, setLoginAction] = useState<'save' | 'share' | 'parts-blur' | 'sns-share' | null>(null)
   const [partsLoginPromptInfo, setPartsLoginPromptInfo] = useState<LoginPromptInfo | null>(null)
 
   // 元画像のData URL
@@ -1210,6 +1210,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 <ShareButton
                   beforeImage={sourceImages.currentImage || ''}
                   afterImage={getShareImage()}
+                  isSignedIn={isSignedIn}
+                  onLoginRequired={() => {
+                    setLoginAction('sns-share')
+                    savePendingAction({
+                      type: 'sns-share',
+                      viewMode: viewMode,
+                      partsSelection: partsBlendState.selection,
+                    })
+                    setShowLoginModal(true)
+                  }}
                   testId="share-button"
                 />
 

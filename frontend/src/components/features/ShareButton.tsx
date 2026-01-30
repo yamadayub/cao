@@ -8,6 +8,10 @@ interface ShareButtonProps {
   beforeImage: string;
   /** 変更後画像（base64） */
   afterImage: string;
+  /** ログイン済みかどうか */
+  isSignedIn: boolean;
+  /** ログインが必要な時に呼ばれるコールバック */
+  onLoginRequired: () => void;
   /** 追加のクラス名 */
   className?: string;
   /** テスト用ID */
@@ -26,6 +30,8 @@ type ShareState = 'idle' | 'selecting' | 'generating' | 'sharing' | 'success' | 
 export function ShareButton({
   beforeImage,
   afterImage,
+  isSignedIn,
+  onLoginRequired,
   className = '',
   testId,
 }: ShareButtonProps) {
@@ -33,9 +39,14 @@ export function ShareButton({
   const [message, setMessage] = useState('');
 
   const openShareTypeDialog = useCallback(() => {
+    // 未ログインの場合はログインを要求
+    if (!isSignedIn) {
+      onLoginRequired();
+      return;
+    }
     setState('selecting');
     setMessage('');
-  }, []);
+  }, [isSignedIn, onLoginRequired]);
 
   const closeDialog = useCallback(() => {
     setState('idle');
