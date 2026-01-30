@@ -48,14 +48,12 @@ function downloadImage(imageBlob: Blob): void {
  * Web Share APIで画像をシェア
  *
  * @param imageBlob - シェアする画像のBlob
- * @param appliedParts - 適用されたパーツ（テキスト生成用）
  * @returns シェア結果
  */
 export async function shareImage(
-  imageBlob: Blob,
-  appliedParts: string[] = []
+  imageBlob: Blob
 ): Promise<ShareResult> {
-  const shareText = getShareText(appliedParts);
+  const shareText = getShareText();
   const shareUrl = getShareUrl();
 
   // 画像ファイルを作成

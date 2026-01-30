@@ -7,12 +7,8 @@
 
 export type ShareImageType = 'before_after' | 'result_only';
 
-// Before/After比較画像サイズ (OGP最適)
-const BEFORE_AFTER_WIDTH = 1200;
-const BEFORE_AFTER_HEIGHT = 630;
-
-// 結果のみ画像サイズ (Instagram最適)
-const RESULT_ONLY_SIZE = 1080;
+// 正方形画像サイズ (Instagram/SNS最適)
+const SHARE_IMAGE_SIZE = 1080;
 
 /**
  * Base64画像をImageElementとして読み込む
@@ -85,15 +81,15 @@ function roundedRect(
 }
 
 /**
- * Before/After比較画像を生成
+ * Before/After比較画像を生成（正方形）
  */
 async function generateBeforeAfterImage(
   beforeImage: string,
   afterImage: string
 ): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  canvas.width = BEFORE_AFTER_WIDTH;
-  canvas.height = BEFORE_AFTER_HEIGHT;
+  canvas.width = SHARE_IMAGE_SIZE;
+  canvas.height = SHARE_IMAGE_SIZE;
   const ctx = canvas.getContext('2d');
 
   if (!ctx) {
@@ -101,11 +97,11 @@ async function generateBeforeAfterImage(
   }
 
   // 背景（グラデーション）
-  const gradient = ctx.createLinearGradient(0, 0, BEFORE_AFTER_WIDTH, BEFORE_AFTER_HEIGHT);
+  const gradient = ctx.createLinearGradient(0, 0, SHARE_IMAGE_SIZE, SHARE_IMAGE_SIZE);
   gradient.addColorStop(0, '#FAFAFA');
   gradient.addColorStop(1, '#F0F0F0');
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, BEFORE_AFTER_WIDTH, BEFORE_AFTER_HEIGHT);
+  ctx.fillRect(0, 0, SHARE_IMAGE_SIZE, SHARE_IMAGE_SIZE);
 
   // 画像を読み込み
   const [beforeImg, afterImg] = await Promise.all([
@@ -113,11 +109,14 @@ async function generateBeforeAfterImage(
     loadImage(afterImage),
   ]);
 
-  // 画像サイズ・位置
-  const imageSize = 380;
-  const imageY = 60;
-  const beforeX = 120;
-  const afterX = 700;
+  // 画像サイズ・位置（正方形レイアウト）
+  const imageSize = 460;
+  const gap = 40;
+  const totalWidth = imageSize * 2 + gap;
+  const startX = (SHARE_IMAGE_SIZE - totalWidth) / 2;
+  const imageY = 100;
+  const beforeX = startX;
+  const afterX = startX + imageSize + gap;
   const radius = 16;
 
   // Before画像（角丸クリッピング）
@@ -146,41 +145,24 @@ async function generateBeforeAfterImage(
   roundedRect(ctx, afterX, imageY, imageSize, imageSize, radius);
   ctx.stroke();
 
-  // 矢印
-  const arrowX = 560;
-  const arrowY = imageY + imageSize / 2;
-  ctx.fillStyle = '#9CA3AF';
-  ctx.font = 'bold 64px Arial, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('→', arrowX, arrowY);
-
   // ラベル
   ctx.fillStyle = '#6B7280';
-  ctx.font = '500 20px Arial, sans-serif';
+  ctx.font = '500 24px Arial, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('Before', beforeX + imageSize / 2, imageY + imageSize + 30);
-  ctx.fillText('After', afterX + imageSize / 2, imageY + imageSize + 30);
+  ctx.fillText('Before', beforeX + imageSize / 2, imageY + imageSize + 40);
+  ctx.fillText('After', afterX + imageSize / 2, imageY + imageSize + 40);
 
-  // ブランドロゴ + URL（下部）
-  const brandY = 560;
-
-  // ロゴテキスト
+  // ブランドロゴ（下部中央）
+  const brandY = SHARE_IMAGE_SIZE - 80;
   ctx.fillStyle = '#374151';
-  ctx.font = 'bold 28px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Cao', 120, brandY);
+  ctx.font = 'bold 36px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Cao', SHARE_IMAGE_SIZE / 2, brandY);
 
-  // サブテキスト
-  ctx.fillStyle = '#6B7280';
-  ctx.font = '20px Arial, sans-serif';
-  ctx.fillText('- 美容シミュレーション', 175, brandY);
-
-  // URL（右寄せ）
+  // URL
   ctx.fillStyle = '#9CA3AF';
-  ctx.font = '18px Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('cao-staging.style-elements.jp', BEFORE_AFTER_WIDTH - 120, brandY);
+  ctx.font = '20px Arial, sans-serif';
+  ctx.fillText('cao-coral.vercel.app', SHARE_IMAGE_SIZE / 2, brandY + 35);
 
   // Blobとして返す
   return new Promise((resolve, reject) => {
@@ -203,8 +185,8 @@ async function generateBeforeAfterImage(
  */
 async function generateResultOnlyImage(resultImage: string): Promise<Blob> {
   const canvas = document.createElement('canvas');
-  canvas.width = RESULT_ONLY_SIZE;
-  canvas.height = RESULT_ONLY_SIZE;
+  canvas.width = SHARE_IMAGE_SIZE;
+  canvas.height = SHARE_IMAGE_SIZE;
   const ctx = canvas.getContext('2d');
 
   if (!ctx) {
@@ -212,19 +194,19 @@ async function generateResultOnlyImage(resultImage: string): Promise<Blob> {
   }
 
   // 背景（グラデーション）
-  const gradient = ctx.createLinearGradient(0, 0, RESULT_ONLY_SIZE, RESULT_ONLY_SIZE);
+  const gradient = ctx.createLinearGradient(0, 0, SHARE_IMAGE_SIZE, SHARE_IMAGE_SIZE);
   gradient.addColorStop(0, '#FAFAFA');
   gradient.addColorStop(1, '#F0F0F0');
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, RESULT_ONLY_SIZE, RESULT_ONLY_SIZE);
+  ctx.fillRect(0, 0, SHARE_IMAGE_SIZE, SHARE_IMAGE_SIZE);
 
   // 画像を読み込み
   const resultImg = await loadImage(resultImage);
 
   // 画像サイズ・位置（中央に大きく配置）
-  const imageSize = 800;
-  const imageX = (RESULT_ONLY_SIZE - imageSize) / 2;
-  const imageY = 80;
+  const imageSize = 880;
+  const imageX = (SHARE_IMAGE_SIZE - imageSize) / 2;
+  const imageY = 60;
   const radius = 20;
 
   // 結果画像（角丸クリッピング）
@@ -240,25 +222,17 @@ async function generateResultOnlyImage(resultImage: string): Promise<Blob> {
   roundedRect(ctx, imageX, imageY, imageSize, imageSize, radius);
   ctx.stroke();
 
-  // ブランドロゴ + URL（下部）
-  const brandY = RESULT_ONLY_SIZE - 60;
-
-  // ロゴテキスト
+  // ブランドロゴ（下部中央）
+  const brandY = SHARE_IMAGE_SIZE - 80;
   ctx.fillStyle = '#374151';
-  ctx.font = 'bold 32px Arial, sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Cao', 140, brandY);
+  ctx.font = 'bold 36px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Cao', SHARE_IMAGE_SIZE / 2, brandY);
 
-  // サブテキスト
-  ctx.fillStyle = '#6B7280';
-  ctx.font = '22px Arial, sans-serif';
-  ctx.fillText('- 美容シミュレーション', 210, brandY);
-
-  // URL（右寄せ）
+  // URL
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '20px Arial, sans-serif';
-  ctx.textAlign = 'right';
-  ctx.fillText('cao-staging.style-elements.jp', RESULT_ONLY_SIZE - 140, brandY);
+  ctx.fillText('cao-coral.vercel.app', SHARE_IMAGE_SIZE / 2, brandY + 35);
 
   // Blobとして返す
   return new Promise((resolve, reject) => {

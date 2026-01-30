@@ -8,8 +8,6 @@ interface ShareButtonProps {
   beforeImage: string;
   /** 変更後画像（base64） */
   afterImage: string;
-  /** 適用されたパーツ */
-  appliedParts?: string[];
   /** 追加のクラス名 */
   className?: string;
   /** テスト用ID */
@@ -28,7 +26,6 @@ type ShareState = 'idle' | 'selecting' | 'generating' | 'sharing' | 'success' | 
 export function ShareButton({
   beforeImage,
   afterImage,
-  appliedParts = [],
   className = '',
   testId,
 }: ShareButtonProps) {
@@ -56,7 +53,7 @@ export function ShareButton({
       setState('sharing');
 
       // シェア実行
-      const result: ShareResult = await shareImage(imageBlob, appliedParts);
+      const result: ShareResult = await shareImage(imageBlob);
 
       switch (result) {
         case 'shared':
