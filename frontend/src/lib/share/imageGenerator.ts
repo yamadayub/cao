@@ -162,7 +162,7 @@ async function generateBeforeAfterImage(
   // URL
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '20px Arial, sans-serif';
-  ctx.fillText('cao-coral.vercel.app', SHARE_IMAGE_SIZE / 2, brandY + 35);
+  ctx.fillText('cao-staging.style-elements.jp', SHARE_IMAGE_SIZE / 2, brandY + 35);
 
   // Blobとして返す
   return new Promise((resolve, reject) => {
@@ -232,7 +232,7 @@ async function generateResultOnlyImage(resultImage: string): Promise<Blob> {
   // URL
   ctx.fillStyle = '#9CA3AF';
   ctx.font = '20px Arial, sans-serif';
-  ctx.fillText('cao-coral.vercel.app', SHARE_IMAGE_SIZE / 2, brandY + 35);
+  ctx.fillText('cao-staging.style-elements.jp', SHARE_IMAGE_SIZE / 2, brandY + 35);
 
   // Blobとして返す
   return new Promise((resolve, reject) => {

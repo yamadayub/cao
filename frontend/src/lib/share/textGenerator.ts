@@ -7,7 +7,7 @@
  */
 export function getShareText(): string {
   return `Caoで美容シミュレーションしてみたよ。
-https://cao-coral.vercel.app
+https://cao-staging.style-elements.jp
 #Cao #美容シミュレーション`;
 }
 
@@ -15,5 +15,5 @@ https://cao-coral.vercel.app
  * シェアURLを取得
  */
 export function getShareUrl(): string {
-  return 'https://cao-coral.vercel.app';
+  return 'https://cao-staging.style-elements.jp';
 }
