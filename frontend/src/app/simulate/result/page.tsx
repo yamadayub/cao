@@ -67,10 +67,7 @@ interface PartsBlendState {
  * デフォルトのパーツ強度（全て1.0）
  */
 const defaultPartsIntensity: SwapPartsIntensity = {
-  left_eye: 1.0,
-  right_eye: 1.0,
-  left_eyebrow: 1.0,
-  right_eyebrow: 1.0,
+  eyes: 1.0,
   nose: 1.0,
   lips: 1.0,
 }
@@ -79,10 +76,7 @@ const defaultPartsIntensity: SwapPartsIntensity = {
  * デフォルトのパーツ選択（全てOFF）
  */
 const defaultPartsSelection: PartsSelection = {
-  left_eye: false,
-  right_eye: false,
-  left_eyebrow: false,
-  right_eyebrow: false,
+  eyes: false,
   nose: false,
   lips: false,
 }
@@ -770,10 +764,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
       // 選択されたパーツの強度を設定（選択されていないパーツは0）
       const partsIntensity: SwapPartsIntensity = {
-        left_eye: partsBlendState.selection.left_eye ? partsBlendState.intensity.left_eye : 0,
-        right_eye: partsBlendState.selection.right_eye ? partsBlendState.intensity.right_eye : 0,
-        left_eyebrow: partsBlendState.selection.left_eyebrow ? partsBlendState.intensity.left_eyebrow : 0,
-        right_eyebrow: partsBlendState.selection.right_eyebrow ? partsBlendState.intensity.right_eyebrow : 0,
+        eyes: partsBlendState.selection.eyes ? partsBlendState.intensity.eyes : 0,
         nose: partsBlendState.selection.nose ? partsBlendState.intensity.nose : 0,
         lips: partsBlendState.selection.lips ? partsBlendState.intensity.lips : 0,
       }

@@ -3,15 +3,12 @@
 import { useCallback } from 'react'
 
 /**
- * パーツ名のマッピング
+ * パーツ名のマッピング（シンプル3択）
  */
 const PARTS_NAMES: Record<string, string> = {
-  left_eye: '左目',
-  right_eye: '右目',
-  left_eyebrow: '左眉',
-  right_eyebrow: '右眉',
+  eyes: '目',
   nose: '鼻',
-  lips: '口',
+  lips: '唇',
 }
 
 /**

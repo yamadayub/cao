@@ -176,10 +176,7 @@ export async function previewAllParts(
  * デフォルトのパーツ強度
  */
 export const DEFAULT_PARTS_INTENSITY: SwapPartsIntensity = {
-  left_eye: 1.0,
-  right_eye: 1.0,
-  left_eyebrow: 1.0,
-  right_eyebrow: 1.0,
+  eyes: 1.0,
   nose: 1.0,
   lips: 1.0,
 };
@@ -188,10 +185,7 @@ export const DEFAULT_PARTS_INTENSITY: SwapPartsIntensity = {
  * パーツ強度をリセット（全て0）
  */
 export const ZERO_PARTS_INTENSITY: SwapPartsIntensity = {
-  left_eye: 0,
-  right_eye: 0,
-  left_eyebrow: 0,
-  right_eyebrow: 0,
+  eyes: 0,
   nose: 0,
   lips: 0,
 };

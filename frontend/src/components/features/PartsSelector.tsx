@@ -18,7 +18,7 @@ interface PartsSelectorProps {
 /**
  * パーツ選択コンポーネント
  *
- * 各顔パーツのON/OFFを切り替えるトグルボタン群
+ * シンプル3択: 目・鼻・唇
  */
 export const PartsSelector = memo(function PartsSelector({
   selection,
@@ -33,9 +33,8 @@ export const PartsSelector = memo(function PartsSelector({
     })
   }
 
-  // パーツをグループ分け（上段: 目・眉、下段: 鼻・唇）
-  const eyeGroup: (keyof PartsSelection)[] = ['left_eyebrow', 'left_eye', 'right_eye', 'right_eyebrow']
-  const faceGroup: (keyof PartsSelection)[] = ['nose', 'lips']
+  // パーツリスト（目・鼻・唇の3択）
+  const parts: (keyof PartsSelection)[] = ['eyes', 'nose', 'lips']
 
   const renderPartButton = (part: keyof PartsSelection) => {
     const isSelected = selection[part]
@@ -46,7 +45,7 @@ export const PartsSelector = memo(function PartsSelector({
         onClick={() => handleToggle(part)}
         disabled={disabled}
         className={`
-          px-4 py-2 text-sm font-medium rounded-full transition-all duration-200
+          px-6 py-3 text-base font-medium rounded-full transition-all duration-200
           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500
           ${
             isSelected
@@ -79,14 +78,9 @@ export const PartsSelector = memo(function PartsSelector({
         )}
       </div>
 
-      {/* 目・眉グループ */}
-      <div className="flex flex-wrap gap-2 justify-center">
-        {eyeGroup.map(renderPartButton)}
-      </div>
-
-      {/* 鼻・唇グループ */}
-      <div className="flex flex-wrap gap-2 justify-center">
-        {faceGroup.map(renderPartButton)}
+      {/* パーツボタン（横並び） */}
+      <div className="flex flex-wrap gap-3 justify-center">
+        {parts.map(renderPartButton)}
       </div>
 
       {/* 全選択/全解除ボタン */}
@@ -95,10 +89,7 @@ export const PartsSelector = memo(function PartsSelector({
           type="button"
           onClick={() =>
             onChange({
-              left_eye: true,
-              right_eye: true,
-              left_eyebrow: true,
-              right_eyebrow: true,
+              eyes: true,
               nose: true,
               lips: true,
             })
@@ -114,10 +105,7 @@ export const PartsSelector = memo(function PartsSelector({
           type="button"
           onClick={() =>
             onChange({
-              left_eye: false,
-              right_eye: false,
-              left_eyebrow: false,
-              right_eyebrow: false,
+              eyes: false,
               nose: false,
               lips: false,
             })

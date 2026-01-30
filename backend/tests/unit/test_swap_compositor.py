@@ -40,20 +40,29 @@ class TestSwapCompositor:
         parts = {"eyes": 0.8, "nose": 1.0}
         normalized = swap_compositor._normalize_parts_dict(parts)
 
-        # "eyes" should expand to both left_eye and right_eye
+        # "eyes" should expand to both eyes and eyebrows
         assert "left_eye" in normalized
         assert "right_eye" in normalized
-        assert normalized["left_eye"] == 0.8
-        assert normalized["right_eye"] == 0.8
-        assert normalized["nose"] == 1.0
-
-    def test_normalize_parts_dict_with_eyebrows_alias(self, swap_compositor):
-        """Test that eyebrows alias is expanded."""
-        parts = {"eyebrows": 0.5}
-        normalized = swap_compositor._normalize_parts_dict(parts)
-
         assert "left_eyebrow" in normalized
         assert "right_eyebrow" in normalized
+        assert normalized["left_eye"] == 0.8
+        assert normalized["right_eye"] == 0.8
+        assert normalized["left_eyebrow"] == 0.8
+        assert normalized["right_eyebrow"] == 0.8
+        assert normalized["nose"] == 1.0
+
+    def test_normalize_parts_dict_eyes_includes_eyebrows(self, swap_compositor):
+        """Test that eyes alias includes both eyes AND eyebrows."""
+        parts = {"eyes": 0.5}
+        normalized = swap_compositor._normalize_parts_dict(parts)
+
+        # eyes should expand to left_eye, right_eye, left_eyebrow, right_eyebrow
+        assert "left_eye" in normalized
+        assert "right_eye" in normalized
+        assert "left_eyebrow" in normalized
+        assert "right_eyebrow" in normalized
+        assert normalized["left_eye"] == 0.5
+        assert normalized["right_eye"] == 0.5
         assert normalized["left_eyebrow"] == 0.5
         assert normalized["right_eyebrow"] == 0.5
 
@@ -162,8 +171,7 @@ class TestSwapCompositorIntegration:
             "right_eyebrow",
             "nose",
             "lips",
-            "eyes",  # alias
-            "eyebrows",  # alias
+            "eyes",  # alias (includes eyes AND eyebrows)
         ]
 
         for part in valid_parts:

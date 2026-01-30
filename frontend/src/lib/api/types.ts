@@ -275,13 +275,13 @@ export type SharedSimulationResponse = SuccessResponse<SharedSimulationData>;
 // =============================================================================
 
 /**
- * パーツ選択
+ * パーツ選択（シンプル3択）
+ * - eyes: 目と眉毛をセットで適用
+ * - nose: 鼻
+ * - lips: 唇
  */
 export interface PartsSelection {
-  left_eye: boolean;
-  right_eye: boolean;
-  left_eyebrow: boolean;
-  right_eyebrow: boolean;
+  eyes: boolean;
   nose: boolean;
   lips: boolean;
 }
@@ -358,10 +358,7 @@ export type GenerationResultResponse = SuccessResponse<GenerationResultData>;
  * パーツ表示名マッピング
  */
 export const PARTS_DISPLAY_NAMES: Record<keyof PartsSelection, string> = {
-  left_eye: '左目',
-  right_eye: '右目',
-  left_eyebrow: '左眉',
-  right_eyebrow: '右眉',
+  eyes: '目',
   nose: '鼻',
   lips: '唇',
 };
@@ -434,16 +431,12 @@ export type SwapResultResponse = SuccessResponse<SwapResultData>;
 
 /**
  * パーツ強度指定（0.0-1.0）
+ * シンプル3択: eyes（目+眉）, nose, lips
  */
 export interface SwapPartsIntensity {
-  left_eye?: number;
-  right_eye?: number;
-  left_eyebrow?: number;
-  right_eyebrow?: number;
+  eyes?: number;    // 目と眉毛をセットで適用
   nose?: number;
   lips?: number;
-  eyes?: number;       // エイリアス: left_eye + right_eye
-  eyebrows?: number;   // エイリアス: left_eyebrow + right_eyebrow
 }
 
 /**

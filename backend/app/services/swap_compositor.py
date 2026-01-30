@@ -16,13 +16,16 @@ from app.services.part_blender import PartBlender, PartsSelection
 logger = logging.getLogger(__name__)
 
 # Part aliases for convenience
+# "eyes" now includes both eyes AND eyebrows as a single unit
 PART_ALIASES: Dict[str, list[str]] = {
-    "eyes": ["left_eye", "right_eye"],
-    "eyebrows": ["left_eyebrow", "right_eyebrow"],
+    "eyes": ["left_eye", "right_eye", "left_eyebrow", "right_eyebrow"],
 }
 
-# Valid individual part names
+# Valid individual part names (internal use)
 VALID_PARTS = {"left_eye", "right_eye", "left_eyebrow", "right_eyebrow", "nose", "lips"}
+
+# Valid simplified part names (API interface)
+VALID_SIMPLIFIED_PARTS = {"eyes", "nose", "lips"}
 
 
 class SwapCompositor:
