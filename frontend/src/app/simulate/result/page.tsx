@@ -960,53 +960,68 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   useEffect(() => {
     if (!justLoggedIn) return
 
-    const pendingAction = getPendingAction()
-    if (!pendingAction) {
-      resetJustLoggedIn()
-      return
-    }
+    console.log('[Login Complete] Processing pending action...')
 
-    // 保存された画像データを取得
+    const pendingAction = getPendingAction()
     const savedImages = getSimulationImages()
+
+    console.log('[Login Complete] pendingAction:', pendingAction)
+    console.log('[Login Complete] savedImages.swappedImage exists:', !!savedImages.swappedImage)
+    console.log('[Login Complete] savedImages.partsBlendImage exists:', !!savedImages.partsBlendImage)
 
     // 保留アクションをクリア
     clearPendingAction()
     clearSimulationImages()
     resetJustLoggedIn()
 
-    // 保存された画像を復元
+    // 保存された画像を復元（pendingActionがなくても復元する）
     if (savedImages.swappedImage) {
+      console.log('[Login Complete] Restoring swappedImage')
       setSwappedImage(savedImages.swappedImage)
     }
     if (savedImages.partsBlendImage) {
+      console.log('[Login Complete] Restoring partsBlendImage')
+      // パーツ選択状態も同時に復元して state batching の問題を回避
       setPartsBlendState(prev => ({
         ...prev,
         image: savedImages.partsBlendImage,
+        selection: pendingAction?.partsSelection || prev.selection,
       }))
-    }
-
-    // 表示モードを復元
-    if (pendingAction.viewMode) {
-      setViewMode(pendingAction.viewMode)
-    }
-
-    // パーツ表示モードを復元
-    if (pendingAction.partsViewMode) {
-      setPartsViewMode(pendingAction.partsViewMode)
-    }
-
-    // パーツ選択状態を復元
-    if (pendingAction.partsSelection) {
+    } else if (pendingAction?.partsSelection) {
+      // 画像がなくてもパーツ選択状態は復元
       setPartsBlendState(prev => ({
         ...prev,
         selection: pendingAction.partsSelection!,
       }))
     }
 
+    // pendingActionがない場合でも、savedImagesがあればパーツモードで表示
+    if (!pendingAction) {
+      if (savedImages.partsBlendImage) {
+        console.log('[Login Complete] No pending action but have parts image, switching to parts mode')
+        setViewMode('parts')
+        setPartsViewMode('applied')
+      }
+      return
+    }
+
+    // 表示モードを復元
+    if (pendingAction.viewMode) {
+      console.log('[Login Complete] Setting viewMode:', pendingAction.viewMode)
+      setViewMode(pendingAction.viewMode)
+    }
+
+    // パーツ表示モードを復元
+    if (pendingAction.partsViewMode) {
+      console.log('[Login Complete] Setting partsViewMode:', pendingAction.partsViewMode)
+      setPartsViewMode(pendingAction.partsViewMode)
+    }
+
     // アクションを実行
     switch (pendingAction.type) {
       case 'parts-blur':
         // パーツモードに切り替え、ブラーは認証済みなので自動解除
+        console.log('[Login Complete] Executing parts-blur action')
         setViewMode('parts')
         setPartsViewMode('applied')
         break
