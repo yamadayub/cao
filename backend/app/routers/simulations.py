@@ -91,21 +91,32 @@ async def create_simulation(
             {"progress": img.progress, "path": img.image} for img in data.result_images
         ]
 
+        # Build settings dict
+        settings_dict = {}
+        if data.settings:
+            settings_dict = data.settings.model_dump(exclude_none=True)
+        logger.info(f"Settings: {settings_dict}")
+
         # Insert into database
         insert_data = {
             "id": simulation_id,
             "user_id": user_id,
             "current_image_path": data.current_image,
             "ideal_image_path": data.ideal_image,
-            "swapped_image_path": data.swapped_image,
-            "parts_result_image_path": data.parts_result_image,
             "result_images": result_images_json,
-            "settings": data.settings.model_dump() if data.settings else {},
+            "settings": settings_dict,
             "is_public": False,
             "created_at": now,
             "updated_at": now,
         }
 
+        # Only include optional fields if they have values
+        if data.swapped_image:
+            insert_data["swapped_image_path"] = data.swapped_image
+        if data.parts_result_image:
+            insert_data["parts_result_image_path"] = data.parts_result_image
+
+        logger.info(f"Insert data keys: {list(insert_data.keys())}")
         result = supabase.table("simulations").insert(insert_data).execute()
 
         if not result.data:
