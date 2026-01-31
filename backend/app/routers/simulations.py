@@ -77,8 +77,12 @@ async def create_simulation(
     user_id: str = Depends(verify_token),
 ):
     """Create a new simulation."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         supabase = get_supabase()
+        logger.info(f"Creating simulation for user: {user_id}")
         simulation_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
 
@@ -131,6 +135,9 @@ async def create_simulation(
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        logger.error(f"Failed to create simulation: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content=ErrorResponse(
