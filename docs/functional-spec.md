@@ -1362,6 +1362,59 @@ GET /share/{share_id}
 
 ---
 
+### 3.11 セッションストレージ仕様
+
+シミュレーション画面では、以下のデータをsessionStorageに保存し、ログイン後の状態復元に使用する。
+
+#### セッションストレージキー一覧
+
+| キー | 型 | 説明 | 用途 |
+|------|-----|------|------|
+| `cao_current_image` | string (Data URL) | 現在の顔画像 | シミュレーション生成の入力 |
+| `cao_ideal_image` | string (Data URL) | 理想の顔画像 | シミュレーション生成の入力 |
+| `cao_swapped_image` | string (Data URL) | Face Swapで生成した画像 | パーツ適用のベース画像 |
+| `cao_parts_blend_image` | string (Data URL) | パーツ適用結果画像 | ログイン後の画像復元 |
+| `cao_pending_action` | JSON | 保留中のアクション情報 | ログイン後のアクション自動実行 |
+
+#### 保留アクション（`cao_pending_action`）のスキーマ
+
+```typescript
+interface PendingAction {
+  type: 'parts-blur' | 'download' | 'save' | 'share' | 'sns-share'
+  viewMode: 'morph' | 'parts'
+  partsSelection?: PartsSelection  // パーツの選択状態
+  partsViewMode?: 'current' | 'applied'  // パーツモードの表示状態
+  timestamp?: number  // 保存時刻（有効期限判定用、5分）
+}
+```
+
+#### ログイン後の画像復元フロー
+
+1. ユーザーがブラー画像をクリック
+2. システムが以下を保存:
+   - `cao_swapped_image`: スワップ画像
+   - `cao_parts_blend_image`: パーツ適用結果画像
+   - `cao_pending_action`: アクション情報（type: 'parts-blur', viewMode: 'parts', partsViewMode: 'applied'）
+3. ログインモーダルを表示
+4. ユーザーがログイン
+5. システムが `justLoggedIn` を検知
+6. システムが sessionStorage から画像とアクションを取得
+7. システムが以下の状態を復元:
+   - `swappedImage` 状態変数に `cao_swapped_image` を設定
+   - `partsBlendState.image` に `cao_parts_blend_image` を設定
+   - `viewMode` を `'parts'` に設定
+   - `partsViewMode` を `'applied'` に設定
+8. sessionStorage から保存データを削除
+9. パーツ適用結果画像がブラーなしで表示される
+
+**重要な動作保証**:
+- ログイン後は必ず `partsBlendImage` が表示されること
+- `viewMode` が `'parts'` に設定されること
+- `partsViewMode` が `'applied'` に設定されること
+- ブラーが解除されて画像が表示されること
+
+---
+
 ## 4. データモデル
 
 ### 4.1 ER図
@@ -1831,3 +1884,4 @@ CREATE POLICY "Anyone can view non-expired share images"
 | 1.3.2 | 2025-01-30 | シェア機能にログイン必須を追加、Before/After画像サイズを1080x1080pxに変更 | Spec Agent |
 | 1.4.0 | 2025-01-31 | ヘッダー仕様改善: 常時ログインボタン表示、モーダルログイン、ログイン後は元画面に留まりアクション自動継続。共通ヘッダー仕様（3.1.1）追加、全画面のヘッダーを統一 | Spec Agent |
 | 1.5.0 | 2025-01-31 | シミュレーション結果画面（SCR-003）改善: 保存ボタン追加、ボタン高さ統一（48px）、結果キャッシュ仕様追加（モード切り替え時の即座表示）、ワイヤーフレーム更新 | Spec Agent |
+| 1.5.1 | 2025-01-31 | セッションストレージ仕様（3.11）追加: キー一覧、保留アクションスキーマ、ログイン後の画像復元フローを明確化 | Spec Agent |

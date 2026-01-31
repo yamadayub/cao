@@ -696,6 +696,47 @@ flowchart TD
 
 ---
 
+## 7. 画像データ定義
+
+シミュレーション結果画面で扱う画像データの一覧と、各画像の役割・保存場所を定義する。
+
+### 7.1 画像タイプ一覧
+
+| 画像ID | 画像名 | 日本語名 | 説明 | 生成タイミング | 保存先 |
+|--------|--------|----------|------|----------------|--------|
+| IMG-001 | `currentImage` | 現在の顔画像 | ユーザーがアップロードした現在の顔 | UC-002 | sessionStorage (`cao_current_image`) |
+| IMG-002 | `idealImage` | 理想の顔画像 | ユーザーがアップロードした理想の顔 | UC-003 | sessionStorage (`cao_ideal_image`) |
+| IMG-003 | `swappedImage` | スワップ画像 | Face Swap APIで生成した顔全体のスワップ結果。パーツ別適用のベースとなる画像 | UC-004 | React state + sessionStorage (`cao_swapped_image`) |
+| IMG-004 | `partsBlendImage` | パーツ適用画像 | 選択したパーツのみを合成した結果画像 | UC-011 | React state + sessionStorage (`cao_parts_blend_image`) |
+
+### 7.2 表示モードと画像の関係
+
+| 表示モード | タブ | 表示する画像 | 説明 |
+|------------|------|-------------|------|
+| 顔全体モード | 「全体」タブ | `currentImage` (0%) または `swappedImage` (100%) | スライダーで切り替え |
+| パーツ別モード（現在） | 「パーツ別適用」タブ → 「現在」ボタン | `currentImage` | 比較用に現在の顔を表示 |
+| パーツ別モード（適用後） | 「パーツ別適用」タブ → 「適用後」ボタン | `partsBlendImage` | パーツ適用結果を表示（未認証時はブラー） |
+
+### 7.3 ログイン時の画像復元
+
+UC-012（ログインして直前のアクションを継続）において、以下の画像を復元する必要がある:
+
+| 復元対象 | 保存場所 | 復元タイミング |
+|----------|----------|----------------|
+| `swappedImage` | sessionStorage (`cao_swapped_image`) | ログイン完了直後 |
+| `partsBlendImage` | sessionStorage (`cao_parts_blend_image`) | ログイン完了直後 |
+| 表示モード (`viewMode`) | sessionStorage (pending action内) | ログイン完了直後 |
+| パーツ表示モード (`partsViewMode`) | sessionStorage (pending action内) | ログイン完了直後 |
+| パーツ選択状態 (`partsSelection`) | sessionStorage (pending action内) | ログイン完了直後 |
+
+**重要**: パーツ別ブラー画像をタップしてログインした場合、ログイン完了後は必ず:
+1. `partsBlendImage` が復元される
+2. `viewMode` が `'parts'` に設定される
+3. `partsViewMode` が `'applied'` に設定される
+4. ブラーが解除されて `partsBlendImage` が表示される
+
+---
+
 ## 変更履歴
 
 | バージョン | 日付 | 変更内容 | 担当 |
@@ -709,3 +750,4 @@ flowchart TD
 | 1.3.1 | 2025-01-30 | UC-013/014簡素化: シェア画像タイプ選択を「Before/After比較」と「結果のみ」の2択に変更 | Spec Agent |
 | 1.4.0 | 2025-01-31 | ログイン動作改善: UC-009/012更新 - ヘッダーに常時ログインボタン表示、ログイン後は元の画面に留まりアクション自動継続、画面遷移図更新 | Spec Agent |
 | 1.5.0 | 2025-01-31 | シミュレーション保存機能強化: UC-006更新 - 保存ボタン追加、顔全体とパーツ別の両結果を保存、UC-010更新 - 保存済み結果の即座切り替え、SCR-003更新 | Spec Agent |
+| 1.5.1 | 2025-01-31 | 画像データ定義（セクション7）追加: 画像タイプ一覧、表示モードと画像の関係、ログイン時の画像復元フローを明確化 | Spec Agent |

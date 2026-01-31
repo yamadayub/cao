@@ -956,6 +956,14 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
   /**
    * ログイン完了時に保留アクションを実行
+   *
+   * 業務仕様書 7.3: ログイン時の画像復元
+   * 1. sessionStorageから保存データを取得
+   * 2. 画像データを状態に復元
+   * 3. 表示モードを復元
+   * 4. 保留アクションを実行
+   * 5. sessionStorageをクリア
+   * 6. justLoggedInフラグをリセット（最後に実行）
    */
   useEffect(() => {
     if (!justLoggedIn) return
@@ -969,24 +977,28 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     console.log('[Login Complete] savedImages.swappedImage exists:', !!savedImages.swappedImage)
     console.log('[Login Complete] savedImages.partsBlendImage exists:', !!savedImages.partsBlendImage)
 
-    // 保留アクションをクリア
+    // sessionStorageをクリア（値は既に取得済み）
     clearPendingAction()
     clearSimulationImages()
-    resetJustLoggedIn()
 
     // 保存された画像を復元（pendingActionがなくても復元する）
     if (savedImages.swappedImage) {
       console.log('[Login Complete] Restoring swappedImage')
       setSwappedImage(savedImages.swappedImage)
     }
+
+    // partsBlendImageの復元と表示モードの設定を同時に行う
     if (savedImages.partsBlendImage) {
-      console.log('[Login Complete] Restoring partsBlendImage')
-      // パーツ選択状態も同時に復元して state batching の問題を回避
+      console.log('[Login Complete] Restoring partsBlendImage and setting parts mode')
+      // パーツ選択状態と画像を同時に復元
       setPartsBlendState(prev => ({
         ...prev,
         image: savedImages.partsBlendImage,
         selection: pendingAction?.partsSelection || prev.selection,
       }))
+      // パーツモードに設定（partsBlendImageがある場合は必ずパーツモードで表示）
+      setViewMode('parts')
+      setPartsViewMode('applied')
     } else if (pendingAction?.partsSelection) {
       // 画像がなくてもパーツ選択状態は復元
       setPartsBlendState(prev => ({
@@ -995,51 +1007,51 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       }))
     }
 
-    // pendingActionがない場合でも、savedImagesがあればパーツモードで表示
-    if (!pendingAction) {
-      if (savedImages.partsBlendImage) {
-        console.log('[Login Complete] No pending action but have parts image, switching to parts mode')
-        setViewMode('parts')
-        setPartsViewMode('applied')
+    // pendingActionがある場合、アクションに応じた追加処理を実行
+    if (pendingAction) {
+      // 表示モードを復元（partsBlendImageがない場合のみ上書き）
+      if (!savedImages.partsBlendImage && pendingAction.viewMode) {
+        console.log('[Login Complete] Setting viewMode from pendingAction:', pendingAction.viewMode)
+        setViewMode(pendingAction.viewMode)
       }
-      return
+
+      // パーツ表示モードを復元（partsBlendImageがない場合のみ上書き）
+      if (!savedImages.partsBlendImage && pendingAction.partsViewMode) {
+        console.log('[Login Complete] Setting partsViewMode from pendingAction:', pendingAction.partsViewMode)
+        setPartsViewMode(pendingAction.partsViewMode)
+      }
+
+      // アクションを実行
+      switch (pendingAction.type) {
+        case 'parts-blur':
+          // パーツモードに切り替え、ブラーは認証済みなので自動解除
+          // 画像がある場合は既に上で設定済み
+          console.log('[Login Complete] Executing parts-blur action - blur will be removed')
+          break
+        case 'download':
+          // ダウンロードを実行（UIの更新を待つために遅延）
+          console.log('[Login Complete] Scheduling download action')
+          setTimeout(() => {
+            handleDownload()
+          }, 100)
+          break
+        case 'save':
+          // 保存を実行
+          console.log('[Login Complete] Executing save action')
+          handleSave()
+          break
+        case 'share':
+          // 共有を実行
+          console.log('[Login Complete] Executing share action')
+          handleShare()
+          break
+      }
     }
 
-    // 表示モードを復元
-    if (pendingAction.viewMode) {
-      console.log('[Login Complete] Setting viewMode:', pendingAction.viewMode)
-      setViewMode(pendingAction.viewMode)
-    }
-
-    // パーツ表示モードを復元
-    if (pendingAction.partsViewMode) {
-      console.log('[Login Complete] Setting partsViewMode:', pendingAction.partsViewMode)
-      setPartsViewMode(pendingAction.partsViewMode)
-    }
-
-    // アクションを実行
-    switch (pendingAction.type) {
-      case 'parts-blur':
-        // パーツモードに切り替え、ブラーは認証済みなので自動解除
-        console.log('[Login Complete] Executing parts-blur action')
-        setViewMode('parts')
-        setPartsViewMode('applied')
-        break
-      case 'download':
-        // ダウンロードを実行（少し遅延させてUIの更新を待つ）
-        setTimeout(() => {
-          handleDownload()
-        }, 100)
-        break
-      case 'save':
-        // 保存を実行
-        handleSave()
-        break
-      case 'share':
-        // 共有を実行
-        handleShare()
-        break
-    }
+    // 最後にjustLoggedInフラグをリセット
+    // すべての状態更新が完了した後に実行することで、状態の一貫性を保つ
+    console.log('[Login Complete] Resetting justLoggedIn flag')
+    resetJustLoggedIn()
   }, [justLoggedIn, resetJustLoggedIn, handleDownload, handleSave, handleShare])
 
   /**
