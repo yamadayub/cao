@@ -34,10 +34,8 @@ export function LoginPromptModal({
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [SignInButton, setSignInButton] = useState<React.ComponentType<{
     mode: string
-    forceRedirectUrl?: string
     children: React.ReactNode
   }> | null>(null)
-  const [currentUrl, setCurrentUrl] = useState<string>('')
 
   /**
    * Clerkのコンポーネントを動的にロード
@@ -48,7 +46,6 @@ export function LoginPromptModal({
         const clerk = await import('@clerk/nextjs')
         setSignInButton(() => clerk.SignInButton as React.ComponentType<{
           mode: string
-          forceRedirectUrl?: string
           children: React.ReactNode
         }>)
       } catch {
@@ -57,15 +54,6 @@ export function LoginPromptModal({
     }
     loadClerk()
   }, [])
-
-  /**
-   * 現在のURLを取得（ログイン後のリダイレクト先として使用）
-   */
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setCurrentUrl(window.location.href)
-    }
-  }, [isOpen])
 
   /**
    * ESCキーでモーダルを閉じる
@@ -185,10 +173,14 @@ export function LoginPromptModal({
           {/* ボタン群 */}
           <div className="flex flex-col gap-3">
             {SignInButton ? (
-              <SignInButton mode="modal" forceRedirectUrl={currentUrl}>
+              <SignInButton mode="modal">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => {
+                    // モーダルを閉じるが、Clerkモーダルが開く
+                    // forceRedirectUrlを使わないことで、ログイン後もページがリロードされない
+                    onClose()
+                  }}
                   className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                   data-testid={testId ? `${testId}-login-button` : undefined}
                 >
