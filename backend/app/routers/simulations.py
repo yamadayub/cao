@@ -83,6 +83,16 @@ async def create_simulation(
     try:
         supabase = get_supabase()
         logger.info(f"Creating simulation for user: {user_id}")
+
+        # Ensure user profile exists (required by foreign key constraint)
+        try:
+            supabase.table("profiles").upsert(
+                {"id": user_id},
+                on_conflict="id"
+            ).execute()
+            logger.info(f"Profile ensured for user: {user_id}")
+        except Exception as profile_error:
+            logger.warning(f"Could not ensure profile: {profile_error}")
         simulation_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat()
 
