@@ -198,6 +198,7 @@ class SimulationSettings(BaseModel):
     """Simulation settings."""
 
     selected_progress: Optional[float] = Field(None, ge=0, le=1, description="User selected progress")
+    parts_selection: Optional[dict] = Field(None, description="Parts selection state")
     notes: Optional[str] = Field(None, description="User notes")
 
 
