@@ -1,14 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
 import { ShareUrlModal } from '@/components/features/ShareUrlModal'
 import { PartsBlurOverlay, type LoginPromptInfo } from '@/components/features/PartsBlurOverlay'
 import { ShareButton } from '@/components/features/ShareButton'
-import { createSimulation, createShareUrl } from '@/lib/api/simulations'
+import { createSimulation, createShareUrl, getSimulation } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
 import { ApiError } from '@/lib/api/client'
 import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
@@ -19,6 +19,9 @@ import {
   getPendingAction,
   clearPendingAction,
   getLoginPromptMessage,
+  saveSimulationImages,
+  getSimulationImages,
+  clearSimulationImages,
   type PendingActionType,
 } from '@/lib/pending-action'
 
@@ -50,6 +53,7 @@ interface ResultState {
   isSharing: boolean
   savedSimulationId: string | null
   shareUrl: string | null
+  isLoadedSimulation: boolean  // 保存済みシミュレーションをロードしたかどうか
 }
 
 /**
@@ -218,9 +222,10 @@ interface SimulationResultContentProps {
   resetJustLoggedIn: () => void
   user: { primaryEmailAddress?: { emailAddress: string } | null } | null
   getToken: () => Promise<string | null>
+  simulationId: string | null  // URLパラメータから取得したシミュレーションID
 }
 
-function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, user, getToken }: SimulationResultContentProps) {
+function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, user, getToken, simulationId }: SimulationResultContentProps) {
   const router = useRouter()
 
   // 状態管理
@@ -235,6 +240,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     isSharing: false,
     savedSimulationId: null,
     shareUrl: null,
+    isLoadedSimulation: false,
   })
 
   // モーダル状態
@@ -467,11 +473,97 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   }, [])
 
   /**
-   * 初回マウント時にモーフィング画像を生成
+   * 保存済みシミュレーションをロード
+   */
+  const loadSavedSimulation = useCallback(async (id: string) => {
+    if (!isSignedIn) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: '保存済みシミュレーションを表示するにはログインが必要です。',
+      }))
+      return
+    }
+
+    setState((prev) => ({
+      ...prev,
+      isLoading: true,
+      loadingProgress: 0,
+      loadingMessage: 'シミュレーションを読み込み中...',
+      error: null,
+    }))
+
+    try {
+      const token = await getToken()
+      if (!token) {
+        throw new Error('認証トークンを取得できませんでした')
+      }
+
+      const simulation = await getSimulation(id, token)
+
+      // 画像データを復元
+      const images: ImageData[] = simulation.result_images.map((img) => ({
+        progress: img.progress,
+        image: img.image || img.url || '',
+      }))
+
+      // ソース画像を復元
+      setSourceImages({
+        currentImage: simulation.current_image_url,
+        idealImage: simulation.ideal_image_url,
+      })
+
+      // スワップ画像を復元（パーツモード用）
+      if (simulation.swapped_image_url) {
+        setSwappedImage(simulation.swapped_image_url)
+      }
+
+      // 設定から選択進捗を復元
+      const selectedProgress = (simulation.settings?.selected_progress as number) || 1.0
+
+      setState((prev) => ({
+        ...prev,
+        images,
+        currentProgress: selectedProgress,
+        isLoading: false,
+        loadingProgress: 100,
+        loadingMessage: '',
+        error: null,
+        savedSimulationId: id,
+        isLoadedSimulation: true,
+      }))
+    } catch (error) {
+      console.error('Load simulation error:', error)
+
+      let errorMessage = 'シミュレーションの読み込みに失敗しました。'
+      if (error instanceof ApiError) {
+        errorMessage = error.localizedMessage
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        loadingProgress: 0,
+        loadingMessage: '',
+        error: errorMessage,
+      }))
+    }
+  }, [isSignedIn, getToken])
+
+  /**
+   * 初回マウント時にモーフィング画像を生成または保存済みシミュレーションをロード
    */
   useEffect(() => {
-    generateMorphImages()
-  }, [generateMorphImages])
+    if (simulationId) {
+      // URLパラメータにIDがある場合は保存済みシミュレーションをロード
+      loadSavedSimulation(simulationId)
+    } else {
+      // IDがない場合は新規生成
+      generateMorphImages()
+    }
+  }, [simulationId, generateMorphImages, loadSavedSimulation])
 
   /**
    * スライダー値変更ハンドラ
@@ -490,6 +582,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         type: 'save',
         viewMode,
         partsSelection: partsBlendState.selection,
+        partsViewMode,
+      })
+      saveSimulationImages({
+        swappedImage,
+        partsBlendImage: partsBlendState.image,
       })
       setShowLoginModal(true)
       return
@@ -508,6 +605,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         throw new Error('認証トークンを取得できませんでした')
       }
 
+      // スワップ画像のBase64を取得（Data URLプレフィックスを除去）
+      const swappedImageBase64 = swappedImage
+        ? (swappedImage.startsWith('data:') ? swappedImage.split(',')[1] : swappedImage)
+        : undefined
+
       const result = await createSimulation(
         {
           current_image: sourceImages.currentImage || '',
@@ -516,6 +618,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
             progress: img.progress,
             image: img.image,
           })),
+          swapped_image: swappedImageBase64,
           settings: {
             selected_progress: state.currentProgress,
           },
@@ -542,7 +645,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         error: errorMessage,
       }))
     }
-  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId])
+  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage])
 
   /**
    * 共有URLボタンクリックハンドラ
@@ -554,6 +657,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         type: 'share',
         viewMode,
         partsSelection: partsBlendState.selection,
+        partsViewMode,
+      })
+      saveSimulationImages({
+        swappedImage,
+        partsBlendImage: partsBlendState.image,
       })
       setShowLoginModal(true)
       return
@@ -571,6 +679,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
       // 未保存の場合は先に保存
       if (!simulationId) {
+        // スワップ画像のBase64を取得（Data URLプレフィックスを除去）
+        const swappedImageBase64 = swappedImage
+          ? (swappedImage.startsWith('data:') ? swappedImage.split(',')[1] : swappedImage)
+          : undefined
+
         const saveResult = await createSimulation(
           {
             current_image: sourceImages.currentImage || '',
@@ -579,6 +692,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
               progress: img.progress,
               image: img.image,
             })),
+            swapped_image: swappedImageBase64,
             settings: {
               selected_progress: state.currentProgress,
             },
@@ -613,7 +727,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         error: errorMessage,
       }))
     }
-  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId])
+  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage])
 
   /**
    * SNSシェア用の画像を取得
@@ -667,12 +781,17 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       type: 'parts-blur',
       viewMode: 'parts',
       partsSelection: partsBlendState.selection,
+      partsViewMode,
+    })
+    saveSimulationImages({
+      swappedImage,
+      partsBlendImage: partsBlendState.image,
     })
     if (info) {
       setPartsLoginPromptInfo(info)
     }
     setShowLoginModal(true)
-  }, [partsBlendState.selection])
+  }, [partsBlendState.selection, partsBlendState.image, partsViewMode, swappedImage])
 
   /**
    * 再試行ハンドラ
@@ -816,13 +935,33 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       return
     }
 
+    // 保存された画像データを取得
+    const savedImages = getSimulationImages()
+
     // 保留アクションをクリア
     clearPendingAction()
+    clearSimulationImages()
     resetJustLoggedIn()
+
+    // 保存された画像を復元
+    if (savedImages.swappedImage) {
+      setSwappedImage(savedImages.swappedImage)
+    }
+    if (savedImages.partsBlendImage) {
+      setPartsBlendState(prev => ({
+        ...prev,
+        image: savedImages.partsBlendImage,
+      }))
+    }
 
     // 表示モードを復元
     if (pendingAction.viewMode) {
       setViewMode(pendingAction.viewMode)
+    }
+
+    // パーツ表示モードを復元
+    if (pendingAction.partsViewMode) {
+      setPartsViewMode(pendingAction.partsViewMode)
     }
 
     // パーツ選択状態を復元
@@ -1208,6 +1347,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       type: 'sns-share',
                       viewMode: viewMode,
                       partsSelection: partsBlendState.selection,
+                      partsViewMode,
+                    })
+                    saveSimulationImages({
+                      swappedImage,
+                      partsBlendImage: partsBlendState.image,
                     })
                     setShowLoginModal(true)
                   }}
@@ -1302,8 +1446,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         onClose={() => {
           setShowLoginModal(false)
           setPartsLoginPromptInfo(null)
-          // モーダルを閉じた場合は保留アクションをクリア
-          clearPendingAction()
+          // 注: pendingActionはクリアしない
+          // ユーザーがログインボタンをクリックした場合、Clerkモーダルが開くため、
+          // ログイン完了後に復元処理が必要
+          // ログインしない場合は、pendingActionは5分後に自動的に期限切れになる
         }}
         onLogin={handleLogin}
         title={
@@ -1338,13 +1484,12 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 }
 
 /**
- * シミュレーション結果画面 (SCR-003)
- *
- * 参照: functional-spec.md セクション 3.4
- * 参照: business-spec.md UC-004, UC-005, UC-006, UC-007
+ * シミュレーション結果画面の内部コンポーネント（searchParams使用）
  */
-export default function SimulationResultPage() {
+function SimulationResultPageInner() {
   const { isSignedIn, justLoggedIn, resetJustLoggedIn, user, getToken } = useClerkState()
+  const searchParams = useSearchParams()
+  const simulationId = searchParams.get('id')
 
   return (
     <SimulationResultContent
@@ -1353,6 +1498,33 @@ export default function SimulationResultPage() {
       resetJustLoggedIn={resetJustLoggedIn}
       user={user}
       getToken={getToken}
+      simulationId={simulationId}
     />
+  )
+}
+
+/**
+ * シミュレーション結果画面 (SCR-003)
+ *
+ * 参照: functional-spec.md セクション 3.4
+ * 参照: business-spec.md UC-004, UC-005, UC-006, UC-007
+ */
+export default function SimulationResultPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col bg-neutral-50">
+        <Header />
+        <main className="flex-1 pt-20">
+          <div className="container-narrow py-8 md:py-12">
+            <div className="flex justify-center items-center py-16">
+              <div className="w-12 h-12 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin"></div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    }>
+      <SimulationResultPageInner />
+    </Suspense>
   )
 }

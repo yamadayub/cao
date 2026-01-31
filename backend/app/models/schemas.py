@@ -207,6 +207,7 @@ class CreateSimulationRequest(BaseModel):
     current_image: str = Field(..., description="Base64 encoded current face image")
     ideal_image: str = Field(..., description="Base64 encoded ideal face image")
     result_images: List[ResultImageItem] = Field(..., description="List of result images")
+    swapped_image: Optional[str] = Field(None, description="Base64 encoded swapped face image for parts mode")
     settings: Optional[SimulationSettings] = Field(None, description="Optional settings")
 
 
@@ -217,6 +218,7 @@ class SimulationData(BaseModel):
     user_id: str = Field(..., description="User ID")
     current_image_url: str = Field(..., description="URL to current face image")
     ideal_image_url: str = Field(..., description="URL to ideal face image")
+    swapped_image_url: Optional[str] = Field(None, description="URL to swapped face image for parts mode")
     result_images: List[ResultImageItem] = Field(..., description="Result images")
     settings: dict = Field(default_factory=dict, description="Simulation settings")
     share_token: Optional[str] = Field(None, description="Share token if public")

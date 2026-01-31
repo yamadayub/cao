@@ -93,6 +93,7 @@ async def create_simulation(
             "user_id": user_id,
             "current_image_path": data.current_image,
             "ideal_image_path": data.ideal_image,
+            "swapped_image_path": data.swapped_image,
             "result_images": result_images_json,
             "settings": data.settings.model_dump() if data.settings else {},
             "is_public": False,
@@ -113,6 +114,7 @@ async def create_simulation(
                 user_id=sim["user_id"],
                 current_image_url=sim["current_image_path"],
                 ideal_image_url=sim["ideal_image_path"],
+                swapped_image_url=sim.get("swapped_image_path"),
                 result_images=[
                     ResultImageItem(progress=img["progress"], image=img["path"])
                     for img in sim["result_images"]
@@ -250,6 +252,7 @@ async def get_simulation(
                 user_id=sim["user_id"],
                 current_image_url=sim["current_image_path"],
                 ideal_image_url=sim["ideal_image_path"],
+                swapped_image_url=sim.get("swapped_image_path"),
                 result_images=[
                     ResultImageItem(progress=img["progress"], image=img["path"])
                     for img in sim["result_images"]

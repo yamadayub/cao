@@ -24,11 +24,15 @@ export interface PendingAction {
   viewMode: 'morph' | 'parts'
   /** パーツ選択状態（パーツモードの場合） */
   partsSelection?: PartsSelection
+  /** パーツ表示モード（パーツモードの場合） */
+  partsViewMode?: 'current' | 'applied'
   /** タイムスタンプ */
   timestamp?: number
 }
 
 const STORAGE_KEY = 'cao_pending_action'
+const SWAPPED_IMAGE_KEY = 'cao_swapped_image'
+const PARTS_BLEND_IMAGE_KEY = 'cao_parts_blend_image'
 const MAX_AGE_MS = 5 * 60 * 1000 // 5分
 
 /**
@@ -86,6 +90,64 @@ export function clearPendingAction(): void {
     sessionStorage.removeItem(STORAGE_KEY)
   } catch (error) {
     console.warn('Failed to clear pending action:', error)
+  }
+}
+
+/**
+ * シミュレーション結果の画像データを保存
+ * （ログイン後に復元するため）
+ */
+export function saveSimulationImages(data: {
+  swappedImage?: string | null
+  partsBlendImage?: string | null
+}): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    if (data.swappedImage) {
+      sessionStorage.setItem(SWAPPED_IMAGE_KEY, data.swappedImage)
+    }
+    if (data.partsBlendImage) {
+      sessionStorage.setItem(PARTS_BLEND_IMAGE_KEY, data.partsBlendImage)
+    }
+  } catch (error) {
+    console.warn('Failed to save simulation images:', error)
+  }
+}
+
+/**
+ * 保存されたシミュレーション結果の画像データを取得
+ */
+export function getSimulationImages(): {
+  swappedImage: string | null
+  partsBlendImage: string | null
+} {
+  if (typeof window === 'undefined') {
+    return { swappedImage: null, partsBlendImage: null }
+  }
+
+  try {
+    return {
+      swappedImage: sessionStorage.getItem(SWAPPED_IMAGE_KEY),
+      partsBlendImage: sessionStorage.getItem(PARTS_BLEND_IMAGE_KEY),
+    }
+  } catch (error) {
+    console.warn('Failed to get simulation images:', error)
+    return { swappedImage: null, partsBlendImage: null }
+  }
+}
+
+/**
+ * 保存されたシミュレーション結果の画像データを削除
+ */
+export function clearSimulationImages(): void {
+  if (typeof window === 'undefined') return
+
+  try {
+    sessionStorage.removeItem(SWAPPED_IMAGE_KEY)
+    sessionStorage.removeItem(PARTS_BLEND_IMAGE_KEY)
+  } catch (error) {
+    console.warn('Failed to clear simulation images:', error)
   }
 }
 

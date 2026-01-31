@@ -177,6 +177,7 @@ export interface CreateSimulationRequest {
     progress: number;
     image: string;
   }>;
+  swapped_image?: string;  // パーツモード用のスワップ画像（Base64）
   settings?: {
     selected_progress?: number;
     notes?: string;
@@ -184,11 +185,12 @@ export interface CreateSimulationRequest {
 }
 
 /**
- * 結果画像（URL付き）
+ * 結果画像
  */
 export interface ResultImage {
   progress: number;
-  url: string;
+  image: string;  // Base64またはURL
+  url?: string;   // 後方互換性のため（廃止予定）
 }
 
 /**
@@ -199,6 +201,7 @@ export interface SimulationData {
   user_id: string;
   current_image_url: string;
   ideal_image_url: string;
+  swapped_image_url: string | null;  // パーツモード用のスワップ画像URL
   result_images: ResultImage[];
   settings: Record<string, unknown>;
   share_token: string | null;
