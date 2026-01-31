@@ -146,19 +146,28 @@ function useClerkState() {
       const win = window as unknown as { Clerk?: ClerkInstance }
       if (win.Clerk) {
         const clerk = win.Clerk
-        setClerkState(prev => ({
-          isSignedIn: !!clerk.user,
-          wasSignedIn: prev.isSignedIn,
-          justLoggedIn: false,
-          user: clerk.user || null,
-          getToken: async () => {
-            try {
-              return clerk.session?.getToken() || null
-            } catch {
-              return null
-            }
-          },
-        }))
+        const currentSignedIn = !!clerk.user
+        setClerkState(prev => {
+          // ログイン状態が変化したかどうかを判定
+          const justLoggedIn = !prev.isSignedIn && currentSignedIn
+          if (justLoggedIn) {
+            console.log('[useClerkState] Login detected in updateClerkState')
+          }
+          return {
+            isSignedIn: currentSignedIn,
+            wasSignedIn: prev.isSignedIn,
+            // 既にjustLoggedInがtrueの場合は維持（リセットされるまで）
+            justLoggedIn: prev.justLoggedIn || justLoggedIn,
+            user: clerk.user || null,
+            getToken: async () => {
+              try {
+                return clerk.session?.getToken() || null
+              } catch {
+                return null
+              }
+            },
+          }
+        })
       }
     }
 
@@ -179,6 +188,9 @@ function useClerkState() {
           // ログイン状態が変化した場合のみ更新
           if (prev.isSignedIn !== currentSignedIn) {
             const justLoggedIn = !prev.isSignedIn && currentSignedIn
+            if (justLoggedIn) {
+              console.log('[useClerkState] Login detected in polling')
+            }
             return {
               isSignedIn: currentSignedIn,
               wasSignedIn: prev.isSignedIn,
@@ -196,7 +208,7 @@ function useClerkState() {
           return prev
         })
       }
-    }, 1000)
+    }, 500) // ポーリング間隔を500msに短縮
 
     return () => {
       clearTimeout(timer)
@@ -269,6 +281,9 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
   // API呼び出し中かどうかのref（重複リクエスト防止）
   const isGeneratingRef = useRef(false)
+
+  // ログイン後の復元処理が完了したかどうか（二重処理防止）
+  const hasProcessedPendingActionRef = useRef(false)
 
   // 表示モード（'morph' または 'parts'）
   const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
@@ -955,27 +970,31 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   }, [sourceImages, swappedImage, partsBlendState.selection, partsBlendState.intensity])
 
   /**
-   * ログイン完了時に保留アクションを実行
-   *
-   * 業務仕様書 7.3: ログイン時の画像復元
-   * 1. sessionStorageから保存データを取得
-   * 2. 画像データを状態に復元
-   * 3. 表示モードを復元
-   * 4. 保留アクションを実行
-   * 5. sessionStorageをクリア
-   * 6. justLoggedInフラグをリセット（最後に実行）
+   * 保留アクションの復元処理（共通ロジック）
    */
-  useEffect(() => {
-    if (!justLoggedIn) return
-
-    console.log('[Login Complete] Processing pending action...')
+  const restorePendingAction = useCallback((source: string) => {
+    // 既に処理済みの場合はスキップ
+    if (hasProcessedPendingActionRef.current) {
+      console.log(`[${source}] Already processed pending action, skipping`)
+      return
+    }
 
     const pendingAction = getPendingAction()
     const savedImages = getSimulationImages()
 
-    console.log('[Login Complete] pendingAction:', pendingAction)
-    console.log('[Login Complete] savedImages.swappedImage exists:', !!savedImages.swappedImage)
-    console.log('[Login Complete] savedImages.partsBlendImage exists:', !!savedImages.partsBlendImage)
+    // 復元するものがなければスキップ
+    if (!pendingAction && !savedImages.swappedImage && !savedImages.partsBlendImage) {
+      console.log(`[${source}] No pending action or images to restore`)
+      return
+    }
+
+    // 処理済みフラグを設定
+    hasProcessedPendingActionRef.current = true
+
+    console.log(`[${source}] Processing pending action...`)
+    console.log(`[${source}] pendingAction:`, pendingAction)
+    console.log(`[${source}] savedImages.swappedImage exists:`, !!savedImages.swappedImage)
+    console.log(`[${source}] savedImages.partsBlendImage exists:`, !!savedImages.partsBlendImage)
 
     // sessionStorageをクリア（値は既に取得済み）
     clearPendingAction()
@@ -983,13 +1002,13 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
     // 保存された画像を復元（pendingActionがなくても復元する）
     if (savedImages.swappedImage) {
-      console.log('[Login Complete] Restoring swappedImage')
+      console.log(`[${source}] Restoring swappedImage`)
       setSwappedImage(savedImages.swappedImage)
     }
 
     // partsBlendImageの復元と表示モードの設定を同時に行う
     if (savedImages.partsBlendImage) {
-      console.log('[Login Complete] Restoring partsBlendImage and setting parts mode')
+      console.log(`[${source}] Restoring partsBlendImage and setting parts mode`)
       // パーツ選択状態と画像を同時に復元
       setPartsBlendState(prev => ({
         ...prev,
@@ -1011,13 +1030,13 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     if (pendingAction) {
       // 表示モードを復元（partsBlendImageがない場合のみ上書き）
       if (!savedImages.partsBlendImage && pendingAction.viewMode) {
-        console.log('[Login Complete] Setting viewMode from pendingAction:', pendingAction.viewMode)
+        console.log(`[${source}] Setting viewMode from pendingAction:`, pendingAction.viewMode)
         setViewMode(pendingAction.viewMode)
       }
 
       // パーツ表示モードを復元（partsBlendImageがない場合のみ上書き）
       if (!savedImages.partsBlendImage && pendingAction.partsViewMode) {
-        console.log('[Login Complete] Setting partsViewMode from pendingAction:', pendingAction.partsViewMode)
+        console.log(`[${source}] Setting partsViewMode from pendingAction:`, pendingAction.partsViewMode)
         setPartsViewMode(pendingAction.partsViewMode)
       }
 
@@ -1026,33 +1045,57 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         case 'parts-blur':
           // パーツモードに切り替え、ブラーは認証済みなので自動解除
           // 画像がある場合は既に上で設定済み
-          console.log('[Login Complete] Executing parts-blur action - blur will be removed')
+          console.log(`[${source}] Executing parts-blur action - blur will be removed`)
           break
         case 'download':
           // ダウンロードを実行（UIの更新を待つために遅延）
-          console.log('[Login Complete] Scheduling download action')
+          console.log(`[${source}] Scheduling download action`)
           setTimeout(() => {
             handleDownload()
           }, 100)
           break
         case 'save':
           // 保存を実行
-          console.log('[Login Complete] Executing save action')
+          console.log(`[${source}] Executing save action`)
           handleSave()
           break
         case 'share':
           // 共有を実行
-          console.log('[Login Complete] Executing share action')
+          console.log(`[${source}] Executing share action`)
           handleShare()
           break
       }
     }
+  }, [handleDownload, handleSave, handleShare])
 
-    // 最後にjustLoggedInフラグをリセット
-    // すべての状態更新が完了した後に実行することで、状態の一貫性を保つ
-    console.log('[Login Complete] Resetting justLoggedIn flag')
+  /**
+   * ログイン完了時に保留アクションを実行
+   *
+   * 業務仕様書 7.3: ログイン時の画像復元
+   * justLoggedIn検出時にトリガー
+   */
+  useEffect(() => {
+    if (!justLoggedIn) return
+
+    restorePendingAction('Login Complete')
     resetJustLoggedIn()
-  }, [justLoggedIn, resetJustLoggedIn, handleDownload, handleSave, handleShare])
+  }, [justLoggedIn, resetJustLoggedIn, restorePendingAction])
+
+  /**
+   * フォールバック: isSignedInが変化した時に保留アクションを確認
+   *
+   * justLoggedInが検出されない場合（ページリロード後など）のフォールバック
+   */
+  useEffect(() => {
+    if (!isSignedIn) return
+
+    // 少し遅延させて、他の状態が安定してから確認
+    const timer = setTimeout(() => {
+      restorePendingAction('Fallback Check')
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [isSignedIn, restorePendingAction])
 
   /**
    * 選択されたパーツの表示名リストを取得
