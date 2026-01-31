@@ -518,8 +518,25 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         setSwappedImage(simulation.swapped_image_url)
       }
 
+      // パーツ適用結果画像を復元
+      if (simulation.parts_result_image_url) {
+        setPartsBlendState(prev => ({
+          ...prev,
+          image: simulation.parts_result_image_url,
+        }))
+      }
+
       // 設定から選択進捗を復元
       const selectedProgress = (simulation.settings?.selected_progress as number) || 1.0
+
+      // パーツ選択状態を復元
+      const partsSelection = simulation.settings?.parts_selection as PartsSelection | undefined
+      if (partsSelection) {
+        setPartsBlendState(prev => ({
+          ...prev,
+          selection: partsSelection,
+        }))
+      }
 
       setState((prev) => ({
         ...prev,
@@ -610,6 +627,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         ? (swappedImage.startsWith('data:') ? swappedImage.split(',')[1] : swappedImage)
         : undefined
 
+      // パーツ適用結果画像のBase64を取得（Data URLプレフィックスを除去）
+      const partsResultImageBase64 = partsBlendState.image
+        ? (partsBlendState.image.startsWith('data:') ? partsBlendState.image.split(',')[1] : partsBlendState.image)
+        : undefined
+
       const result = await createSimulation(
         {
           current_image: sourceImages.currentImage || '',
@@ -619,8 +641,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
             image: img.image,
           })),
           swapped_image: swappedImageBase64,
+          parts_result_image: partsResultImageBase64,
           settings: {
             selected_progress: state.currentProgress,
+            parts_selection: { ...partsBlendState.selection },
           },
         },
         token
@@ -645,7 +669,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         error: errorMessage,
       }))
     }
-  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage])
+  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage, partsBlendState.image, partsBlendState.selection, viewMode, partsViewMode])
 
   /**
    * 共有URLボタンクリックハンドラ
@@ -684,6 +708,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
           ? (swappedImage.startsWith('data:') ? swappedImage.split(',')[1] : swappedImage)
           : undefined
 
+        // パーツ適用結果画像のBase64を取得（Data URLプレフィックスを除去）
+        const partsResultImageBase64 = partsBlendState.image
+          ? (partsBlendState.image.startsWith('data:') ? partsBlendState.image.split(',')[1] : partsBlendState.image)
+          : undefined
+
         const saveResult = await createSimulation(
           {
             current_image: sourceImages.currentImage || '',
@@ -693,8 +722,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
               image: img.image,
             })),
             swapped_image: swappedImageBase64,
+            parts_result_image: partsResultImageBase64,
             settings: {
               selected_progress: state.currentProgress,
+              parts_selection: { ...partsBlendState.selection },
             },
           },
           token
@@ -727,7 +758,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         error: errorMessage,
       }))
     }
-  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage])
+  }, [isSignedIn, getToken, sourceImages, state.images, state.currentProgress, state.savedSimulationId, swappedImage, partsBlendState.image, partsBlendState.selection, viewMode, partsViewMode])
 
   /**
    * SNSシェア用の画像を取得
@@ -1334,8 +1365,91 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 </div>
               )}
 
-              {/* ダウンロード・シェアボタン */}
-              <div className="flex flex-col gap-4 max-w-md mx-auto mb-6">
+              {/* アクションボタン群 */}
+              <div className="flex flex-col gap-3 max-w-md mx-auto mb-6">
+                {/* 保存ボタン */}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={state.isSaving || state.savedSimulationId !== null}
+                  className={`
+                    w-full px-8 py-3 text-base font-medium rounded-xl
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-300
+                    ${
+                      state.savedSimulationId
+                        ? 'bg-green-100 text-green-700 cursor-default'
+                        : state.isSaving
+                        ? 'bg-primary-100 text-primary-400 cursor-not-allowed'
+                        : 'bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-400'
+                    }
+                  `}
+                  data-testid="save-button"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    {state.isSaving ? (
+                      <>
+                        <svg
+                          className="w-5 h-5 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        保存中...
+                      </>
+                    ) : state.savedSimulationId ? (
+                      <>
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                        保存済み
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                          />
+                        </svg>
+                        保存
+                      </>
+                    )}
+                  </span>
+                </button>
+
                 {/* シェアボタン（Web Share API / クリップボードコピー） */}
                 <ShareButton
                   beforeImage={sourceImages.currentImage || ''}
@@ -1399,7 +1513,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 <button
                   type="button"
                   onClick={handleNewSimulation}
-                  className="w-full max-w-md px-8 py-4 text-base font-medium text-neutral-600 bg-white border border-neutral-300 rounded-full hover:bg-neutral-50 hover:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-all duration-300"
+                  className="w-full max-w-md px-8 py-3 text-base font-medium text-neutral-600 bg-white border border-neutral-300 rounded-xl hover:bg-neutral-50 hover:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:ring-offset-2 transition-all duration-300"
                   data-testid="new-simulation-button"
                 >
                   新しいシミュレーションを作成

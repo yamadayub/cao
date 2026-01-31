@@ -178,8 +178,10 @@ export interface CreateSimulationRequest {
     image: string;
   }>;
   swapped_image?: string;  // パーツモード用のスワップ画像（Base64）
+  parts_result_image?: string;  // パーツ別適用の結果画像（Base64）
   settings?: {
     selected_progress?: number;
+    parts_selection?: Record<string, boolean>;  // パーツ選択状態
     notes?: string;
   };
 }
@@ -202,6 +204,7 @@ export interface SimulationData {
   current_image_url: string;
   ideal_image_url: string;
   swapped_image_url: string | null;  // パーツモード用のスワップ画像URL
+  parts_result_image_url: string | null;  // パーツ別適用の結果画像URL
   result_images: ResultImage[];
   settings: Record<string, unknown>;
   share_token: string | null;

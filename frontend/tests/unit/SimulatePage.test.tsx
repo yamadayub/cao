@@ -121,7 +121,8 @@ describe('SimulatePage', () => {
       expect(screen.getByText('ログイン')).toBeInTheDocument()
     })
 
-    it('今すぐ試すボタンが表示される', () => {
+    // Note: 「今すぐ試す」ボタンは削除され、ログインボタンに統一されました
+    it.skip('今すぐ試すボタンが表示される', () => {
       render(<SimulatePage />)
       expect(screen.getByText('今すぐ試す')).toBeInTheDocument()
     })
