@@ -1,0 +1,13 @@
+{
+  "VALIDATION_ERROR": "入力内容を確認してください",
+  "FACE_NOT_DETECTED": "顔を検出できませんでした。正面を向いた明るい写真をお使いください",
+  "MULTIPLE_FACES": "複数の顔が検出されました。1人のみ写った写真をお使いください",
+  "IMAGE_TOO_LARGE": "画像サイズは{maxSize}MB以下にしてください",
+  "INVALID_IMAGE_FORMAT": "JPEG、PNG形式の画像をアップロードしてください",
+  "PROCESSING_ERROR": "処理中にエラーが発生しました。再度お試しください",
+  "RATE_LIMITED": "リクエストが多すぎます。しばらく待ってから再度お試しください",
+  "UNAUTHORIZED": "ログインが必要です",
+  "NOT_FOUND": "指定されたデータが見つかりません",
+  "INTERNAL_ERROR": "サーバーエラーが発生しました。しばらく待ってから再度お試しください",
+  "JOB_FAILED": "生成ジョブが失敗しました。再度お試しください"
+}

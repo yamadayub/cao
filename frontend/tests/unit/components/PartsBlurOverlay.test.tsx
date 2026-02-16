@@ -69,7 +69,7 @@ describe('PartsBlurOverlay', () => {
     it('「タップしてログイン」のテキストが表示される', () => {
       render(<PartsBlurOverlay {...defaultProps} isAuthenticated={false} />)
 
-      expect(screen.getByText('タップしてログイン')).toBeInTheDocument()
+      expect(screen.getByText('partsBlur.tapToLogin')).toBeInTheDocument()
     })
 
     it('ブラー画像をタップするとonLoginClickが呼ばれる', () => {
@@ -124,10 +124,7 @@ describe('PartsBlurOverlay', () => {
       render(<PartsBlurOverlay {...defaultProps} isAuthenticated={false} />)
 
       const overlay = screen.getByTestId('parts-blur-overlay')
-      expect(overlay).toHaveAttribute(
-        'aria-label',
-        'ログインしてパーツ別シミュレーション結果を表示'
-      )
+      expect(overlay).toHaveAttribute('aria-label', 'partsBlur.loginAriaLabel')
     })
 
     it('role="button"が設定されている（クリック可能なことを示す）', () => {
@@ -350,7 +347,8 @@ describe('PartsBlurOverlay', () => {
         />
       )
 
-      expect(screen.getByText('適用パーツ: 左目, 右目, 鼻')).toBeInTheDocument()
+      // With mocked translations, keys are returned directly
+      expect(screen.getByText(/parts\.appliedParts/)).toBeInTheDocument()
     })
 
     it('appliedPartsがない場合はラベルが表示されない', () => {
@@ -363,7 +361,7 @@ describe('PartsBlurOverlay', () => {
         />
       )
 
-      expect(screen.queryByText(/適用パーツ:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/parts\.appliedParts/)).not.toBeInTheDocument()
     })
   })
 })

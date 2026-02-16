@@ -1,0 +1,70 @@
+{
+  "login": {
+    "defaultTitle": "Login Required",
+    "defaultDescription": "Please log in to save and share simulation results.",
+    "defaultDesc": "Please log in to use this feature.",
+    "partsBlurTitle": "Login to View Part Results",
+    "partsBlurDesc": "Log in to see part-by-part simulation results without blur.",
+    "downloadTitle": "Login to Download",
+    "downloadDesc": "Log in to download simulation results.",
+    "saveTitle": "Login to Save",
+    "saveDesc": "Log in to save simulation results.",
+    "shareTitle": "Login to Share",
+    "shareDesc": "Log in to share simulation results.",
+    "snsShareTitle": "Login to Share on Social Media",
+    "snsShareDesc": "Log in to share simulation results on social media.",
+    "loginButton": "Login",
+    "cancelButton": "Not Now"
+  },
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel"
+  },
+  "terms": {
+    "title": "Terms of Service Agreement",
+    "description": "Before using the service,<br />please review the Terms of Service.",
+    "checkboxLabel": "I agree to the Terms of Service",
+    "termsLink": "Terms of Service",
+    "agreeToTerms": " I agree",
+    "readTerms": "Read Terms of Service",
+    "viewTerms": "View Terms of Service",
+    "agreeButton": "Agree and Continue",
+    "cancelButton": "Cancel"
+  },
+  "delete": {
+    "title": "Delete Simulation",
+    "description": "Are you sure you want to delete this simulation?",
+    "warning": "This action cannot be undone.",
+    "confirm": "Delete",
+    "confirmButton": "Delete",
+    "cancelButton": "Cancel",
+    "deleting": "Deleting..."
+  },
+  "share": {
+    "title": "Share URL Created",
+    "description": "Share the URL below with your practitioner.",
+    "copied": "Copied",
+    "copyButton": "Copy URL"
+  },
+  "shareUrl": {
+    "title": "Share Link",
+    "description": "Share this link with others",
+    "copyButton": "Copy",
+    "copied": "Copied"
+  },
+  "snsShare": {
+    "shared": "Shared!",
+    "copied": "Image copied! Paste it on social media to share",
+    "failed": "Failed to share",
+    "generateFailed": "Failed to generate image",
+    "generating": "Generating image...",
+    "sharing": "Sharing...",
+    "shareButton": "Share",
+    "selectTitle": "Select Share Image",
+    "selectDescription": "Which format would you like to share?",
+    "beforeAfter": "Before/After Comparison",
+    "beforeAfterDesc": "Compare changes side by side",
+    "resultOnly": "Result Only",
+    "resultOnlyDesc": "Share only the simulation result"
+  }
+}

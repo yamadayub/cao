@@ -1,0 +1,71 @@
+{
+  "shareText": "Caoで美容シミュレーションしてみたよ。\n{url}\n#Cao #美容シミュレーション",
+  "customize": {
+    "title": "シェア設定",
+    "templateLabel": "テンプレート",
+    "beforeAfter": "Before/After比較",
+    "single": "結果のみ",
+    "captionLabel": "キャプション",
+    "captionPlaceholder": "キャプションを入力（最大140文字）",
+    "captionCount": "{count}/140",
+    "privacyWarning": "プライバシーに関する注意",
+    "privacyItem1": "シェアした画像は誰でも閲覧可能です",
+    "privacyItem2": "シェアリンクには有効期限があります",
+    "privacyItem3": "個人を特定できる情報の共有にご注意ください",
+    "agreeLabel": "上記の注意事項を確認しました",
+    "shareButton": "シェアする",
+    "downloadButton": "画像をダウンロード",
+    "copyUrl": "URLをコピー"
+  },
+  "sns": {
+    "twitter": "X (Twitter)",
+    "line": "LINE",
+    "instagram": "Instagram"
+  },
+  "view": {
+    "title": "共有されたシミュレーション",
+    "expired": "このシェアリンクは期限切れです",
+    "notFound": "シェアデータが見つかりません",
+    "error": "エラーが発生しました",
+    "createdAt": "作成日: {date}",
+    "trySimulation": "あなたもシミュレーションを試す",
+    "invalidUrl": "このURLは無効または期限切れです",
+    "fetchError": "シミュレーションの取得に失敗しました",
+    "backToHome": "トップページへ戻る",
+    "loading": "読み込み中...",
+    "resultAlt": "シミュレーション結果 {progress}%",
+    "pageNotFound": "ページが見つかりません",
+    "pageNotFoundDesc": "お探しのシェア画像は存在しないか、削除された可能性があります。",
+    "goToHome": "トップページへ",
+    "expiredTitle": "シェア期限が切れています",
+    "expiredDesc": "このシェア画像の公開期限が終了しました。",
+    "tryCao": "Caoを試してみる",
+    "shareImageAlt": "シェア画像",
+    "ctaTitle": "あなたも試してみませんか？",
+    "ctaDescription": "AIが理想の顔をシミュレーションします",
+    "ctaButton": "無料で試す"
+  },
+  "section": {
+    "title": "シェア",
+    "selectImage": "シェアする画像を選択してください",
+    "shareButton": "この画像をシェア"
+  },
+  "metadata": {
+    "title": "共有シミュレーション - Cao",
+    "description": "共有されたAI顔シミュレーション結果を確認",
+    "snsNotFoundTitle": "シェア画像が見つかりません - Cao",
+    "snsNotFoundDescription": "この画像は期限切れか、削除された可能性があります。",
+    "snsDefaultTitle": "Caoで作成したシミュレーション画像",
+    "snsDefaultDescription": "AIを使った顔シミュレーション結果をご覧ください。",
+    "snsFallbackTitle": "シェア画像 - Cao",
+    "snsFallbackDescription": "AIを使った顔シミュレーション結果"
+  },
+  "status": {
+    "idle": "シェア",
+    "selecting": "タイプを選択",
+    "generating": "画像を生成中...",
+    "sharing": "シェア中...",
+    "success": "シェアしました",
+    "error": "シェアに失敗しました"
+  }
+}

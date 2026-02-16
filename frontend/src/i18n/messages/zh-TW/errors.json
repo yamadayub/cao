@@ -1,0 +1,13 @@
+{
+  "VALIDATION_ERROR": "請檢查輸入內容",
+  "FACE_NOT_DETECTED": "未偵測到面部。請使用光線充足的正面照片",
+  "MULTIPLE_FACES": "偵測到多張面部。請使用僅有一人的照片",
+  "IMAGE_TOO_LARGE": "圖片大小不能超過{maxSize}MB",
+  "INVALID_IMAGE_FORMAT": "請上傳JPEG或PNG格式的圖片",
+  "PROCESSING_ERROR": "處理過程中出錯。請重試",
+  "RATE_LIMITED": "請求過多。請稍後再試",
+  "UNAUTHORIZED": "需要登入",
+  "NOT_FOUND": "未找到請求的資料",
+  "INTERNAL_ERROR": "伺服器錯誤。請稍後再試",
+  "JOB_FAILED": "產生任務失敗。請重試"
+}

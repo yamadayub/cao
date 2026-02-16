@@ -1,21 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-
-/**
- * パーツ名のマッピング
- */
-const PARTS_NAMES: Record<string, string> = {
-  // シンプル3択
-  eyes: '目',
-  nose: '鼻',
-  lips: '唇',
-  // 個別パーツ
-  left_eye: '左目',
-  right_eye: '右目',
-  left_eyebrow: '左眉',
-  right_eyebrow: '右眉',
-}
+import { useTranslations } from 'next-intl'
 
 /**
  * ログイン誘導コールバックに渡される情報
@@ -74,21 +60,25 @@ export function PartsBlurOverlay({
   height,
   showPartsLabel = false,
   appliedParts = [],
-  loginPromptTitle = 'パーツ別の結果を見るにはログインが必要です',
-  loginPromptDescription = 'パーツ別シミュレーションの詳細な結果を確認するにはログインしてください。',
+  loginPromptTitle,
+  loginPromptDescription,
   testId = 'parts-blur-overlay',
 }: PartsBlurOverlayProps) {
+  const t = useTranslations('result')
+  const tp = useTranslations('parts')
+  const resolvedLoginPromptTitle = loginPromptTitle ?? t('partsBlur.loginTitle')
+  const resolvedLoginPromptDescription = loginPromptDescription ?? t('partsBlur.loginDescription')
   /**
    * クリックハンドラ
    */
   const handleClick = useCallback(() => {
     if (!isAuthenticated && onLoginClick) {
       onLoginClick({
-        title: loginPromptTitle,
-        description: loginPromptDescription,
+        title: resolvedLoginPromptTitle,
+        description: resolvedLoginPromptDescription,
       })
     }
-  }, [isAuthenticated, onLoginClick, loginPromptTitle, loginPromptDescription])
+  }, [isAuthenticated, onLoginClick, resolvedLoginPromptTitle, resolvedLoginPromptDescription])
 
   /**
    * キーボードイベントハンドラ (アクセシビリティ対応)
@@ -98,20 +88,26 @@ export function PartsBlurOverlay({
       if (!isAuthenticated && onLoginClick && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault()
         onLoginClick({
-          title: loginPromptTitle,
-          description: loginPromptDescription,
+          title: resolvedLoginPromptTitle,
+          description: resolvedLoginPromptDescription,
         })
       }
     },
-    [isAuthenticated, onLoginClick, loginPromptTitle, loginPromptDescription]
+    [isAuthenticated, onLoginClick, resolvedLoginPromptTitle, resolvedLoginPromptDescription]
   )
 
   /**
-   * パーツ名のリストを日本語表示名に変換
+   * パーツ名のリストをローカライズされた表示名に変換
    */
   const getPartsDisplayNames = () => {
     return appliedParts
-      .map((part) => PARTS_NAMES[part] || part)
+      .map((part) => {
+        try {
+          return tp(part as never)
+        } catch {
+          return part
+        }
+      })
       .join(', ')
   }
 
@@ -158,7 +154,7 @@ export function PartsBlurOverlay({
               d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
             />
           </svg>
-          <p className="text-sm">画像がありません</p>
+          <p className="text-sm">{t('partsBlur.noImage')}</p>
         </div>
       </div>
     )
@@ -186,7 +182,7 @@ export function PartsBlurOverlay({
         {showPartsLabel && appliedParts.length > 0 && (
           <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent">
             <p className="text-white text-sm text-center">
-              適用パーツ: {getPartsDisplayNames()}
+              {t('parts.appliedParts')} {getPartsDisplayNames()}
             </p>
           </div>
         )}
@@ -203,7 +199,7 @@ export function PartsBlurOverlay({
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
-      aria-label="ログインしてパーツ別シミュレーション結果を表示"
+      aria-label={t('partsBlur.loginAriaLabel')}
       data-testid={testId}
     >
       {/* ブラー適用された画像 */}
@@ -230,7 +226,7 @@ export function PartsBlurOverlay({
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <div className="bg-white/90 backdrop-blur-sm rounded-full px-6 py-3 shadow-lg">
           <p className="text-neutral-800 font-medium text-sm">
-            タップしてログイン
+            {t('partsBlur.tapToLogin')}
           </p>
         </div>
       </div>
@@ -239,7 +235,7 @@ export function PartsBlurOverlay({
       {showPartsLabel && appliedParts.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
           <p className="text-white text-sm text-center">
-            適用パーツ: {getPartsDisplayNames()}
+            {t('parts.appliedParts')} {getPartsDisplayNames()}
           </p>
         </div>
       )}

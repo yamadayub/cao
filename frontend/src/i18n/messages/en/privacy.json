@@ -1,0 +1,24 @@
+{
+  "title": "Privacy Policy",
+  "lastUpdated": "Last updated: {date}",
+  "sections": {
+    "s1": { "title": "1. Introduction", "content": "Cao (hereinafter referred to as \"the Service\") respects user privacy and is committed to protecting personal information. This Privacy Policy explains how we handle personal information in the Service." },
+    "s2": { "title": "2. Information We Collect", "content": "We may collect the following information:\n- Account information (email address, display name)\n- Uploaded facial images\n- Usage history, access logs\n- Device information, browser information" },
+    "s3": { "title": "3. Purpose of Use", "content": "Collected information is used for the following purposes:\n- Providing the face simulation service\n- Managing user accounts\n- Service improvement and development\n- Responding to inquiries" },
+    "s4": { "title": "4. Image Data Handling", "content": "Uploaded facial images are used solely for simulation processing. Original images are automatically deleted from the server after processing. Generated simulation images are not stored on the server unless the user explicitly saves them (by pressing the save button)." },
+    "s5": { "title": "5. Information Sharing", "content": "We do not sell, rent, or share users' personal information with third parties, except in the following cases:\n- With user consent\n- When required by law\n- When necessary for service-related business operations" },
+    "s6": { "title": "6. Data Protection", "content": "We implement appropriate technical and organizational measures to protect user data, including data encryption, access controls, and regular security audits." },
+    "s7": { "title": "7. Use of Cookies", "content": "The Service uses cookies to improve user experience. You may disable cookies through your browser settings, but some features may be limited." },
+    "s8": { "title": "8. User Rights", "content": "Users have the following rights regarding their personal information:\n- Right to request disclosure\n- Right to request correction or deletion\n- Right to request cessation of use\n\nPlease contact support@cao.app for these requests." },
+    "s9": { "title": "9. Consent Storage", "content": "Records of agreement to the Terms of Service are stored in local storage. These records are used solely to confirm service usage status." },
+    "s10": { "title": "10. Policy Changes", "content": "This Privacy Policy may be changed as necessary. We will notify you of significant changes through the Service." },
+    "s11": { "title": "11. Contact", "content": "For privacy-related inquiries, please contact us at:\n\nEmail: support@cao.app" }
+  },
+  "subtitle": "Privacy Policy",
+  "intro": "Cao (hereinafter referred to as \"the Service\") respects user privacy and is committed to protecting personal information. This Privacy Policy explains how we handle personal information in the Service.",
+  "footer": {
+    "backToTop": "Back to Top",
+    "terms": "Terms of Service",
+    "trySimulation": "Try Simulation"
+  }
+}

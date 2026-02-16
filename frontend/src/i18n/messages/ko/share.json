@@ -1,0 +1,71 @@
+{
+  "shareText": "Cao로 뷰티 시뮬레이션을 해봤어요.\n{url}\n#Cao #뷰티시뮬레이션",
+  "customize": {
+    "title": "공유 설정",
+    "templateLabel": "템플릿",
+    "beforeAfter": "Before/After 비교",
+    "single": "결과만",
+    "captionLabel": "캡션",
+    "captionPlaceholder": "캡션을 입력하세요 (최대 140자)",
+    "captionCount": "{count}/140",
+    "privacyWarning": "개인정보 관련 주의사항",
+    "privacyItem1": "공유된 이미지는 누구나 볼 수 있습니다",
+    "privacyItem2": "공유 링크에는 유효기간이 있습니다",
+    "privacyItem3": "개인 식별 가능한 정보 공유에 주의해주세요",
+    "agreeLabel": "위 주의사항을 확인했습니다",
+    "shareButton": "공유하기",
+    "downloadButton": "이미지 다운로드",
+    "copyUrl": "URL 복사"
+  },
+  "sns": {
+    "twitter": "X (Twitter)",
+    "line": "LINE",
+    "instagram": "Instagram"
+  },
+  "view": {
+    "title": "공유된 시뮬레이션",
+    "expired": "이 공유 링크는 만료되었습니다",
+    "notFound": "공유 데이터를 찾을 수 없습니다",
+    "error": "오류가 발생했습니다",
+    "createdAt": "생성일: {date}",
+    "trySimulation": "나도 시뮬레이션 해보기",
+    "invalidUrl": "이 URL은 유효하지 않거나 만료되었습니다",
+    "fetchError": "시뮬레이션을 불러오지 못했습니다",
+    "backToHome": "홈으로 돌아가기",
+    "loading": "로딩 중...",
+    "resultAlt": "시뮬레이션 결과 {progress}%",
+    "pageNotFound": "페이지를 찾을 수 없습니다",
+    "pageNotFoundDesc": "찾고 있는 공유 이미지가 존재하지 않거나 삭제되었습니다.",
+    "goToHome": "홈으로",
+    "expiredTitle": "공유가 만료되었습니다",
+    "expiredDesc": "이 공유 이미지의 공개 기간이 종료되었습니다.",
+    "tryCao": "Cao 사용해보기",
+    "shareImageAlt": "공유 이미지",
+    "ctaTitle": "직접 시도해보시겠어요?",
+    "ctaDescription": "AI가 이상적인 모습을 시뮬레이션합니다",
+    "ctaButton": "무료로 사용해보기"
+  },
+  "section": {
+    "title": "공유",
+    "selectImage": "공유할 이미지를 선택하세요",
+    "shareButton": "이 이미지 공유하기"
+  },
+  "metadata": {
+    "title": "공유된 시뮬레이션 - Cao",
+    "description": "공유된 AI 얼굴 시뮬레이션 결과 보기",
+    "snsNotFoundTitle": "공유 이미지를 찾을 수 없습니다 - Cao",
+    "snsNotFoundDescription": "이 이미지는 만료되었거나 삭제되었을 수 있습니다.",
+    "snsDefaultTitle": "Cao로 만든 시뮬레이션 이미지",
+    "snsDefaultDescription": "AI 얼굴 시뮬레이션 결과를 확인하세요.",
+    "snsFallbackTitle": "공유 이미지 - Cao",
+    "snsFallbackDescription": "AI 얼굴 시뮬레이션 결과"
+  },
+  "status": {
+    "idle": "공유",
+    "selecting": "유형 선택",
+    "generating": "이미지 생성 중...",
+    "sharing": "공유 중...",
+    "success": "공유됨",
+    "error": "공유 실패"
+  }
+}

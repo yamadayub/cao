@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "Cao - 理想の自分を、AIでシミュレーション",
+    "description": "あなたの顔写真と理想の顔を組み合わせて、段階的な変化をシミュレーション。美容医療の相談をより具体的に。",
+    "ogTitle": "Cao - 理想の自分を、AIでシミュレーション",
+    "ogDescription": "あなたの顔写真と理想の顔を組み合わせて、段階的な変化をシミュレーション。"
+  },
+  "simulate": {
+    "title": "シミュレーション作成 | Cao",
+    "description": "理想の顔と現在の顔をアップロードして、AIシミュレーションを作成"
+  },
+  "result": {
+    "title": "シミュレーション結果 | Cao",
+    "description": "AIが生成した顔シミュレーションの結果を確認"
+  },
+  "mypage": {
+    "title": "マイページ | Cao",
+    "description": "保存したシミュレーション結果の管理"
+  },
+  "terms": {
+    "title": "利用規約 | Cao",
+    "description": "Caoの利用規約"
+  },
+  "privacy": {
+    "title": "プライバシーポリシー | Cao",
+    "description": "Caoのプライバシーポリシー"
+  },
+  "signIn": {
+    "title": "ログイン | Cao",
+    "description": "Caoにログイン"
+  },
+  "signUp": {
+    "title": "アカウント作成 | Cao",
+    "description": "Caoのアカウントを作成"
+  },
+  "keywords": "AI,顔シミュレーション,美容医療,モーフィング,顔分析"
+}

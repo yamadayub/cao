@@ -1,0 +1,36 @@
+{
+  "title": "我的页面",
+  "subtitle": "My Page",
+  "signOut": "退出登录",
+  "newSimulation": "创建新模拟",
+  "savedSimulations": "已保存的模拟",
+  "count": "({count}个)",
+  "retry": "重试",
+  "noSimulations": "没有已保存的模拟",
+  "createSimulation": "创建模拟",
+  "share": "分享",
+  "delete": "删除",
+  "loadingMore": "加载中...",
+  "loadMore": "加载更多",
+  "viewSimulation": "查看{date}的模拟",
+  "simulationAlt": "模拟 {date}",
+  "errors": {
+    "authTokenFailed": "无法获取认证令牌",
+    "fetchFailed": "获取模拟列表失败",
+    "deleteFailed": "删除失败",
+    "shareFailed": "生成分享链接失败"
+  },
+  "simulations": {
+    "title": "已保存的模拟",
+    "empty": "没有已保存的模拟",
+    "emptyDesc": "创建模拟并保存结果",
+    "loadMore": "加载更多",
+    "createdAt": "创建日期：{date}"
+  },
+  "actions": {
+    "newSimulation": "新建模拟",
+    "share": "分享",
+    "delete": "删除",
+    "viewResult": "查看结果"
+  }
+}

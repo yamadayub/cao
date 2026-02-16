@@ -1,0 +1,41 @@
+{
+  "hero": {
+    "subtitle": "AI Face Simulation",
+    "title1": "理想の顔写真と",
+    "title2": "あなたの顔写真を組み合わせて",
+    "title3": "顔全体・パーツ別の変化をシミュレーション",
+    "scroll": "Scroll"
+  },
+  "howItWorks": {
+    "subtitle": "How it works",
+    "title": "使い方",
+    "step1Title": "理想の顔をアップロード",
+    "step1Desc": "なりたい顔の写真をアップロード。芸能人、モデル、AIで生成した理想の顔など。",
+    "step2Title": "現在の自分の顔をアップロード",
+    "step2Desc": "正面から撮影した写真を使用。明るい場所で撮影するとより正確に。",
+    "step3Title": "結果を確認",
+    "step3Desc": "顔全体のBefore/After比較。パーツ別（目・鼻・口・眉）のON/OFFで細かく確認できます。"
+  },
+  "features": {
+    "subtitle": "Features",
+    "title": "特徴",
+    "aiTitle": "高品質なAI合成",
+    "aiDesc": "AIによる自然な顔の合成。肌の質感や照明を維持したまま違和感のない仕上がり。",
+    "partsTitle": "パーツ別シミュレーション",
+    "partsDesc": "目、眉、鼻、口を個別にON/OFF。「鼻だけ変えたら？」を即座に確認できます。",
+    "compareTitle": "Before/After比較",
+    "compareDesc": "元の顔と変化後を切り替えて比較。カウンセリング時の参考資料に。",
+    "privacyTitle": "プライバシー保護",
+    "privacyDesc": "アップロードした写真は自動削除。第三者への共有なしで安心して利用可能。"
+  },
+  "examples": {
+    "subtitle": "Result",
+    "title": "シミュレーション例",
+    "disclaimer": "※ シミュレーション結果はイメージです"
+  },
+  "cta": {
+    "title": "さあ、始めましょう",
+    "desc1": "無料でシミュレーションを体験できます",
+    "desc2": "理想の自分を見つけてみませんか？"
+  }
+}

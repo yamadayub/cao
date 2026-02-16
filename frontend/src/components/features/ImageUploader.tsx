@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   validateImageFormat,
   validateImageSize,
@@ -49,6 +50,7 @@ export function ImageUploader({
   disabled = false,
   testId,
 }: ImageUploaderProps) {
+  const t = useTranslations('simulate')
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -241,9 +243,9 @@ export function ImageUploader({
               />
             </svg>
             <p className="text-sm text-neutral-600">
-              {isDragging ? 'ここにドロップ' : 'ドラッグ&ドロップ'}
+              {isDragging ? t('upload.dropHere') : t('upload.dragAndDrop')}
             </p>
-            <p className="text-xs text-neutral-400">または下のボタンで選択</p>
+            <p className="text-xs text-neutral-400">{t('upload.orSelectBelow')}</p>
           </div>
         )}
 
@@ -278,7 +280,7 @@ export function ImageUploader({
             `}
             data-testid={testId ? `${testId}-select-button` : undefined}
           >
-            画像を選択
+            {t('upload.selectImage')}
           </button>
         ) : (
           <button
@@ -296,7 +298,7 @@ export function ImageUploader({
             `}
             data-testid={testId ? `${testId}-remove-button` : undefined}
           >
-            削除
+            {t('upload.remove')}
           </button>
         )}
       </div>

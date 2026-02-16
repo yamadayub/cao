@@ -1,0 +1,70 @@
+{
+  "login": {
+    "defaultTitle": "需要登录",
+    "defaultDescription": "保存和分享模拟结果需要登录。",
+    "defaultDesc": "使用此功能需要登录。",
+    "partsBlurTitle": "登录查看部位结果",
+    "partsBlurDesc": "登录后可无模糊查看分部位模拟结果。",
+    "downloadTitle": "登录以下载",
+    "downloadDesc": "登录后可下载模拟结果。",
+    "saveTitle": "登录以保存",
+    "saveDesc": "登录后可保存模拟结果。",
+    "shareTitle": "登录以分享",
+    "shareDesc": "登录后可分享模拟结果。",
+    "snsShareTitle": "登录以分享到社交媒体",
+    "snsShareDesc": "登录后可将模拟结果分享到社交媒体。",
+    "loginButton": "登录",
+    "cancelButton": "暂不登录"
+  },
+  "common": {
+    "close": "关闭",
+    "cancel": "取消"
+  },
+  "terms": {
+    "title": "同意使用条款",
+    "description": "使用服务前，<br />请阅读使用条款。",
+    "checkboxLabel": "我同意使用条款",
+    "termsLink": "使用条款",
+    "agreeToTerms": " 我同意",
+    "readTerms": "阅读使用条款",
+    "viewTerms": "查看使用条款",
+    "agreeButton": "同意并继续",
+    "cancelButton": "取消"
+  },
+  "delete": {
+    "title": "删除模拟",
+    "description": "确定要删除此模拟吗？",
+    "warning": "此操作无法撤消。",
+    "confirm": "删除",
+    "confirmButton": "删除",
+    "cancelButton": "取消",
+    "deleting": "删除中..."
+  },
+  "share": {
+    "title": "分享链接已创建",
+    "description": "请将以下URL分享给您的医师。",
+    "copied": "已复制",
+    "copyButton": "复制URL"
+  },
+  "shareUrl": {
+    "title": "分享链接",
+    "description": "请分享以下链接",
+    "copyButton": "复制",
+    "copied": "已复制"
+  },
+  "snsShare": {
+    "shared": "已分享！",
+    "copied": "图片已复制！粘贴到社交媒体分享",
+    "failed": "分享失败",
+    "generateFailed": "图片生成失败",
+    "generating": "正在生成图片...",
+    "sharing": "分享中...",
+    "shareButton": "分享",
+    "selectTitle": "选择分享图片",
+    "selectDescription": "您想以哪种格式分享？",
+    "beforeAfter": "前后对比",
+    "beforeAfterDesc": "并排比较变化",
+    "resultOnly": "仅结果",
+    "resultOnlyDesc": "仅分享模拟结果"
+  }
+}

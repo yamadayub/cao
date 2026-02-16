@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "login": "登入",
+    "mypage": "我的頁面"
+  },
+  "footer": {
+    "terms": "使用條款",
+    "privacy": "隱私權政策",
+    "contact": "聯絡我們",
+    "copyright": "© {year} Cao. 保留所有權利。"
+  },
+  "actions": {
+    "next": "下一步",
+    "back": "返回",
+    "change": "變更",
+    "cancel": "取消",
+    "close": "關閉",
+    "save": "儲存",
+    "delete": "刪除",
+    "download": "下載",
+    "share": "分享",
+    "copy": "複製",
+    "copied": "已複製",
+    "tryFree": "免費試用",
+    "tryNow": "立即免費試用",
+    "learnMore": "了解更多",
+    "trySimulation": "嘗試模擬"
+  }
+}

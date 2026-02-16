@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "login": "登录",
+    "mypage": "我的页面"
+  },
+  "footer": {
+    "terms": "使用条款",
+    "privacy": "隐私政策",
+    "contact": "联系我们",
+    "copyright": "© {year} Cao. 保留所有权利。"
+  },
+  "actions": {
+    "next": "下一步",
+    "back": "返回",
+    "change": "更改",
+    "cancel": "取消",
+    "close": "关闭",
+    "save": "保存",
+    "delete": "删除",
+    "download": "下载",
+    "share": "分享",
+    "copy": "复制",
+    "copied": "已复制",
+    "tryFree": "免费试用",
+    "tryNow": "立即免费试用",
+    "learnMore": "了解更多",
+    "trySimulation": "尝试模拟"
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface ShareUrlModalProps {
   /** モーダル表示状態 */
@@ -24,6 +25,7 @@ export function ShareUrlModal({
   onClose,
   testId,
 }: ShareUrlModalProps) {
+  const t = useTranslations('modals')
   const [isCopied, setIsCopied] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
   const copyButtonRef = useRef<HTMLButtonElement>(null)
@@ -117,7 +119,7 @@ export function ShareUrlModal({
           type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-1 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
-          aria-label="閉じる"
+          aria-label={t('common.close')}
           data-testid={testId ? `${testId}-close` : undefined}
         >
           <svg
@@ -162,12 +164,12 @@ export function ShareUrlModal({
             className="text-xl font-bold text-gray-900 mb-2"
             data-testid={testId ? `${testId}-title` : undefined}
           >
-            共有URLを作成しました
+            {t('share.title')}
           </h2>
 
           {/* 説明文 */}
           <p className="text-gray-600 mb-4">
-            以下のURLを施術者に共有してください。
+            {t('share.description')}
           </p>
 
           {/* URL表示 */}
@@ -216,10 +218,10 @@ export function ShareUrlModal({
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  コピーしました
+                  {t('share.copied')}
                 </span>
               ) : (
-                'URLをコピー'
+                t('share.copyButton')
               )}
             </button>
             <button
@@ -228,7 +230,7 @@ export function ShareUrlModal({
               className="w-full px-6 py-3 text-base font-medium text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 rounded-lg"
               data-testid={testId ? `${testId}-close-button` : undefined}
             >
-              閉じる
+              {t('common.close')}
             </button>
           </div>
         </div>

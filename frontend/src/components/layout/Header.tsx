@@ -1,14 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { useTranslations } from 'next-intl'
+import { Link } from '@/i18n/navigation'
 import { useAuth, useClerk, SignInButton, UserButton } from '@clerk/nextjs'
+import { isClerkAvailable } from '@/hooks/useClerkSafe'
+import { LanguageSwitcher } from './LanguageSwitcher'
 
 interface HeaderProps {
   variant?: 'default' | 'transparent'
 }
 
-function HeaderAuthSection() {
+function ClerkAuthSection() {
+  const t = useTranslations('common')
   const { isLoaded, isSignedIn } = useAuth()
   const { loaded: clerkLoaded } = useClerk()
 
@@ -19,9 +23,6 @@ function HeaderAuthSection() {
     )
   }
 
-  // ヘッダー右上のボタン
-  // - 未認証: 「ログイン」ボタン → クリックでログインモーダル表示
-  // - 認証済み: Clerkアイコン → メニューからマイページ/サインアウト
   return (
     <>
       {isSignedIn ? (
@@ -35,7 +36,7 @@ function HeaderAuthSection() {
         >
           <UserButton.MenuItems>
             <UserButton.Link
-              label="マイページ"
+              label={t('nav.mypage')}
               labelIcon={<span>📋</span>}
               href="/mypage"
             />
@@ -44,12 +45,32 @@ function HeaderAuthSection() {
       ) : (
         <SignInButton mode="modal">
           <button className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3">
-            ログイン
+            {t('nav.login')}
           </button>
         </SignInButton>
       )}
     </>
   )
+}
+
+function FallbackAuthSection() {
+  const t = useTranslations('common')
+
+  return (
+    <Link href="/sign-in">
+      <button className="btn-primary text-xs md:text-sm px-4 py-2 md:px-6 md:py-3">
+        {t('nav.login')}
+      </button>
+    </Link>
+  )
+}
+
+function HeaderAuthSection() {
+  if (!isClerkAvailable()) {
+    return <FallbackAuthSection />
+  }
+
+  return <ClerkAuthSection />
 }
 
 export function Header({ variant = 'default' }: HeaderProps) {
@@ -87,7 +108,8 @@ export function Header({ variant = 'default' }: HeaderProps) {
           </Link>
 
           {/* Navigation */}
-          <nav className="flex items-center gap-3 md:gap-8">
+          <nav className="flex items-center gap-3 md:gap-4">
+            <LanguageSwitcher />
             {mounted && <HeaderAuthSection />}
           </nav>
         </div>

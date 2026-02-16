@@ -36,6 +36,13 @@ vi.mock('@clerk/nextjs', () => {
   }
 })
 
+// Mock isClerkAvailable to return true so Header uses Clerk hooks
+vi.mock('@/hooks/useClerkSafe', () => ({
+  isClerkAvailable: () => true,
+  useAuthSafe: () => mockUseAuth(),
+  useUserSafe: () => mockUseAuth(),
+}))
+
 // Next.js router mock
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -62,7 +69,7 @@ describe('Header', () => {
     it('ログインボタンを表示する', () => {
       render(<Header />)
 
-      const loginButton = screen.getByRole('button', { name: 'ログイン' })
+      const loginButton = screen.getByRole('button', { name: 'nav.login' })
       expect(loginButton).toBeDefined()
     })
 
@@ -193,7 +200,7 @@ describe('Header - 共通ヘッダー仕様', () => {
     })
 
     const { rerender } = render(<Header />)
-    const loginElement = screen.getByText('ログイン')
+    const loginElement = screen.getByText('nav.login')
     expect(loginElement).toBeDefined()
 
     // 認証済み時はUserButton

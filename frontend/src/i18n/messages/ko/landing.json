@@ -1,0 +1,41 @@
+{
+  "hero": {
+    "subtitle": "AI Face Simulation",
+    "title1": "이상적인 얼굴 사진과",
+    "title2": "나의 사진을 결합하여",
+    "title3": "얼굴 전체·부위별 변화를 시뮬레이션",
+    "scroll": "Scroll"
+  },
+  "howItWorks": {
+    "subtitle": "How it works",
+    "title": "사용 방법",
+    "step1Title": "이상적인 얼굴 업로드",
+    "step1Desc": "원하는 얼굴 사진을 업로드하세요. 연예인, 모델, AI로 생성한 이상적인 얼굴 등.",
+    "step2Title": "현재 내 얼굴 업로드",
+    "step2Desc": "정면에서 촬영한 사진을 사용하세요. 밝은 곳에서 촬영하면 더 정확합니다.",
+    "step3Title": "결과 확인",
+    "step3Desc": "얼굴 전체의 Before/After 비교. 부위별(눈·코·입·눈썹) ON/OFF로 세밀하게 확인할 수 있습니다."
+  },
+  "features": {
+    "subtitle": "Features",
+    "title": "특징",
+    "aiTitle": "고품질 AI 합성",
+    "aiDesc": "AI를 활용한 자연스러운 얼굴 합성. 피부 질감과 조명을 유지하면서 자연스러운 마무리.",
+    "partsTitle": "부위별 시뮬레이션",
+    "partsDesc": "눈, 눈썹, 코, 입을 개별적으로 ON/OFF. '코만 바꾸면 어떨까?'를 바로 확인할 수 있습니다.",
+    "compareTitle": "Before/After 비교",
+    "compareDesc": "원래 얼굴과 변화 후를 전환하며 비교. 상담 시 참고 자료로 활용.",
+    "privacyTitle": "개인정보 보호",
+    "privacyDesc": "업로드한 사진은 자동 삭제. 제3자 공유 없이 안심하고 이용 가능."
+  },
+  "examples": {
+    "subtitle": "Result",
+    "title": "시뮬레이션 예시",
+    "disclaimer": "※ 시뮬레이션 결과는 이미지입니다"
+  },
+  "cta": {
+    "title": "시작해볼까요",
+    "desc1": "무료로 시뮬레이션을 체험할 수 있습니다",
+    "desc2": "이상적인 나를 찾아보세요"
+  }
+}

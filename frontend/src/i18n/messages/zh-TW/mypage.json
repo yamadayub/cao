@@ -1,0 +1,36 @@
+{
+  "title": "我的頁面",
+  "subtitle": "My Page",
+  "signOut": "登出",
+  "newSimulation": "建立新模擬",
+  "savedSimulations": "已儲存的模擬",
+  "count": "({count}個)",
+  "retry": "重試",
+  "noSimulations": "沒有已儲存的模擬",
+  "createSimulation": "建立模擬",
+  "share": "分享",
+  "delete": "刪除",
+  "loadingMore": "載入中...",
+  "loadMore": "載入更多",
+  "viewSimulation": "查看{date}的模擬",
+  "simulationAlt": "模擬 {date}",
+  "errors": {
+    "authTokenFailed": "無法取得認證權杖",
+    "fetchFailed": "取得模擬列表失敗",
+    "deleteFailed": "刪除失敗",
+    "shareFailed": "產生分享連結失敗"
+  },
+  "simulations": {
+    "title": "已儲存的模擬",
+    "empty": "沒有已儲存的模擬",
+    "emptyDesc": "建立模擬並儲存結果",
+    "loadMore": "載入更多",
+    "createdAt": "建立日期：{date}"
+  },
+  "actions": {
+    "newSimulation": "新建模擬",
+    "share": "分享",
+    "delete": "刪除",
+    "viewResult": "查看結果"
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "login": {
+    "defaultTitle": "ログインが必要です",
+    "defaultDescription": "シミュレーション結果を保存・共有するにはログインが必要です。",
+    "defaultDesc": "この機能を使用するにはログインが必要です。",
+    "partsBlurTitle": "パーツ別結果を見るにはログインが必要です",
+    "partsBlurDesc": "ログインすると、パーツ別シミュレーションの結果をブラーなしで確認できます。",
+    "downloadTitle": "ダウンロードするにはログインが必要です",
+    "downloadDesc": "ログインすると、シミュレーション結果をダウンロードできます。",
+    "saveTitle": "保存するにはログインが必要です",
+    "saveDesc": "ログインすると、シミュレーション結果を保存できます。",
+    "shareTitle": "共有するにはログインが必要です",
+    "shareDesc": "ログインすると、シミュレーション結果を共有できます。",
+    "snsShareTitle": "SNSにシェアするにはログインが必要です",
+    "snsShareDesc": "ログインすると、シミュレーション結果をSNSでシェアできます。",
+    "loginButton": "ログインする",
+    "cancelButton": "今はログインしない"
+  },
+  "common": {
+    "close": "閉じる",
+    "cancel": "キャンセル"
+  },
+  "terms": {
+    "title": "利用規約への同意",
+    "description": "サービスをご利用いただく前に、<br />利用規約をご確認ください。",
+    "checkboxLabel": "利用規約に同意します",
+    "termsLink": "利用規約",
+    "agreeToTerms": "に同意する",
+    "readTerms": "利用規約を読む",
+    "viewTerms": "利用規約を確認する",
+    "agreeButton": "同意して続ける",
+    "cancelButton": "キャンセル"
+  },
+  "delete": {
+    "title": "シミュレーションを削除",
+    "description": "このシミュレーションを削除しますか？",
+    "warning": "この操作は取り消せません。",
+    "confirm": "削除",
+    "confirmButton": "削除する",
+    "cancelButton": "キャンセル",
+    "deleting": "削除中..."
+  },
+  "share": {
+    "title": "共有URLを作成しました",
+    "description": "以下のURLを施術者に共有してください。",
+    "copied": "コピーしました",
+    "copyButton": "URLをコピー"
+  },
+  "shareUrl": {
+    "title": "共有リンク",
+    "description": "以下のリンクを共有してください",
+    "copyButton": "コピー",
+    "copied": "コピーしました"
+  },
+  "snsShare": {
+    "shared": "シェアしました！",
+    "copied": "画像をコピーしました！SNSに貼り付けてシェア",
+    "failed": "シェアに失敗しました",
+    "generateFailed": "画像の生成に失敗しました",
+    "generating": "画像を生成中...",
+    "sharing": "シェア中...",
+    "shareButton": "シェアする",
+    "selectTitle": "シェア画像を選択",
+    "selectDescription": "どちらの形式でシェアしますか？",
+    "beforeAfter": "Before/After比較",
+    "beforeAfterDesc": "変化を並べて比較できます",
+    "resultOnly": "結果のみ",
+    "resultOnlyDesc": "シミュレーション結果だけをシェア"
+  }
+}

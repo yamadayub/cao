@@ -1,0 +1,41 @@
+{
+  "hero": {
+    "subtitle": "AI Face Simulation",
+    "title1": "将理想面孔",
+    "title2": "与您的照片相结合",
+    "title3": "模拟整体和局部面部变化",
+    "scroll": "Scroll"
+  },
+  "howItWorks": {
+    "subtitle": "How it works",
+    "title": "使用方法",
+    "step1Title": "上传理想面孔",
+    "step1Desc": "上传您想要的面孔照片。明星、模特或AI生成的理想面孔均可。",
+    "step2Title": "上传您的当前面孔",
+    "step2Desc": "使用正面照片。光线充足的环境下拍摄效果更佳。",
+    "step3Title": "查看结果",
+    "step3Desc": "整体面部前后对比。可逐个开关面部部位（眼、鼻、嘴、眉）进行细致比较。"
+  },
+  "features": {
+    "subtitle": "Features",
+    "title": "特点",
+    "aiTitle": "高品质AI合成",
+    "aiDesc": "AI驱动的自然面部融合。在保持肤质和光线的同时实现无缝效果。",
+    "partsTitle": "分部位模拟",
+    "partsDesc": "单独切换眼、眉、鼻、嘴。即刻查看「只改变鼻子会怎样？」",
+    "compareTitle": "前后对比",
+    "compareDesc": "在原始面孔和变化后的面孔之间切换。咨询时的绝佳参考资料。",
+    "privacyTitle": "隐私保护",
+    "privacyDesc": "上传的照片会自动删除。不与第三方共享，使用安心。"
+  },
+  "examples": {
+    "subtitle": "Result",
+    "title": "模拟示例",
+    "disclaimer": "※ 模拟结果仅供参考"
+  },
+  "cta": {
+    "title": "开始体验",
+    "desc1": "免费体验面部模拟",
+    "desc2": "发现理想中的自己"
+  }
+}

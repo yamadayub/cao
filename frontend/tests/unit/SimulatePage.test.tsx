@@ -42,7 +42,7 @@ class MockFileReader {
 vi.stubGlobal('FileReader', MockFileReader)
 
 // SimulatePageを動的にインポート（モック設定後）
-import SimulatePage from '@/app/simulate/page'
+import SimulatePage from '@/app/[locale]/simulate/page'
 
 // ファイルオブジェクトのモック作成ヘルパー
 const createMockFile = (
@@ -118,7 +118,7 @@ describe('SimulatePage', () => {
 
     it('ログインリンクが表示される', () => {
       render(<SimulatePage />)
-      expect(screen.getByText('ログイン')).toBeInTheDocument()
+      expect(screen.getByText('nav.login')).toBeInTheDocument()
     })
 
     // Note: 「今すぐ試す」ボタンは削除され、ログインボタンに統一されました

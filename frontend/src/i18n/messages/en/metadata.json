@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "Cao - Simulate Your Ideal Self with AI",
+    "description": "Combine your photo with an ideal face to simulate gradual changes. Make cosmetic consultations more specific.",
+    "ogTitle": "Cao - Simulate Your Ideal Self with AI",
+    "ogDescription": "Combine your photo with an ideal face to simulate gradual changes."
+  },
+  "simulate": {
+    "title": "Create Simulation | Cao",
+    "description": "Upload ideal and current face photos to create an AI simulation"
+  },
+  "result": {
+    "title": "Simulation Result | Cao",
+    "description": "View AI-generated face simulation results"
+  },
+  "mypage": {
+    "title": "My Page | Cao",
+    "description": "Manage your saved simulation results"
+  },
+  "terms": {
+    "title": "Terms of Service | Cao",
+    "description": "Cao Terms of Service"
+  },
+  "privacy": {
+    "title": "Privacy Policy | Cao",
+    "description": "Cao Privacy Policy"
+  },
+  "signIn": {
+    "title": "Sign In | Cao",
+    "description": "Sign in to Cao"
+  },
+  "signUp": {
+    "title": "Create Account | Cao",
+    "description": "Create a Cao account"
+  },
+  "keywords": "AI,face simulation,cosmetic,morphing,face analysis"
+}

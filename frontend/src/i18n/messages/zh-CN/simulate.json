@@ -1,0 +1,56 @@
+{
+  "title": "创建模拟",
+  "subtitle": "Create Simulation",
+  "steps": {
+    "idealFace": "理想面孔",
+    "currentFace": "当前面孔",
+    "uploadIdeal": "请上传您的理想面孔照片",
+    "selectMethod": "选择获取当前面孔的方式",
+    "uploadCurrent": "请上传您的当前面孔照片",
+    "review": "请确认您的照片"
+  },
+  "termsBanner": {
+    "text": "上传图片需要",
+    "link": "同意使用条款",
+    "suffix": "。"
+  },
+  "method": {
+    "question": "您想如何获取当前面孔？",
+    "cameraTitle": "拍照",
+    "cameraDesc": "以理想面孔为参照进行拍摄",
+    "uploadTitle": "上传图片",
+    "uploadDesc": "使用现有照片"
+  },
+  "upload": {
+    "idealLabel": "理想面孔",
+    "currentLabel": "当前面孔",
+    "idealHelp": "请上传您的理想面孔照片。",
+    "currentHelp": "请选择与理想面孔相同角度和方向的照片。",
+    "changeIdeal": "更改理想面孔",
+    "dropHere": "拖放到此处",
+    "dragAndDrop": "拖放",
+    "orSelectBelow": "或点击下方按钮选择",
+    "selectImage": "选择图片",
+    "remove": "删除"
+  },
+  "camera": {
+    "close": "关闭",
+    "title": "拍摄当前面孔",
+    "starting": "正在启动相机...",
+    "notAllowed": "相机访问未被允许。请在浏览器设置中允许相机访问。",
+    "notFound": "未找到相机。请确认相机已连接。",
+    "failed": "无法启动相机。",
+    "capturedAlt": "拍摄的图片",
+    "guidance": "请以与理想面孔相同的角度和大小拍摄",
+    "guideOpacity": "引导透明度",
+    "capture": "拍摄",
+    "retake": "重拍",
+    "usePhoto": "使用这张照片",
+    "back": "返回"
+  },
+  "generate": {
+    "button": "生成模拟",
+    "generating": "生成中...",
+    "note": "※ 请使用光线充足的正面照片"
+  }
+}

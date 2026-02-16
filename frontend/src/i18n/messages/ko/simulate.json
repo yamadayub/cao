@@ -1,0 +1,56 @@
+{
+  "title": "시뮬레이션 생성",
+  "subtitle": "Create Simulation",
+  "steps": {
+    "idealFace": "이상적인 얼굴",
+    "currentFace": "현재 얼굴",
+    "uploadIdeal": "이상적인 얼굴 사진을 업로드해주세요",
+    "selectMethod": "현재 얼굴 촬영 방법을 선택해주세요",
+    "uploadCurrent": "현재 얼굴 사진을 업로드해주세요",
+    "review": "사진을 확인해주세요"
+  },
+  "termsBanner": {
+    "text": "이미지를 업로드하려면 ",
+    "link": "이용약관 동의",
+    "suffix": "가 필요합니다."
+  },
+  "method": {
+    "question": "현재 얼굴을 어떻게 촬영하시겠습니까?",
+    "cameraTitle": "카메라로 촬영",
+    "cameraDesc": "이상적인 얼굴을 가이드로 촬영할 수 있습니다",
+    "uploadTitle": "이미지 업로드",
+    "uploadDesc": "기존 사진을 사용합니다"
+  },
+  "upload": {
+    "idealLabel": "이상적인 얼굴",
+    "currentLabel": "현재 얼굴",
+    "idealHelp": "이상적인 얼굴 사진을 업로드해주세요.",
+    "currentHelp": "이상적인 얼굴과 같은 방향·각도의 사진을 선택해주세요.",
+    "changeIdeal": "이상적인 얼굴 변경",
+    "dropHere": "여기에 놓기",
+    "dragAndDrop": "드래그 & 드롭",
+    "orSelectBelow": "또는 아래 버튼으로 선택",
+    "selectImage": "이미지 선택",
+    "remove": "삭제"
+  },
+  "camera": {
+    "close": "닫기",
+    "title": "현재 얼굴 촬영",
+    "starting": "카메라 시작 중...",
+    "notAllowed": "카메라 접근이 허용되지 않았습니다. 브라우저 설정에서 카메라 접근을 허용해 주세요.",
+    "notFound": "카메라를 찾을 수 없습니다. 카메라가 연결되어 있는지 확인해 주세요.",
+    "failed": "카메라를 시작할 수 없습니다.",
+    "capturedAlt": "촬영된 이미지",
+    "guidance": "이상적인 얼굴과 같은 방향·크기로 촬영해 주세요",
+    "guideOpacity": "가이드 투명도",
+    "capture": "촬영",
+    "retake": "다시 촬영",
+    "usePhoto": "이 사진 사용",
+    "back": "뒤로"
+  },
+  "generate": {
+    "button": "시뮬레이션 생성",
+    "generating": "생성 중...",
+    "note": "※ 밝은 곳에서 촬영한 정면 사진을 사용해주세요"
+  }
+}

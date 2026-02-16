@@ -1,0 +1,56 @@
+{
+  "title": "Create Simulation",
+  "subtitle": "Create Simulation",
+  "steps": {
+    "idealFace": "Ideal Face",
+    "currentFace": "Current Face",
+    "uploadIdeal": "Please upload your ideal face photo",
+    "selectMethod": "Choose how to capture your current face",
+    "uploadCurrent": "Please upload your current face photo",
+    "review": "Review your photos"
+  },
+  "termsBanner": {
+    "text": "To upload images, you need to ",
+    "link": "agree to the Terms of Service",
+    "suffix": "."
+  },
+  "method": {
+    "question": "How would you like to capture your current face?",
+    "cameraTitle": "Take a Photo",
+    "cameraDesc": "Use the ideal face as a guide while shooting",
+    "uploadTitle": "Upload an Image",
+    "uploadDesc": "Use an existing photo"
+  },
+  "upload": {
+    "idealLabel": "Ideal Face",
+    "currentLabel": "Current Face",
+    "idealHelp": "Please upload your ideal face photo.",
+    "currentHelp": "Choose a photo with the same angle and orientation as the ideal face.",
+    "changeIdeal": "Change ideal face",
+    "dropHere": "Drop here",
+    "dragAndDrop": "Drag & Drop",
+    "orSelectBelow": "or select with the button below",
+    "selectImage": "Select Image",
+    "remove": "Remove"
+  },
+  "camera": {
+    "close": "Close",
+    "title": "Capture Current Face",
+    "starting": "Starting camera...",
+    "notAllowed": "Camera access is not allowed. Please allow camera access in your browser settings.",
+    "notFound": "Camera not found. Please check if a camera is connected.",
+    "failed": "Failed to start camera.",
+    "capturedAlt": "Captured image",
+    "guidance": "Capture with the same angle and size as the ideal face",
+    "guideOpacity": "Guide opacity",
+    "capture": "Capture",
+    "retake": "Retake",
+    "usePhoto": "Use this photo",
+    "back": "Back"
+  },
+  "generate": {
+    "button": "Generate Simulation",
+    "generating": "Generating...",
+    "note": "* Please use a well-lit, front-facing photo"
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "shareText": "I tried a beauty simulation with Cao.\n{url}\n#Cao #BeautySimulation",
+  "customize": {
+    "title": "Share Settings",
+    "templateLabel": "Template",
+    "beforeAfter": "Before/After Comparison",
+    "single": "Result Only",
+    "captionLabel": "Caption",
+    "captionPlaceholder": "Enter a caption (max 140 characters)",
+    "captionCount": "{count}/140",
+    "privacyWarning": "Privacy Notice",
+    "privacyItem1": "Shared images will be publicly accessible",
+    "privacyItem2": "Share links have an expiration date",
+    "privacyItem3": "Be careful sharing personally identifiable information",
+    "agreeLabel": "I have read the above notices",
+    "shareButton": "Share",
+    "downloadButton": "Download Image",
+    "copyUrl": "Copy URL"
+  },
+  "sns": {
+    "twitter": "X (Twitter)",
+    "line": "LINE",
+    "instagram": "Instagram"
+  },
+  "view": {
+    "title": "Shared Simulation",
+    "expired": "This share link has expired",
+    "notFound": "Share data not found",
+    "error": "An error occurred",
+    "createdAt": "Created: {date}",
+    "trySimulation": "Try Your Own Simulation",
+    "invalidUrl": "This URL is invalid or has expired",
+    "fetchError": "Failed to load simulation",
+    "backToHome": "Back to Home",
+    "loading": "Loading...",
+    "resultAlt": "Simulation result {progress}%",
+    "pageNotFound": "Page Not Found",
+    "pageNotFoundDesc": "The shared image you are looking for does not exist or has been removed.",
+    "goToHome": "Go to Home",
+    "expiredTitle": "Share Link Expired",
+    "expiredDesc": "The sharing period for this image has ended.",
+    "tryCao": "Try Cao",
+    "shareImageAlt": "Shared image",
+    "ctaTitle": "Want to try it yourself?",
+    "ctaDescription": "AI simulates your ideal look",
+    "ctaButton": "Try for Free"
+  },
+  "section": {
+    "title": "Share",
+    "selectImage": "Select an image to share",
+    "shareButton": "Share This Image"
+  },
+  "metadata": {
+    "title": "Shared Simulation - Cao",
+    "description": "View shared AI facial simulation results",
+    "snsNotFoundTitle": "Shared Image Not Found - Cao",
+    "snsNotFoundDescription": "This image may have expired or been removed.",
+    "snsDefaultTitle": "Simulation image created with Cao",
+    "snsDefaultDescription": "View AI facial simulation results.",
+    "snsFallbackTitle": "Shared Image - Cao",
+    "snsFallbackDescription": "AI facial simulation results"
+  },
+  "status": {
+    "idle": "Share",
+    "selecting": "Select Type",
+    "generating": "Generating image...",
+    "sharing": "Sharing...",
+    "success": "Shared",
+    "error": "Share failed"
+  }
+}

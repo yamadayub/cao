@@ -1,0 +1,36 @@
+{
+  "title": "마이페이지",
+  "subtitle": "My Page",
+  "signOut": "로그아웃",
+  "newSimulation": "새 시뮬레이션 만들기",
+  "savedSimulations": "저장된 시뮬레이션",
+  "count": "({count}건)",
+  "retry": "재시도",
+  "noSimulations": "저장된 시뮬레이션이 없습니다",
+  "createSimulation": "시뮬레이션 만들기",
+  "share": "공유",
+  "delete": "삭제",
+  "loadingMore": "로딩 중...",
+  "loadMore": "더 불러오기",
+  "viewSimulation": "{date} 시뮬레이션 보기",
+  "simulationAlt": "시뮬레이션 {date}",
+  "errors": {
+    "authTokenFailed": "인증 토큰을 가져올 수 없습니다",
+    "fetchFailed": "시뮬레이션 목록을 가져오지 못했습니다",
+    "deleteFailed": "삭제에 실패했습니다",
+    "shareFailed": "공유 URL 생성에 실패했습니다"
+  },
+  "simulations": {
+    "title": "저장된 시뮬레이션",
+    "empty": "저장된 시뮬레이션이 없습니다",
+    "emptyDesc": "시뮬레이션을 생성하고 결과를 저장하세요",
+    "loadMore": "더 보기",
+    "createdAt": "생성일: {date}"
+  },
+  "actions": {
+    "newSimulation": "새 시뮬레이션",
+    "share": "공유",
+    "delete": "삭제",
+    "viewResult": "결과 보기"
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface LoginPromptModalProps {
   /** モーダル表示状態 */
@@ -26,10 +27,13 @@ export function LoginPromptModal({
   isOpen,
   onClose,
   onLogin,
-  title = '保存するにはログインが必要です',
-  description = 'シミュレーション結果を保存・共有するにはログインが必要です。',
+  title,
+  description,
   testId,
 }: LoginPromptModalProps) {
+  const t = useTranslations('modals')
+  const resolvedTitle = title ?? t('login.defaultTitle')
+  const resolvedDescription = description ?? t('login.defaultDescription')
   const modalRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const [SignInButton, setSignInButton] = useState<React.ComponentType<{
@@ -114,7 +118,7 @@ export function LoginPromptModal({
           type="button"
           onClick={onClose}
           className="absolute top-4 right-4 p-1 text-gray-400 hover:text-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full"
-          aria-label="閉じる"
+          aria-label={t('common.close')}
           data-testid={testId ? `${testId}-close` : undefined}
         >
           <svg
@@ -159,7 +163,7 @@ export function LoginPromptModal({
             className="text-xl font-bold text-gray-900 mb-2"
             data-testid={testId ? `${testId}-title` : undefined}
           >
-            {title}
+            {resolvedTitle}
           </h2>
 
           {/* 説明文 */}
@@ -167,7 +171,7 @@ export function LoginPromptModal({
             className="text-gray-600 mb-6"
             data-testid={testId ? `${testId}-description` : undefined}
           >
-            {description}
+            {resolvedDescription}
           </p>
 
           {/* ボタン群 */}
@@ -184,7 +188,7 @@ export function LoginPromptModal({
                   className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                   data-testid={testId ? `${testId}-login-button` : undefined}
                 >
-                  ログインする
+                  {t('login.loginButton')}
                 </button>
               </SignInButton>
             ) : (
@@ -194,7 +198,7 @@ export function LoginPromptModal({
                 className="w-full px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                 data-testid={testId ? `${testId}-login-button` : undefined}
               >
-                ログインする
+                {t('login.loginButton')}
               </button>
             )}
             <button
@@ -203,7 +207,7 @@ export function LoginPromptModal({
               className="w-full px-6 py-3 text-base font-medium text-gray-600 hover:text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 rounded-lg"
               data-testid={testId ? `${testId}-cancel-button` : undefined}
             >
-              今はログインしない
+              {t('login.cancelButton')}
             </button>
           </div>
         </div>

@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "login": "로그인",
+    "mypage": "마이페이지"
+  },
+  "footer": {
+    "terms": "이용약관",
+    "privacy": "개인정보처리방침",
+    "contact": "문의하기",
+    "copyright": "© {year} Cao. All rights reserved."
+  },
+  "actions": {
+    "next": "다음",
+    "back": "뒤로",
+    "change": "변경",
+    "cancel": "취소",
+    "close": "닫기",
+    "save": "저장",
+    "delete": "삭제",
+    "download": "다운로드",
+    "share": "공유",
+    "copy": "복사",
+    "copied": "복사됨",
+    "tryFree": "무료 체험",
+    "tryNow": "지금 무료로 체험",
+    "learnMore": "자세히 보기",
+    "trySimulation": "시뮬레이션 체험"
+  }
+}

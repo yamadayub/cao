@@ -1,0 +1,96 @@
+{
+  "title": "Simulation Result",
+  "subtitle": "Simulation Result",
+  "retry": "Retry",
+  "noResults": "No simulation results",
+  "currentFace": "Current face",
+  "imageAlt": "Simulation result at {progress}% intensity",
+  "mode": {
+    "morph": "Morphing",
+    "parts": "By Parts"
+  },
+  "viewMode": {
+    "morph": "Overall",
+    "parts": "Parts Application",
+    "current": "Current",
+    "ideal": "Ideal",
+    "applied": "Applied"
+  },
+  "morph": {
+    "current": "Current",
+    "ideal": "Ideal"
+  },
+  "loading": {
+    "generating": "Generating simulation image...",
+    "processing": "Processing...",
+    "loadingImage": "Loading image...",
+    "loadingSimulation": "Loading simulation..."
+  },
+  "parts": {
+    "selectParts": "Select parts to modify",
+    "selectAll": "Select All",
+    "clearAll": "Clear All",
+    "selected": "{count} selected",
+    "selectedCount": "{count} selected",
+    "apply": "Apply Parts",
+    "applying": "Applying...",
+    "currentView": "Original",
+    "appliedView": "Applied",
+    "blurMessage": "Login to view part-by-part results",
+    "appliedParts": "Applied parts:",
+    "selectAndBlend": "Select parts and run blend"
+  },
+  "actions": {
+    "save": "Save",
+    "saving": "Saving...",
+    "saved": "Saved",
+    "download": "Download",
+    "downloading": "Downloading...",
+    "share": "Create Share Link",
+    "sharing": "Creating...",
+    "snsShare": "Share on Social Media",
+    "newSimulation": "Create new simulation",
+    "createSimulation": "Create simulation",
+    "backToMypage": "Back to My Page"
+  },
+  "share": {
+    "selectType": "Select share type",
+    "beforeAfter": "Before/After Comparison",
+    "resultOnly": "Result Only"
+  },
+  "errors": {
+    "noImageData": "Image data not found. Please start over from the simulation creation screen.",
+    "generationError": "An error occurred while generating the image.",
+    "saveError": "An error occurred while saving.",
+    "shareError": "An error occurred while generating the share URL.",
+    "swapFailed": "Failed to retrieve Face Swap result",
+    "invalidImageFormat": "Invalid image data format. Please try again.",
+    "imageLoadTimeout": "Image loading timed out. Please try again.",
+    "imageLoadFailed": "Failed to load image data. Please check the image format.",
+    "authTokenFailed": "Failed to obtain authentication token",
+    "loginRequired": "Login is required to view saved simulations.",
+    "loadSimulationFailed": "Failed to load the simulation.",
+    "swapFirst": "Please run Face Swap first.",
+    "selectParts": "Please select at least one part to blend.",
+    "partsBlendError": "An error occurred during parts blending."
+  },
+  "partsBlur": {
+    "loginTitle": "Login to view part-by-part results",
+    "loginDescription": "Please log in to see detailed part-by-part simulation results.",
+    "noImage": "No image available",
+    "tapToLogin": "Tap to login",
+    "loginAriaLabel": "Login to view part-by-part simulation results"
+  },
+  "slider": {
+    "current": "Current",
+    "ideal": "Ideal",
+    "currentDegree": "Current intensity:",
+    "setTo": "Set to {percent}%",
+    "adjustDegree": "Adjust intensity"
+  },
+  "error": {
+    "loadFailed": "Failed to load results",
+    "noData": "No simulation data available",
+    "retry": "Retry"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "title": "マイページ",
+  "subtitle": "My Page",
+  "signOut": "サインアウト",
+  "newSimulation": "新規シミュレーション作成",
+  "savedSimulations": "保存済みシミュレーション",
+  "count": "({count}件)",
+  "retry": "再試行",
+  "noSimulations": "保存済みのシミュレーションはありません",
+  "createSimulation": "シミュレーションを作成する",
+  "share": "共有",
+  "delete": "削除",
+  "loadingMore": "読み込み中...",
+  "loadMore": "さらに読み込む",
+  "viewSimulation": "{date}のシミュレーションを表示",
+  "simulationAlt": "シミュレーション {date}",
+  "errors": {
+    "authTokenFailed": "認証トークンが取得できませんでした",
+    "fetchFailed": "シミュレーション一覧の取得に失敗しました",
+    "deleteFailed": "削除に失敗しました",
+    "shareFailed": "共有URLの生成に失敗しました"
+  },
+  "simulations": {
+    "title": "保存済みシミュレーション",
+    "empty": "保存されたシミュレーションはありません",
+    "emptyDesc": "シミュレーションを作成して結果を保存しましょう",
+    "loadMore": "もっと見る",
+    "createdAt": "作成日: {date}"
+  },
+  "actions": {
+    "newSimulation": "新しいシミュレーション",
+    "share": "共有",
+    "delete": "削除",
+    "viewResult": "結果を見る"
+  }
+}

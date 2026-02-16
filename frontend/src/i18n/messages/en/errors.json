@@ -1,0 +1,13 @@
+{
+  "VALIDATION_ERROR": "Please check your input",
+  "FACE_NOT_DETECTED": "No face detected. Please use a well-lit, front-facing photo",
+  "MULTIPLE_FACES": "Multiple faces detected. Please use a photo with only one person",
+  "IMAGE_TOO_LARGE": "Image size must be {maxSize}MB or less",
+  "INVALID_IMAGE_FORMAT": "Please upload a JPEG or PNG image",
+  "PROCESSING_ERROR": "An error occurred during processing. Please try again",
+  "RATE_LIMITED": "Too many requests. Please wait and try again",
+  "UNAUTHORIZED": "Login required",
+  "NOT_FOUND": "The requested data was not found",
+  "INTERNAL_ERROR": "A server error occurred. Please wait and try again",
+  "JOB_FAILED": "Generation job failed. Please try again"
+}

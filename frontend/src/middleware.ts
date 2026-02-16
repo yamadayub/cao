@@ -1,19 +1,16 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import createIntlMiddleware from 'next-intl/middleware';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { routing } from '@/i18n/routing';
 
-// 認証が必要なルート
-const isProtectedRoute = createRouteMatcher(['/mypage(.*)']);
+// next-intl middleware for locale detection and routing
+const intlMiddleware = createIntlMiddleware(routing);
 
-// 公開ルート（認証不要）
-const isPublicRoute = createRouteMatcher([
-  '/',
-  '/simulate(.*)',
-  '/s/(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/terms(.*)',
-  '/privacy(.*)',
+// Protected routes requiring authentication (with optional locale prefix)
+const isProtectedRoute = createRouteMatcher([
+  '/mypage(.*)',
+  '/:locale/mypage(.*)',
 ]);
 
 // Clerkキーが設定されているかチェック
@@ -25,10 +22,11 @@ function simpleMiddleware(req: NextRequest) {
   if (isProtectedRoute(req)) {
     return NextResponse.redirect(new URL('/sign-in', req.url));
   }
-  return NextResponse.next();
+  // Run intl middleware for locale handling
+  return intlMiddleware(req);
 }
 
-// Clerkミドルウェア
+// Clerk + intl middleware
 const authMiddleware = clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     const session = await auth();
@@ -36,6 +34,9 @@ const authMiddleware = clerkMiddleware(async (auth, req) => {
       return session.redirectToSignIn();
     }
   }
+
+  // Run intl middleware for locale handling
+  return intlMiddleware(req);
 });
 
 export default function middleware(req: NextRequest) {

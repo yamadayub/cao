@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 
 /**
  * スライダーのスナップポイント
@@ -29,6 +30,8 @@ export function ResultSlider({
   disabled = false,
   testId,
 }: ResultSliderProps) {
+  const t = useTranslations('result')
+
   /**
    * スライダーの値を最も近いスナップポイントにスナップ
    */
@@ -79,8 +82,8 @@ export function ResultSlider({
       <div className="relative pt-1">
         {/* ラベル（現在/理想） */}
         <div className="flex justify-between mb-2">
-          <span className="text-sm font-medium text-gray-600">現在</span>
-          <span className="text-sm font-medium text-gray-600">理想</span>
+          <span className="text-sm font-medium text-gray-600">{t('slider.current')}</span>
+          <span className="text-sm font-medium text-gray-600">{t('slider.ideal')}</span>
         </div>
 
         {/* スライダートラック背景 */}
@@ -118,7 +121,7 @@ export function ResultSlider({
                   }
                   focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2
                 `}
-                aria-label={`${Math.round(point * 100)}%に設定`}
+                aria-label={t('slider.setTo', { percent: Math.round(point * 100) })}
                 data-testid={testId ? `${testId}-point-${Math.round(point * 100)}` : undefined}
               />
             ))}
@@ -135,7 +138,7 @@ export function ResultSlider({
           onChange={handleChange}
           disabled={disabled}
           className="absolute inset-0 w-full h-8 opacity-0 cursor-pointer disabled:cursor-not-allowed"
-          aria-label="変化度を調整"
+          aria-label={t('slider.adjustDegree')}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(value * 100)}
@@ -162,7 +165,7 @@ export function ResultSlider({
       {/* 現在の変化度表示 */}
       <div className="mt-4 text-center">
         <p className="text-lg font-semibold text-gray-800">
-          現在の変化度:{' '}
+          {t('slider.currentDegree')}{' '}
           <span className="text-blue-600" data-testid={testId ? `${testId}-value` : undefined}>
             {percentageDisplay}
           </span>

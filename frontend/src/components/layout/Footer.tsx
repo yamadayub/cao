@@ -1,6 +1,11 @@
-import Link from 'next/link'
+'use client'
+
+import { useTranslations } from 'next-intl'
+import { Link } from '@/i18n/navigation'
 
 export function Footer() {
+  const t = useTranslations('common')
+
   return (
     <footer className="bg-neutral-50 border-t border-neutral-100">
       <div className="max-w-6xl mx-auto px-6 py-16">
@@ -19,21 +24,21 @@ export function Footer() {
               href="/terms"
               className="text-neutral-500 hover:text-primary-700 transition-colors duration-300"
             >
-              利用規約
+              {t('footer.terms')}
             </Link>
             <span className="text-neutral-300">|</span>
             <Link
               href="/privacy"
               className="text-neutral-500 hover:text-primary-700 transition-colors duration-300"
             >
-              プライバシーポリシー
+              {t('footer.privacy')}
             </Link>
             <span className="text-neutral-300">|</span>
             <a
               href="mailto:support@cao.app"
               className="text-neutral-500 hover:text-primary-700 transition-colors duration-300"
             >
-              お問い合わせ
+              {t('footer.contact')}
             </a>
           </nav>
 

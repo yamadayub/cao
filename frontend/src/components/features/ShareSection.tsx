@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface ShareImage {
   id: string
@@ -34,6 +35,7 @@ export function ShareSection({
   onLoginRequired,
   testId,
 }: ShareSectionProps) {
+  const t = useTranslations('share')
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const handleShare = useCallback(() => {
@@ -53,10 +55,10 @@ export function ShareSection({
   return (
     <div data-testid={testId} className="p-4">
       <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        シェア
+        {t('section.title')}
       </h3>
       <p className="text-sm text-gray-600 mb-4">
-        シェアする画像を選択してください
+        {t('section.selectImage')}
       </p>
 
       {/* 画像選択グリッド */}
@@ -133,7 +135,7 @@ export function ShareSection({
           }
         `}
       >
-        この画像をシェア
+        {t('section.shareButton')}
       </button>
     </div>
   )

@@ -1,0 +1,36 @@
+{
+  "title": "My Page",
+  "subtitle": "My Page",
+  "signOut": "Sign Out",
+  "newSimulation": "Create New Simulation",
+  "savedSimulations": "Saved Simulations",
+  "count": "({count})",
+  "retry": "Retry",
+  "noSimulations": "No saved simulations",
+  "createSimulation": "Create a Simulation",
+  "share": "Share",
+  "delete": "Delete",
+  "loadingMore": "Loading...",
+  "loadMore": "Load More",
+  "viewSimulation": "View simulation from {date}",
+  "simulationAlt": "Simulation {date}",
+  "errors": {
+    "authTokenFailed": "Failed to retrieve authentication token",
+    "fetchFailed": "Failed to fetch simulations",
+    "deleteFailed": "Failed to delete",
+    "shareFailed": "Failed to generate share URL"
+  },
+  "simulations": {
+    "title": "Saved Simulations",
+    "empty": "No saved simulations",
+    "emptyDesc": "Create a simulation and save the results",
+    "loadMore": "Load More",
+    "createdAt": "Created: {date}"
+  },
+  "actions": {
+    "newSimulation": "New Simulation",
+    "share": "Share",
+    "delete": "Delete",
+    "viewResult": "View Result"
+  }
+}

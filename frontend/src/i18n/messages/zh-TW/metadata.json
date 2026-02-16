@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "Cao - 用AI模擬理想的自己",
+    "description": "將您的照片與理想面孔相結合，模擬漸變變化。讓美容諮詢更具體。",
+    "ogTitle": "Cao - 用AI模擬理想的自己",
+    "ogDescription": "將您的照片與理想面孔相結合，模擬漸變變化。"
+  },
+  "simulate": {
+    "title": "建立模擬 | Cao",
+    "description": "上傳理想和目前面孔照片，建立AI模擬"
+  },
+  "result": {
+    "title": "模擬結果 | Cao",
+    "description": "查看AI產生的面部模擬結果"
+  },
+  "mypage": {
+    "title": "我的頁面 | Cao",
+    "description": "管理已儲存的模擬結果"
+  },
+  "terms": {
+    "title": "使用條款 | Cao",
+    "description": "Cao使用條款"
+  },
+  "privacy": {
+    "title": "隱私權政策 | Cao",
+    "description": "Cao隱私權政策"
+  },
+  "signIn": {
+    "title": "登入 | Cao",
+    "description": "登入Cao"
+  },
+  "signUp": {
+    "title": "建立帳戶 | Cao",
+    "description": "建立Cao帳戶"
+  },
+  "keywords": "AI,面部模擬,美容醫療,變形,面部分析"
+}

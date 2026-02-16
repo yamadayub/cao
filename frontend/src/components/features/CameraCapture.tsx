@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface CameraCaptureProps {
   /** ガイダンス表示用の理想の顔画像URL（Data URL） */
@@ -25,6 +26,7 @@ export function CameraCapture({
   onCancel,
   testId,
 }: CameraCaptureProps) {
+  const t = useTranslations('simulate')
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -68,17 +70,17 @@ export function CameraCapture({
 
       if (err instanceof Error) {
         if (err.name === 'NotAllowedError') {
-          setError('カメラへのアクセスが許可されていません。ブラウザの設定でカメラアクセスを許可してください。')
+          setError(t('camera.notAllowed'))
         } else if (err.name === 'NotFoundError') {
-          setError('カメラが見つかりません。カメラが接続されているか確認してください。')
+          setError(t('camera.notFound'))
         } else {
-          setError('カメラを起動できませんでした。')
+          setError(t('camera.failed'))
         }
       } else {
-        setError('カメラを起動できませんでした。')
+        setError(t('camera.failed'))
       }
     }
-  }, [])
+  }, [t])
 
   /**
    * カメラを停止
@@ -190,13 +192,13 @@ export function CameraCapture({
           type="button"
           onClick={onCancel}
           className="text-white p-2 hover:bg-white/10 rounded-full transition-colors"
-          aria-label="閉じる"
+          aria-label={t('camera.close')}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
-        <h2 className="text-white font-medium">現在の顔を撮影</h2>
+        <h2 className="text-white font-medium">{t('camera.title')}</h2>
         <div className="w-10" /> {/* スペーサー */}
       </div>
 
@@ -206,7 +208,7 @@ export function CameraCapture({
           <div className="absolute inset-0 flex items-center justify-center bg-black">
             <div className="text-center text-white">
               <div className="w-12 h-12 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
-              <p>カメラを起動中...</p>
+              <p>{t('camera.starting')}</p>
             </div>
           </div>
         )}
@@ -223,7 +225,7 @@ export function CameraCapture({
                 onClick={onCancel}
                 className="px-6 py-3 bg-white text-black rounded-full font-medium"
               >
-                戻る
+                {t('camera.back')}
               </button>
             </div>
           </div>
@@ -248,7 +250,7 @@ export function CameraCapture({
                 {isCaptured && capturedImageUrl && (
                   <img
                     src={capturedImageUrl}
-                    alt="撮影した画像"
+                    alt={t('camera.capturedAlt')}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
                 )}
@@ -301,7 +303,7 @@ export function CameraCapture({
             {!isCaptured && (
               <div className="absolute top-4 left-0 right-0 text-center px-4">
                 <p className="text-white text-sm bg-black/50 inline-block px-4 py-2 rounded-full">
-                  理想の顔と同じ向き・大きさで撮影してください
+                  {t('camera.guidance')}
                 </p>
               </div>
             )}
@@ -315,7 +317,7 @@ export function CameraCapture({
           {/* ガイド透明度スライダー（撮影前のみ） */}
           {!isCaptured && (
             <div className="flex items-center gap-4 px-4">
-              <span className="text-white/70 text-sm whitespace-nowrap">ガイド透明度</span>
+              <span className="text-white/70 text-sm whitespace-nowrap">{t('camera.guideOpacity')}</span>
               <input
                 type="range"
                 min="0"
@@ -339,7 +341,7 @@ export function CameraCapture({
                 type="button"
                 onClick={handleCapture}
                 className="w-20 h-20 rounded-full bg-white flex items-center justify-center hover:bg-gray-100 transition-colors focus:outline-none focus:ring-4 focus:ring-white/50"
-                aria-label="撮影"
+                aria-label={t('camera.capture')}
                 data-testid={testId ? `${testId}-capture-button` : undefined}
               >
                 <div className="w-16 h-16 rounded-full border-4 border-black/20" />
@@ -353,7 +355,7 @@ export function CameraCapture({
                   className="px-6 py-3 text-white border border-white rounded-full font-medium hover:bg-white/10 transition-colors"
                   data-testid={testId ? `${testId}-retake-button` : undefined}
                 >
-                  撮り直す
+                  {t('camera.retake')}
                 </button>
                 <button
                   type="button"
@@ -361,7 +363,7 @@ export function CameraCapture({
                   className="px-6 py-3 bg-primary-600 text-white rounded-full font-medium hover:bg-primary-700 transition-colors"
                   data-testid={testId ? `${testId}-use-button` : undefined}
                 >
-                  この写真を使う
+                  {t('camera.usePhoto')}
                 </button>
               </>
             )}

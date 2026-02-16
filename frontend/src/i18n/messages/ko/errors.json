@@ -1,0 +1,13 @@
+{
+  "VALIDATION_ERROR": "입력 내용을 확인해주세요",
+  "FACE_NOT_DETECTED": "얼굴을 감지할 수 없습니다. 밝은 곳에서 촬영한 정면 사진을 사용해주세요",
+  "MULTIPLE_FACES": "여러 얼굴이 감지되었습니다. 한 명만 있는 사진을 사용해주세요",
+  "IMAGE_TOO_LARGE": "이미지 크기는 {maxSize}MB 이하여야 합니다",
+  "INVALID_IMAGE_FORMAT": "JPEG 또는 PNG 형식의 이미지를 업로드해주세요",
+  "PROCESSING_ERROR": "처리 중 오류가 발생했습니다. 다시 시도해주세요",
+  "RATE_LIMITED": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요",
+  "UNAUTHORIZED": "로그인이 필요합니다",
+  "NOT_FOUND": "요청한 데이터를 찾을 수 없습니다",
+  "INTERNAL_ERROR": "서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요",
+  "JOB_FAILED": "생성 작업이 실패했습니다. 다시 시도해주세요"
+}

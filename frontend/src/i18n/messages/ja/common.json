@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "login": "ログイン",
+    "mypage": "マイページ"
+  },
+  "footer": {
+    "terms": "利用規約",
+    "privacy": "プライバシーポリシー",
+    "contact": "お問い合わせ",
+    "copyright": "© {year} Cao. All rights reserved."
+  },
+  "actions": {
+    "next": "次へ進む",
+    "back": "戻る",
+    "change": "変更する",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "save": "保存",
+    "delete": "削除",
+    "download": "ダウンロード",
+    "share": "共有",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "tryFree": "無料で試す",
+    "tryNow": "今すぐ無料で試す",
+    "learnMore": "詳しく見る",
+    "trySimulation": "シミュレーションを試す"
+  }
+}

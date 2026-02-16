@@ -1,0 +1,96 @@
+{
+  "title": "模拟结果",
+  "subtitle": "Simulation Result",
+  "retry": "重试",
+  "noResults": "没有模拟结果",
+  "currentFace": "当前面部",
+  "imageAlt": "变化度{progress}%的模拟结果",
+  "mode": {
+    "morph": "变形",
+    "parts": "分部位"
+  },
+  "viewMode": {
+    "morph": "整体",
+    "parts": "分部位应用",
+    "current": "当前",
+    "ideal": "理想",
+    "applied": "应用后"
+  },
+  "morph": {
+    "current": "当前",
+    "ideal": "理想"
+  },
+  "loading": {
+    "generating": "正在生成模拟图像...",
+    "processing": "处理中...",
+    "loadingImage": "正在加载图像...",
+    "loadingSimulation": "正在加载模拟..."
+  },
+  "parts": {
+    "selectParts": "选择要修改的部位",
+    "selectAll": "全选",
+    "clearAll": "清除全部",
+    "selected": "已选{count}个",
+    "selectedCount": "已选{count}个",
+    "apply": "应用部位",
+    "applying": "应用中...",
+    "currentView": "原始",
+    "appliedView": "应用后",
+    "blurMessage": "登录查看分部位结果",
+    "appliedParts": "已应用部位:",
+    "selectAndBlend": "请选择部位并执行混合"
+  },
+  "actions": {
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "已保存",
+    "download": "下载",
+    "downloading": "下载中...",
+    "share": "创建分享链接",
+    "sharing": "创建中...",
+    "snsShare": "社交媒体分享",
+    "newSimulation": "创建新模拟",
+    "createSimulation": "创建模拟",
+    "backToMypage": "返回我的页面"
+  },
+  "share": {
+    "selectType": "选择分享类型",
+    "beforeAfter": "前后对比",
+    "resultOnly": "仅结果"
+  },
+  "errors": {
+    "noImageData": "未找到图像数据。请从模拟创建页面重新开始。",
+    "generationError": "生成图像时发生错误。",
+    "saveError": "保存时发生错误。",
+    "shareError": "生成共享URL时发生错误。",
+    "swapFailed": "无法获取Face Swap结果",
+    "invalidImageFormat": "图像数据格式无效。请重试。",
+    "imageLoadTimeout": "图像加载超时。请重试。",
+    "imageLoadFailed": "图像数据加载失败。请检查图像格式。",
+    "authTokenFailed": "无法获取认证令牌",
+    "loginRequired": "查看已保存的模拟需要登录。",
+    "loadSimulationFailed": "加载模拟失败。",
+    "swapFirst": "请先执行Face Swap。",
+    "selectParts": "请至少选择一个部位进行混合。",
+    "partsBlendError": "部位混合时发生错误。"
+  },
+  "partsBlur": {
+    "loginTitle": "登录查看分部位结果",
+    "loginDescription": "请登录以查看详细的分部位模拟结果。",
+    "noImage": "没有图片",
+    "tapToLogin": "点击登录",
+    "loginAriaLabel": "登录查看分部位模拟结果"
+  },
+  "slider": {
+    "current": "当前",
+    "ideal": "理想",
+    "currentDegree": "当前变化度：",
+    "setTo": "设为{percent}%",
+    "adjustDegree": "调整变化度"
+  },
+  "error": {
+    "loadFailed": "加载结果失败",
+    "noData": "没有模拟数据",
+    "retry": "重试"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "hero": {
+    "subtitle": "AI Face Simulation",
+    "title1": "Combine your ideal face",
+    "title2": "with your current photo",
+    "title3": "Simulate changes for the whole face and individual parts",
+    "scroll": "Scroll"
+  },
+  "howItWorks": {
+    "subtitle": "How it works",
+    "title": "How to Use",
+    "step1Title": "Upload Your Ideal Face",
+    "step1Desc": "Upload a photo of the face you want to achieve. Celebrity, model, or AI-generated ideal face.",
+    "step2Title": "Upload Your Current Face",
+    "step2Desc": "Use a front-facing photo. Better accuracy with good lighting.",
+    "step3Title": "View Results",
+    "step3Desc": "Compare before/after for the whole face. Toggle individual parts (eyes, nose, mouth, eyebrows) on/off for detailed comparison."
+  },
+  "features": {
+    "subtitle": "Features",
+    "title": "Features",
+    "aiTitle": "High-Quality AI Synthesis",
+    "aiDesc": "Natural face blending powered by AI. Seamless results while preserving skin texture and lighting.",
+    "partsTitle": "Part-by-Part Simulation",
+    "partsDesc": "Toggle eyes, eyebrows, nose, and mouth individually. Instantly see \"What if I only changed the nose?\"",
+    "compareTitle": "Before/After Comparison",
+    "compareDesc": "Switch between original and transformed faces. Great reference material for consultations.",
+    "privacyTitle": "Privacy Protection",
+    "privacyDesc": "Uploaded photos are automatically deleted. No sharing with third parties for peace of mind."
+  },
+  "examples": {
+    "subtitle": "Result",
+    "title": "Simulation Example",
+    "disclaimer": "* Simulation results are for illustration purposes only"
+  },
+  "cta": {
+    "title": "Let's Get Started",
+    "desc1": "Experience the simulation for free",
+    "desc2": "Discover your ideal self"
+  }
+}

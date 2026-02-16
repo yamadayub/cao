@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { Link } from '@/i18n/navigation'
+import { useTranslations } from 'next-intl'
 
 export interface TermsAgreementModalProps {
   /** モーダル表示状態 */
@@ -26,6 +27,7 @@ export function TermsAgreementModal({
   onAgree,
   testId = 'terms-agreement-modal',
 }: TermsAgreementModalProps) {
+  const t = useTranslations('modals')
   const modalRef = useRef<HTMLDivElement>(null)
   const agreeButtonRef = useRef<HTMLButtonElement>(null)
   const [isChecked, setIsChecked] = useState(false)
@@ -109,15 +111,11 @@ export function TermsAgreementModal({
           className="text-xl font-bold text-gray-900 text-center mb-4"
           data-testid={`${testId}-title`}
         >
-          利用規約への同意
+          {t('terms.title')}
         </h2>
 
         {/* 説明文 */}
-        <p className="text-gray-600 text-center mb-6">
-          サービスをご利用いただく前に、
-          <br />
-          利用規約をご確認ください。
-        </p>
+        <p className="text-gray-600 text-center mb-6" dangerouslySetInnerHTML={{ __html: t('terms.description') }} />
 
         {/* チェックボックス */}
         <div className="mb-4">
@@ -136,9 +134,9 @@ export function TermsAgreementModal({
                 className="text-blue-600 hover:text-blue-800 underline"
                 data-testid={`${testId}-terms-link`}
               >
-                利用規約
+                {t('terms.termsLink')}
               </Link>
-              に同意する
+              {t('terms.agreeToTerms')}
             </span>
           </label>
         </div>
@@ -165,7 +163,7 @@ export function TermsAgreementModal({
                 d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
               />
             </svg>
-            利用規約を読む
+            {t('terms.readTerms')}
           </Link>
         </div>
 
@@ -187,7 +185,7 @@ export function TermsAgreementModal({
           `}
           data-testid={`${testId}-agree-button`}
         >
-          同意して続ける
+          {t('terms.agreeButton')}
         </button>
       </div>
     </div>

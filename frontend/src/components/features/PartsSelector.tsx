@@ -1,8 +1,8 @@
 'use client'
 
 import { memo } from 'react'
+import { useTranslations } from 'next-intl'
 import type { PartsSelection } from '@/lib/api/types'
-import { PARTS_DISPLAY_NAMES } from '@/lib/api/types'
 
 interface PartsSelectorProps {
   /** 現在の選択状態 */
@@ -26,6 +26,9 @@ export const PartsSelector = memo(function PartsSelector({
   disabled = false,
   testId = 'parts-selector',
 }: PartsSelectorProps) {
+  const t = useTranslations('result')
+  const tp = useTranslations('parts')
+
   const handleToggle = (part: keyof PartsSelection) => {
     onChange({
       ...selection,
@@ -57,7 +60,7 @@ export const PartsSelector = memo(function PartsSelector({
         data-testid={`${testId}-${part}`}
         aria-pressed={isSelected}
       >
-        {PARTS_DISPLAY_NAMES[part]}
+        {tp(part)}
       </button>
     )
   }
@@ -69,11 +72,11 @@ export const PartsSelector = memo(function PartsSelector({
       {/* ラベル */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-neutral-700">
-          ブレンドするパーツを選択
+          {t('parts.selectParts')}
         </h3>
         {hasAnySelection && (
           <span className="text-xs text-primary-600">
-            {Object.values(selection).filter(Boolean).length}個選択中
+            {t('parts.selectedCount', { count: Object.values(selection).filter(Boolean).length })}
           </span>
         )}
       </div>
@@ -98,7 +101,7 @@ export const PartsSelector = memo(function PartsSelector({
           className="text-xs text-primary-600 hover:text-primary-800 underline disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid={`${testId}-select-all`}
         >
-          全て選択
+          {t('parts.selectAll')}
         </button>
         <span className="text-neutral-300">|</span>
         <button
@@ -114,7 +117,7 @@ export const PartsSelector = memo(function PartsSelector({
           className="text-xs text-neutral-500 hover:text-neutral-700 underline disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid={`${testId}-clear-all`}
         >
-          全て解除
+          {t('parts.clearAll')}
         </button>
       </div>
     </div>

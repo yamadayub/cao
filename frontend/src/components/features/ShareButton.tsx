@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 import { generateShareImage, shareImage, ShareResult, ShareImageType } from '@/lib/share';
 
 interface ShareButtonProps {
@@ -35,6 +36,7 @@ export function ShareButton({
   className = '',
   testId,
 }: ShareButtonProps) {
+  const t = useTranslations('modals');
   const [state, setState] = useState<ShareState>('idle');
   const [message, setMessage] = useState('');
 
@@ -69,18 +71,18 @@ export function ShareButton({
       switch (result) {
         case 'shared':
           setState('success');
-          setMessage('シェアしました！');
+          setMessage(t('snsShare.shared'));
           break;
         case 'copied':
           setState('success');
-          setMessage('画像をコピーしました！SNSに貼り付けてシェア');
+          setMessage(t('snsShare.copied'));
           break;
         case 'cancelled':
           setState('idle');
           break;
         case 'failed':
           setState('error');
-          setMessage('シェアに失敗しました');
+          setMessage(t('snsShare.failed'));
           break;
       }
 
@@ -94,14 +96,14 @@ export function ShareButton({
     } catch (error) {
       console.error('Share error:', error);
       setState('error');
-      setMessage('画像の生成に失敗しました');
+      setMessage(t('snsShare.generateFailed'));
 
       setTimeout(() => {
         setState('idle');
         setMessage('');
       }, 3000);
     }
-  }, [beforeImage, afterImage]);
+  }, [beforeImage, afterImage, t]);
 
   const isProcessing = state === 'generating' || state === 'sharing';
 
@@ -151,7 +153,7 @@ export function ShareButton({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            {state === 'generating' ? '画像を生成中...' : 'シェア中...'}
+            {state === 'generating' ? t('snsShare.generating') : t('snsShare.sharing')}
           </>
         ) : state === 'success' ? (
           <>
@@ -202,7 +204,7 @@ export function ShareButton({
                 d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
               />
             </svg>
-            シェアする
+            {t('snsShare.shareButton')}
           </>
         )}
       </button>
@@ -218,10 +220,10 @@ export function ShareButton({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold text-gray-900 mb-2">
-              シェア画像を選択
+              {t('snsShare.selectTitle')}
             </h3>
             <p className="text-sm text-gray-500 mb-6">
-              どちらの形式でシェアしますか？
+              {t('snsShare.selectDescription')}
             </p>
 
             <div className="space-y-3">
@@ -243,10 +245,10 @@ export function ShareButton({
                   </div>
                   <div className="flex-1">
                     <div className="font-medium text-gray-900 group-hover:text-primary-700">
-                      Before/After比較
+                      {t('snsShare.beforeAfter')}
                     </div>
                     <div className="text-sm text-gray-500">
-                      変化を並べて比較できます
+                      {t('snsShare.beforeAfterDesc')}
                     </div>
                   </div>
                 </div>
@@ -266,10 +268,10 @@ export function ShareButton({
                   </div>
                   <div className="flex-1">
                     <div className="font-medium text-gray-900 group-hover:text-primary-700">
-                      結果のみ
+                      {t('snsShare.resultOnly')}
                     </div>
                     <div className="text-sm text-gray-500">
-                      シミュレーション結果だけをシェア
+                      {t('snsShare.resultOnlyDesc')}
                     </div>
                   </div>
                 </div>
@@ -282,7 +284,7 @@ export function ShareButton({
               onClick={closeDialog}
               className="w-full mt-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
             >
-              キャンセル
+              {t('common.cancel')}
             </button>
           </div>
         </div>

@@ -1,0 +1,96 @@
+{
+  "title": "シミュレーション結果",
+  "subtitle": "Simulation Result",
+  "retry": "再試行",
+  "noResults": "シミュレーション結果がありません",
+  "currentFace": "現在の顔",
+  "imageAlt": "変化度{progress}%のシミュレーション結果",
+  "mode": {
+    "morph": "モーフィング",
+    "parts": "パーツ別"
+  },
+  "viewMode": {
+    "morph": "全体",
+    "parts": "パーツ別適用",
+    "current": "現在",
+    "ideal": "理想",
+    "applied": "適用後"
+  },
+  "morph": {
+    "current": "現在",
+    "ideal": "理想"
+  },
+  "loading": {
+    "generating": "シミュレーション画像を生成中...",
+    "processing": "処理中...",
+    "loadingImage": "画像を読み込み中...",
+    "loadingSimulation": "シミュレーションを読み込み中..."
+  },
+  "parts": {
+    "selectParts": "ブレンドするパーツを選択",
+    "selectAll": "全て選択",
+    "clearAll": "全て解除",
+    "selected": "{count}個選択中",
+    "selectedCount": "{count}個選択中",
+    "apply": "パーツを適用",
+    "applying": "適用中...",
+    "currentView": "元の顔",
+    "appliedView": "適用後",
+    "blurMessage": "パーツ別の結果を見るにはログインしてください",
+    "appliedParts": "適用パーツ:",
+    "selectAndBlend": "パーツを選択してブレンドを実行してください"
+  },
+  "actions": {
+    "save": "保存",
+    "saving": "保存中...",
+    "saved": "保存済み",
+    "download": "ダウンロード",
+    "downloading": "ダウンロード中...",
+    "share": "共有リンクを作成",
+    "sharing": "作成中...",
+    "snsShare": "SNSでシェア",
+    "newSimulation": "新しいシミュレーションを作成",
+    "createSimulation": "シミュレーションを作成する",
+    "backToMypage": "マイページに戻る"
+  },
+  "share": {
+    "selectType": "シェアタイプを選択",
+    "beforeAfter": "Before/After比較",
+    "resultOnly": "結果のみ"
+  },
+  "errors": {
+    "noImageData": "画像データが見つかりません。シミュレーション作成画面からやり直してください。",
+    "generationError": "画像の生成中にエラーが発生しました。",
+    "saveError": "保存中にエラーが発生しました。",
+    "shareError": "共有URL生成中にエラーが発生しました。",
+    "swapFailed": "Face Swap結果が取得できませんでした",
+    "invalidImageFormat": "画像データの形式が不正です。もう一度お試しください。",
+    "imageLoadTimeout": "画像の読み込みがタイムアウトしました。もう一度お試しください。",
+    "imageLoadFailed": "画像データの読み込みに失敗しました。画像形式を確認してください。",
+    "authTokenFailed": "認証トークンを取得できませんでした",
+    "loginRequired": "保存済みシミュレーションを表示するにはログインが必要です。",
+    "loadSimulationFailed": "シミュレーションの読み込みに失敗しました。",
+    "swapFirst": "Face Swapを先に実行してください。",
+    "selectParts": "ブレンドするパーツを1つ以上選択してください。",
+    "partsBlendError": "パーツブレンド中にエラーが発生しました。"
+  },
+  "partsBlur": {
+    "loginTitle": "パーツ別の結果を見るにはログインが必要です",
+    "loginDescription": "パーツ別シミュレーションの詳細な結果を確認するにはログインしてください。",
+    "noImage": "画像がありません",
+    "tapToLogin": "タップしてログイン",
+    "loginAriaLabel": "ログインしてパーツ別シミュレーション結果を表示"
+  },
+  "slider": {
+    "current": "現在",
+    "ideal": "理想",
+    "currentDegree": "現在の変化度:",
+    "setTo": "{percent}%に設定",
+    "adjustDegree": "変化度を調整"
+  },
+  "error": {
+    "loadFailed": "結果の読み込みに失敗しました",
+    "noData": "シミュレーションデータがありません",
+    "retry": "再試行"
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 export interface DeleteConfirmModalProps {
   /** モーダル表示状態 */
@@ -30,6 +31,7 @@ export function DeleteConfirmModal({
   onCancel,
   testId,
 }: DeleteConfirmModalProps) {
+  const t = useTranslations('modals')
   const modalRef = useRef<HTMLDivElement>(null)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -110,14 +112,14 @@ export function DeleteConfirmModal({
           className="text-xl font-bold text-gray-900 text-center mb-2"
           data-testid={testId ? `${testId}-title` : undefined}
         >
-          シミュレーションを削除
+          {t('delete.title')}
         </h2>
 
         {/* 説明文 */}
         <p className="text-gray-600 text-center mb-6">
-          このシミュレーションを削除しますか？
+          {t('delete.description')}
           <br />
-          <span className="text-red-500 font-medium">この操作は取り消せません。</span>
+          <span className="text-red-500 font-medium">{t('delete.warning')}</span>
         </p>
 
         {/* ボタン群 */}
@@ -130,7 +132,7 @@ export function DeleteConfirmModal({
             className="flex-1 px-6 py-3 text-base font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid={testId ? `${testId}-cancel-button` : undefined}
           >
-            キャンセル
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -161,10 +163,10 @@ export function DeleteConfirmModal({
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   />
                 </svg>
-                削除中...
+                {t('delete.deleting')}
               </span>
             ) : (
-              '削除'
+              t('delete.confirm')
             )}
           </button>
         </div>

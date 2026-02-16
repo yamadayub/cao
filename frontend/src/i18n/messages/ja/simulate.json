@@ -1,0 +1,56 @@
+{
+  "title": "シミュレーション作成",
+  "subtitle": "Create Simulation",
+  "steps": {
+    "idealFace": "理想の顔",
+    "currentFace": "現在の顔",
+    "uploadIdeal": "理想の顔写真をアップロードしてください",
+    "selectMethod": "現在の顔の取得方法を選択してください",
+    "uploadCurrent": "現在の顔写真をアップロードしてください",
+    "review": "写真を確認してください"
+  },
+  "termsBanner": {
+    "text": "画像をアップロードするには、",
+    "link": "利用規約への同意",
+    "suffix": "が必要です。"
+  },
+  "method": {
+    "question": "現在の顔をどのように取得しますか？",
+    "cameraTitle": "カメラで撮影",
+    "cameraDesc": "理想の顔をガイドにして撮影できます",
+    "uploadTitle": "画像をアップロード",
+    "uploadDesc": "手持ちの写真を使用します"
+  },
+  "upload": {
+    "idealLabel": "理想の顔",
+    "currentLabel": "現在の顔",
+    "idealHelp": "理想の顔写真をアップロードしてください。",
+    "currentHelp": "理想の顔と同じ向き・角度の写真をお選びください。",
+    "changeIdeal": "理想の顔を変更する",
+    "dropHere": "ここにドロップ",
+    "dragAndDrop": "ドラッグ&ドロップ",
+    "orSelectBelow": "または下のボタンで選択",
+    "selectImage": "画像を選択",
+    "remove": "削除"
+  },
+  "camera": {
+    "close": "閉じる",
+    "title": "現在の顔を撮影",
+    "starting": "カメラを起動中...",
+    "notAllowed": "カメラへのアクセスが許可されていません。ブラウザの設定でカメラアクセスを許可してください。",
+    "notFound": "カメラが見つかりません。カメラが接続されているか確認してください。",
+    "failed": "カメラを起動できませんでした。",
+    "capturedAlt": "撮影した画像",
+    "guidance": "理想の顔と同じ向き・大きさで撮影してください",
+    "guideOpacity": "ガイド透明度",
+    "capture": "撮影",
+    "retake": "撮り直す",
+    "usePhoto": "この写真を使う",
+    "back": "戻る"
+  },
+  "generate": {
+    "button": "シミュレーションを生成",
+    "generating": "生成中...",
+    "note": "※ 顔写真は正面を向いた明るい写真をお使いください"
+  }
+}

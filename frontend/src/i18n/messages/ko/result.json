@@ -1,0 +1,96 @@
+{
+  "title": "시뮬레이션 결과",
+  "subtitle": "Simulation Result",
+  "retry": "재시도",
+  "noResults": "시뮬레이션 결과가 없습니다",
+  "currentFace": "현재 얼굴",
+  "imageAlt": "변화도 {progress}%의 시뮬레이션 결과",
+  "mode": {
+    "morph": "모핑",
+    "parts": "부위별"
+  },
+  "viewMode": {
+    "morph": "전체",
+    "parts": "부위별 적용",
+    "current": "현재",
+    "ideal": "이상",
+    "applied": "적용 후"
+  },
+  "morph": {
+    "current": "현재",
+    "ideal": "이상"
+  },
+  "loading": {
+    "generating": "시뮬레이션 이미지 생성 중...",
+    "processing": "처리 중...",
+    "loadingImage": "이미지 로딩 중...",
+    "loadingSimulation": "시뮬레이션 로딩 중..."
+  },
+  "parts": {
+    "selectParts": "변경할 부위를 선택",
+    "selectAll": "모두 선택",
+    "clearAll": "모두 해제",
+    "selected": "{count}개 선택됨",
+    "selectedCount": "{count}개 선택됨",
+    "apply": "부위 적용",
+    "applying": "적용 중...",
+    "currentView": "원본",
+    "appliedView": "적용 후",
+    "blurMessage": "부위별 결과를 보려면 로그인하세요",
+    "appliedParts": "적용 부위:",
+    "selectAndBlend": "부위를 선택하고 블렌드를 실행하세요"
+  },
+  "actions": {
+    "save": "저장",
+    "saving": "저장 중...",
+    "saved": "저장됨",
+    "download": "다운로드",
+    "downloading": "다운로드 중...",
+    "share": "공유 링크 생성",
+    "sharing": "생성 중...",
+    "snsShare": "SNS에 공유",
+    "newSimulation": "새 시뮬레이션 만들기",
+    "createSimulation": "시뮬레이션 만들기",
+    "backToMypage": "마이페이지로 돌아가기"
+  },
+  "share": {
+    "selectType": "공유 유형 선택",
+    "beforeAfter": "Before/After 비교",
+    "resultOnly": "결과만"
+  },
+  "errors": {
+    "noImageData": "이미지 데이터를 찾을 수 없습니다. 시뮬레이션 생성 화면에서 다시 시도해 주세요.",
+    "generationError": "이미지 생성 중 오류가 발생했습니다.",
+    "saveError": "저장 중 오류가 발생했습니다.",
+    "shareError": "공유 URL 생성 중 오류가 발생했습니다.",
+    "swapFailed": "Face Swap 결과를 가져올 수 없습니다",
+    "invalidImageFormat": "이미지 데이터 형식이 잘못되었습니다. 다시 시도해 주세요.",
+    "imageLoadTimeout": "이미지 로딩 시간이 초과되었습니다. 다시 시도해 주세요.",
+    "imageLoadFailed": "이미지 데이터 로딩에 실패했습니다. 이미지 형식을 확인해 주세요.",
+    "authTokenFailed": "인증 토큰을 가져올 수 없습니다",
+    "loginRequired": "저장된 시뮬레이션을 보려면 로그인이 필요합니다.",
+    "loadSimulationFailed": "시뮬레이션 로딩에 실패했습니다.",
+    "swapFirst": "먼저 Face Swap을 실행해 주세요.",
+    "selectParts": "블렌드할 부위를 1개 이상 선택해 주세요.",
+    "partsBlendError": "부위 블렌드 중 오류가 발생했습니다."
+  },
+  "partsBlur": {
+    "loginTitle": "부위별 결과를 보려면 로그인이 필요합니다",
+    "loginDescription": "부위별 시뮬레이션의 상세 결과를 확인하려면 로그인해 주세요.",
+    "noImage": "이미지가 없습니다",
+    "tapToLogin": "탭하여 로그인",
+    "loginAriaLabel": "로그인하여 부위별 시뮬레이션 결과 보기"
+  },
+  "slider": {
+    "current": "현재",
+    "ideal": "이상",
+    "currentDegree": "현재 변화도:",
+    "setTo": "{percent}%로 설정",
+    "adjustDegree": "변화도 조절"
+  },
+  "error": {
+    "loadFailed": "결과 불러오기 실패",
+    "noData": "시뮬레이션 데이터가 없습니다",
+    "retry": "재시도"
+  }
+}

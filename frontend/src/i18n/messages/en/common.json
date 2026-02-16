@@ -1,0 +1,29 @@
+{
+  "nav": {
+    "login": "Login",
+    "mypage": "My Page"
+  },
+  "footer": {
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "contact": "Contact Us",
+    "copyright": "© {year} Cao. All rights reserved."
+  },
+  "actions": {
+    "next": "Next",
+    "back": "Back",
+    "change": "Change",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "delete": "Delete",
+    "download": "Download",
+    "share": "Share",
+    "copy": "Copy",
+    "copied": "Copied",
+    "tryFree": "Try for Free",
+    "tryNow": "Try Now for Free",
+    "learnMore": "Learn More",
+    "trySimulation": "Try Simulation"
+  }
+}

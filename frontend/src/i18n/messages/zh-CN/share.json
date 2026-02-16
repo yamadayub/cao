@@ -1,0 +1,71 @@
+{
+  "shareText": "我用Cao试了美容模拟。\n{url}\n#Cao #美容模拟",
+  "customize": {
+    "title": "分享设置",
+    "templateLabel": "模板",
+    "beforeAfter": "前后对比",
+    "single": "仅结果",
+    "captionLabel": "说明文字",
+    "captionPlaceholder": "输入说明文字（最多140字）",
+    "captionCount": "{count}/140",
+    "privacyWarning": "隐私提示",
+    "privacyItem1": "分享的图片所有人可见",
+    "privacyItem2": "分享链接有有效期",
+    "privacyItem3": "请注意不要分享可识别个人身份的信息",
+    "agreeLabel": "我已阅读以上提示",
+    "shareButton": "分享",
+    "downloadButton": "下载图片",
+    "copyUrl": "复制链接"
+  },
+  "sns": {
+    "twitter": "X (Twitter)",
+    "line": "LINE",
+    "instagram": "Instagram"
+  },
+  "view": {
+    "title": "分享的模拟",
+    "expired": "此分享链接已过期",
+    "notFound": "未找到分享数据",
+    "error": "发生错误",
+    "createdAt": "创建日期：{date}",
+    "trySimulation": "您也来试试模拟",
+    "invalidUrl": "此URL无效或已过期",
+    "fetchError": "加载模拟失败",
+    "backToHome": "返回首页",
+    "loading": "加载中...",
+    "resultAlt": "模拟结果 {progress}%",
+    "pageNotFound": "页面未找到",
+    "pageNotFoundDesc": "您查找的分享图片不存在或已被删除。",
+    "goToHome": "返回首页",
+    "expiredTitle": "分享已过期",
+    "expiredDesc": "此分享图片的公开期限已结束。",
+    "tryCao": "试试Cao",
+    "shareImageAlt": "分享图片",
+    "ctaTitle": "您也想试试吗？",
+    "ctaDescription": "AI为您模拟理想容貌",
+    "ctaButton": "免费试用"
+  },
+  "section": {
+    "title": "分享",
+    "selectImage": "请选择要分享的图片",
+    "shareButton": "分享此图片"
+  },
+  "metadata": {
+    "title": "分享的模拟 - Cao",
+    "description": "查看分享的AI面部模拟结果",
+    "snsNotFoundTitle": "未找到分享图片 - Cao",
+    "snsNotFoundDescription": "此图片可能已过期或已被删除。",
+    "snsDefaultTitle": "使用Cao创建的模拟图片",
+    "snsDefaultDescription": "查看AI面部模拟结果。",
+    "snsFallbackTitle": "分享图片 - Cao",
+    "snsFallbackDescription": "AI面部模拟结果"
+  },
+  "status": {
+    "idle": "分享",
+    "selecting": "选择类型",
+    "generating": "生成图片中...",
+    "sharing": "分享中...",
+    "success": "已分享",
+    "error": "分享失败"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "home": {
+    "title": "Cao - AI로 이상적인 나를 시뮬레이션",
+    "description": "나의 얼굴 사진과 이상적인 얼굴을 결합하여 단계적 변화를 시뮬레이션. 미용 상담을 더 구체적으로.",
+    "ogTitle": "Cao - AI로 이상적인 나를 시뮬레이션",
+    "ogDescription": "나의 얼굴 사진과 이상적인 얼굴을 결합하여 단계적 변화를 시뮬레이션."
+  },
+  "simulate": {
+    "title": "시뮬레이션 생성 | Cao",
+    "description": "이상적인 얼굴과 현재 얼굴 사진을 업로드하여 AI 시뮬레이션 생성"
+  },
+  "result": {
+    "title": "시뮬레이션 결과 | Cao",
+    "description": "AI가 생성한 얼굴 시뮬레이션 결과 확인"
+  },
+  "mypage": {
+    "title": "마이페이지 | Cao",
+    "description": "저장된 시뮬레이션 결과 관리"
+  },
+  "terms": {
+    "title": "이용약관 | Cao",
+    "description": "Cao 이용약관"
+  },
+  "privacy": {
+    "title": "개인정보처리방침 | Cao",
+    "description": "Cao 개인정보처리방침"
+  },
+  "signIn": {
+    "title": "로그인 | Cao",
+    "description": "Cao에 로그인"
+  },
+  "signUp": {
+    "title": "계정 만들기 | Cao",
+    "description": "Cao 계정 만들기"
+  },
+  "keywords": "AI,얼굴 시뮬레이션,미용,모핑,얼굴 분석"
+}

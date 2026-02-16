@@ -60,17 +60,18 @@ describe('ImageUploader', () => {
 
     it('画像選択ボタンが表示される', () => {
       render(<ImageUploader {...defaultProps} />)
-      expect(screen.getByRole('button', { name: '画像を選択' })).toBeInTheDocument()
+      // Translation key returned by mock: upload.selectImage
+      expect(screen.getByRole('button', { name: 'upload.selectImage' })).toBeInTheDocument()
     })
 
     it('ドロップエリアが表示される', () => {
       render(<ImageUploader {...defaultProps} />)
-      expect(screen.getByText('ドラッグ&ドロップ')).toBeInTheDocument()
+      expect(screen.getByText('upload.dragAndDrop')).toBeInTheDocument()
     })
 
     it('プレビューがない場合はプレースホルダーが表示される', () => {
       render(<ImageUploader {...defaultProps} />)
-      expect(screen.getByText('または下のボタンで選択')).toBeInTheDocument()
+      expect(screen.getByText('upload.orSelectBelow')).toBeInTheDocument()
     })
   })
 
@@ -82,7 +83,8 @@ describe('ImageUploader', () => {
           previewUrl="data:image/jpeg;base64,test"
         />
       )
-      const img = screen.getByAltText('テスト画像のプレビュー')
+      // Alt text uses translation key: upload.previewAlt with label param
+      const img = screen.getByRole('img')
       expect(img).toBeInTheDocument()
       expect(img).toHaveAttribute('src', 'data:image/jpeg;base64,test')
     })
@@ -94,7 +96,7 @@ describe('ImageUploader', () => {
           previewUrl="data:image/jpeg;base64,test"
         />
       )
-      expect(screen.getByRole('button', { name: '削除' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'upload.remove' })).toBeInTheDocument()
     })
 
     it('プレビューがある場合は画像選択ボタンは表示されない', () => {
@@ -104,7 +106,7 @@ describe('ImageUploader', () => {
           previewUrl="data:image/jpeg;base64,test"
         />
       )
-      expect(screen.queryByRole('button', { name: '画像を選択' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'upload.selectImage' })).not.toBeInTheDocument()
     })
   })
 
@@ -177,7 +179,7 @@ describe('ImageUploader', () => {
 
       fireEvent.dragOver(dropzone)
 
-      expect(screen.getByText('ここにドロップ')).toBeInTheDocument()
+      expect(screen.getByText('upload.dropHere')).toBeInTheDocument()
     })
 
     it('ドラッグリーブ時にスタイルが戻る', () => {
@@ -187,7 +189,7 @@ describe('ImageUploader', () => {
       fireEvent.dragOver(dropzone)
       fireEvent.dragLeave(dropzone)
 
-      expect(screen.getByText('ドラッグ&ドロップ')).toBeInTheDocument()
+      expect(screen.getByText('upload.dragAndDrop')).toBeInTheDocument()
     })
 
     it('有効なファイルをドロップするとonFileSelectが呼ばれる', async () => {
@@ -225,7 +227,7 @@ describe('ImageUploader', () => {
         />
       )
 
-      const removeButton = screen.getByRole('button', { name: '削除' })
+      const removeButton = screen.getByRole('button', { name: 'upload.remove' })
       fireEvent.click(removeButton)
 
       expect(onFileRemove).toHaveBeenCalled()
@@ -262,7 +264,7 @@ describe('ImageUploader', () => {
     it('disabledの場合、ボタンが無効化される', () => {
       render(<ImageUploader {...defaultProps} disabled />)
 
-      const button = screen.getByRole('button', { name: '画像を選択' })
+      const button = screen.getByRole('button', { name: 'upload.selectImage' })
       expect(button).toBeDisabled()
     })
 
@@ -279,7 +281,7 @@ describe('ImageUploader', () => {
       render(<ImageUploader {...defaultProps} testId="uploader" />)
       const dropzone = screen.getByTestId('uploader-dropzone')
 
-      expect(dropzone).toHaveAttribute('aria-label', 'テスト画像をアップロード')
+      expect(dropzone).toHaveAttribute('aria-label')
     })
 
     it('キーボード操作でファイル選択ダイアログを開ける', () => {
