@@ -53,24 +53,40 @@ jobs:
           files: backend/coverage.xml
           fail_ci_if_error: false
 
-  deploy:
+  deploy-staging:
     needs: test
     runs-on: ubuntu-latest
-    # Only deploy if secrets are configured
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.HEROKU_ENABLED == 'true'
+    environment: staging
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Heroku CLI
-        run: curl https://cli-assets.heroku.com/install.sh | sh
-
-      - name: Deploy to Heroku
+      - name: Deploy to Heroku (Staging)
         uses: akhileshns/heroku-deploy@v3.12.14
         with:
           heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
-          heroku_app_name: ${{ secrets.HEROKU_APP_NAME }}
+          heroku_app_name: cao-api-dev
+          heroku_email: ${{ secrets.HEROKU_EMAIL }}
+          appdir: backend
+
+  deploy-production:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.HEROKU_ENABLED == 'true'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Deploy to Heroku (Production)
+        uses: akhileshns/heroku-deploy@v3.12.14
+        with:
+          heroku_api_key: ${{ secrets.HEROKU_API_KEY }}
+          heroku_app_name: cao-api-production
           heroku_email: ${{ secrets.HEROKU_EMAIL }}
           appdir: backend

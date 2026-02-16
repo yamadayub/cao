@@ -35,7 +35,7 @@ export function Footer() {
             </Link>
             <span className="text-neutral-300">|</span>
             <a
-              href="mailto:support@cao.app"
+              href="mailto:support@style-elements.jp"
               className="text-neutral-500 hover:text-primary-700 transition-colors duration-300"
             >
               {t('footer.contact')}

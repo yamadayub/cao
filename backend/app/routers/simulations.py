@@ -407,7 +407,7 @@ async def share_simulation(
             ).eq("id", simulation_id).execute()
 
         # Build share URL (use frontend URL from CORS origins)
-        frontend_url = settings.cors_origins_list[0] if settings.cors_origins_list else "https://cao.app"
+        frontend_url = settings.frontend_url
         share_url = f"{frontend_url}/s/{share_token}"
 
         return ShareResponse(

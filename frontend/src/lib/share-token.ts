@@ -41,7 +41,7 @@ export const DEFAULT_CHARSET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 /** 共有URLのベースURL */
-export const BASE_URL = 'https://cao.app'
+export const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://cao.style-elements.jp'
 
 // ============================================
 // 関数
