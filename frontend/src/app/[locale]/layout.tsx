@@ -2,7 +2,8 @@ import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { setRequestLocale, getMessages, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { Cormorant_Garamond, Noto_Sans_JP, Noto_Sans_SC, Noto_Sans_TC, Noto_Sans_KR } from 'next/font/google';
-import type { Metadata } from 'next';
+import Script from 'next/script';
+import type { Metadata, Viewport } from 'next';
 import { ConditionalClerkProvider } from '@/components/providers/ConditionalClerkProvider';
 import { routing } from '@/i18n/routing';
 import { locales, defaultLocale, type Locale } from '@/i18n/config';
@@ -60,6 +61,7 @@ const fontSansClassMap: Record<Locale, string> = {
 };
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://cao-ai.com';
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 function getAlternateLanguages(path: string = '') {
   const languages: Record<string, string> = {};
@@ -71,17 +73,26 @@ function getAlternateLanguages(path: string = '') {
   return languages;
 }
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: 'metadata' });
 
   return {
+    metadataBase: new URL(BASE_URL),
     title: {
       default: t('home.title'),
       template: '%s',
     },
     description: t('home.description'),
     keywords: t('keywords'),
+    icons: {
+      icon: '/icon.svg',
+    },
     openGraph: {
       title: t('home.ogTitle'),
       description: t('home.ogDescription'),
@@ -127,6 +138,17 @@ export default async function LocaleLayout({ children, params }: Props) {
 
   return (
     <html lang={locale} className={fontVars}>
+      {GA_ID && (
+        <head>
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+            strategy="afterInteractive"
+          />
+          <Script id="google-analytics" strategy="afterInteractive">
+            {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');`}
+          </Script>
+        </head>
+      )}
       <body
         className="font-sans antialiased"
         style={{ fontFamily: `var(${activeSansVar}), sans-serif` }}
