@@ -1379,6 +1379,47 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     )
                   )}
                 </div>
+                {/* 画像切り替え矢印ナビゲーション */}
+                <div className="flex justify-center items-center gap-3 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (viewMode === 'morph') {
+                        setMorphSubView('current')
+                        handleProgressChange(0)
+                      } else {
+                        setPartsViewMode('current')
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+                      (viewMode === 'morph' ? morphSubView === 'current' : partsViewMode === 'current')
+                        ? 'bg-primary-700 text-white shadow-sm'
+                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    {t('viewMode.current')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (viewMode === 'morph') {
+                        setMorphSubView('ideal')
+                        handleProgressChange(1.0)
+                      } else {
+                        setPartsViewMode('applied')
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 ${
+                      (viewMode === 'morph' ? morphSubView === 'ideal' : partsViewMode === 'applied')
+                        ? 'bg-primary-700 text-white shadow-sm'
+                        : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {viewMode === 'morph' ? t('viewMode.ideal') : t('viewMode.applied')}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  </button>
+                </div>
               </div>
 
               {/* タブ切り替え */}
@@ -1411,41 +1452,15 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 </div>
               </div>
 
-              {/* 全体モード — 現在 / 理想 / モーフィング */}
+              {/* アニメーション切り替え（スライダー / モーフィング） */}
               {viewMode === 'morph' && (
                 <div className="mb-8">
                   <div className="flex justify-center gap-3">
                     <button
                       type="button"
-                      onClick={() => { setMorphSubView('current'); handleProgressChange(0) }}
-                      disabled={state.isSaving || state.isSharing}
-                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
-                        morphSubView === 'current'
-                          ? 'bg-primary-700 text-white shadow-md'
-                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
-                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      data-testid="view-current"
-                    >
-                      {t('viewMode.current')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setMorphSubView('ideal'); handleProgressChange(1.0) }}
-                      disabled={state.isSaving || state.isSharing}
-                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
-                        morphSubView === 'ideal'
-                          ? 'bg-primary-700 text-white shadow-md'
-                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
-                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      data-testid="view-ideal"
-                    >
-                      {t('viewMode.ideal')}
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setMorphSubView('slider')}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
+                      className={`px-6 py-2.5 text-sm font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'slider'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
@@ -1458,7 +1473,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       type="button"
                       onClick={() => setMorphSubView('morphing')}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
+                      className={`px-6 py-2.5 text-sm font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'morphing'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
@@ -1474,36 +1489,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
               {/* パーツ別適用モード */}
               {viewMode === 'parts' && (
                 <div className="mb-8 space-y-6">
-                  {/* 現在/適用後の切り替えボタン */}
-                  <div className="flex justify-center gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setPartsViewMode('current')}
-                      disabled={partsBlendState.isLoading}
-                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
-                        partsViewMode === 'current'
-                          ? 'bg-primary-700 text-white shadow-md'
-                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
-                      } ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      data-testid="parts-view-current"
-                    >
-                      {t('viewMode.current')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPartsViewMode('applied')}
-                      disabled={partsBlendState.isLoading}
-                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
-                        partsViewMode === 'applied'
-                          ? 'bg-primary-700 text-white shadow-md'
-                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
-                      } ${partsBlendState.isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      data-testid="parts-view-applied"
-                    >
-                      {t('viewMode.applied')}
-                    </button>
-                  </div>
-
                   {/* 適用パーツ表示 */}
                   {partsBlendState.image && partsViewMode === 'applied' && (
                     <div className="text-center">
