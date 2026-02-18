@@ -65,6 +65,12 @@
     "beforeAfter": "Before/After比較",
     "beforeAfterDesc": "変化を並べて比較できます",
     "resultOnly": "結果のみ",
-    "resultOnlyDesc": "シミュレーション結果だけをシェア"
+    "resultOnlyDesc": "シミュレーション結果だけをシェア",
+    "morphVideo": "モーフィング動画",
+    "morphVideoDesc": "Before→Afterのスライダー動画（ショート動画向け）",
+    "generatingVideo": "動画を生成中...",
+    "videoReady": "動画が完成しました",
+    "saveVideo": "動画を保存",
+    "videoFailed": "動画の生成に失敗しました"
   }
 }

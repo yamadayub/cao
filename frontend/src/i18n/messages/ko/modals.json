@@ -65,6 +65,12 @@
     "beforeAfter": "Before/After 비교",
     "beforeAfterDesc": "변화를 나란히 비교할 수 있습니다",
     "resultOnly": "결과만",
-    "resultOnlyDesc": "시뮬레이션 결과만 공유"
+    "resultOnlyDesc": "시뮬레이션 결과만 공유",
+    "morphVideo": "모핑 동영상",
+    "morphVideoDesc": "Before→After 슬라이더 동영상 (숏폼용)",
+    "generatingVideo": "동영상 생성 중...",
+    "videoReady": "동영상이 완성되었습니다",
+    "saveVideo": "동영상 저장",
+    "videoFailed": "동영상 생성에 실패했습니다"
   }
 }

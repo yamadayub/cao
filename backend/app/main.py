@@ -22,6 +22,7 @@ from app.routers import (
     shared,
     simulations,
     swap,
+    video,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,7 @@ app.include_router(simulations.router, prefix="/api/v1")
 app.include_router(shared.router, prefix="/api/v1")
 app.include_router(share.router, prefix="/api/v1")
 app.include_router(swap.router, prefix="/api/v1")
+app.include_router(video.router, prefix="/api/v1")
 
 
 @app.get("/")

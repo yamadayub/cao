@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { generateShareImage, shareImage, ShareResult, ShareImageType } from '@/lib/share';
+import { generateMorphVideo } from '@/lib/api/video';
 
 interface ShareButtonProps {
   /** 変更前画像（base64） */
@@ -13,18 +14,20 @@ interface ShareButtonProps {
   isSignedIn: boolean;
   /** ログインが必要な時に呼ばれるコールバック */
   onLoginRequired: () => void;
+  /** 認証トークン取得関数（動画生成用） */
+  getToken?: () => Promise<string | null>;
   /** 追加のクラス名 */
   className?: string;
   /** テスト用ID */
   testId?: string;
 }
 
-type ShareState = 'idle' | 'selecting' | 'generating' | 'sharing' | 'success' | 'error';
+type ShareState = 'idle' | 'selecting' | 'generating' | 'sharing' | 'success' | 'error' | 'generating-video' | 'video-preview';
 
 /**
  * シェアボタン（タイプ選択ダイアログ付き）
  *
- * - シェアタイプ選択: Before/After比較 または 結果のみ
+ * - シェアタイプ選択: Before/After比較、結果のみ、モーフィング動画
  * - モバイル: Web Share APIでネイティブシェア
  * - デスクトップ: クリップボードにコピー
  */
@@ -33,12 +36,15 @@ export function ShareButton({
   afterImage,
   isSignedIn,
   onLoginRequired,
+  getToken,
   className = '',
   testId,
 }: ShareButtonProps) {
   const t = useTranslations('modals');
   const [state, setState] = useState<ShareState>('idle');
   const [message, setMessage] = useState('');
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const openShareTypeDialog = useCallback(() => {
     // 未ログインの場合はログインを要求
@@ -53,6 +59,7 @@ export function ShareButton({
   const closeDialog = useCallback(() => {
     setState('idle');
     setMessage('');
+    setVideoUrl(null);
   }, []);
 
   const handleShare = useCallback(async (shareType: ShareImageType) => {
@@ -105,7 +112,83 @@ export function ShareButton({
     }
   }, [beforeImage, afterImage, t]);
 
-  const isProcessing = state === 'generating' || state === 'sharing';
+  const handleVideoGenerate = useCallback(async () => {
+    if (!getToken) return;
+
+    setState('generating-video');
+    setMessage('');
+
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication failed');
+      }
+
+      const result = await generateMorphVideo(beforeImage, afterImage, token);
+      setVideoUrl(result.video_url);
+      setState('video-preview');
+    } catch (error) {
+      console.error('Video generation error:', error);
+      setState('error');
+      setMessage(t('snsShare.videoFailed'));
+
+      setTimeout(() => {
+        setState('idle');
+        setMessage('');
+      }, 3000);
+    }
+  }, [beforeImage, afterImage, getToken, t]);
+
+  const handleVideoDownload = useCallback(async () => {
+    if (!videoUrl) return;
+
+    // Try Web Share API with video file first (mobile)
+    if (navigator.share && videoUrl.startsWith('data:')) {
+      try {
+        const response = await fetch(videoUrl);
+        const blob = await response.blob();
+        const file = new File([blob], 'cao-morph.mp4', { type: 'video/mp4' });
+
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: 'Cao - Before/After',
+          });
+          setState('success');
+          setMessage(t('snsShare.shared'));
+          setTimeout(() => {
+            setState('idle');
+            setMessage('');
+            setVideoUrl(null);
+          }, 3000);
+          return;
+        }
+      } catch (e) {
+        // User cancelled or share failed, fall through to download
+        if ((e as Error).name === 'AbortError') {
+          return;
+        }
+      }
+    }
+
+    // Fallback: download the video
+    const link = document.createElement('a');
+    link.href = videoUrl;
+    link.download = 'cao-morph.mp4';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    setState('success');
+    setMessage(t('snsShare.videoReady'));
+    setTimeout(() => {
+      setState('idle');
+      setMessage('');
+      setVideoUrl(null);
+    }, 3000);
+  }, [videoUrl, t]);
+
+  const isProcessing = state === 'generating' || state === 'sharing' || state === 'generating-video';
 
   return (
     <>
@@ -153,7 +236,7 @@ export function ShareButton({
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            {state === 'generating' ? t('snsShare.generating') : t('snsShare.sharing')}
+            {state === 'generating-video' ? t('snsShare.generatingVideo') : state === 'generating' ? t('snsShare.generating') : t('snsShare.sharing')}
           </>
         ) : state === 'success' ? (
           <>
@@ -276,6 +359,34 @@ export function ShareButton({
                   </div>
                 </div>
               </button>
+
+              {/* モーフィング動画オプション */}
+              {getToken && (
+                <button
+                  type="button"
+                  onClick={handleVideoGenerate}
+                  data-testid="share-type-morph-video"
+                  className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
+                >
+                  <div className="flex items-center gap-4">
+                    {/* 動画アイコン */}
+                    <div className="flex-shrink-0 w-16 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 group-hover:text-primary-700">
+                        {t('snsShare.morphVideo')}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {t('snsShare.morphVideoDesc')}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* キャンセルボタン */}
@@ -283,6 +394,92 @@ export function ShareButton({
               type="button"
               onClick={closeDialog}
               className="w-full mt-4 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 動画生成中ダイアログ */}
+      {state === 'generating-video' && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center"
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center py-8">
+              <svg
+                className="animate-spin h-10 w-10 text-primary-500 mb-4"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <p className="text-gray-700 font-medium">{t('snsShare.generatingVideo')}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 動画プレビュー＆ダウンロードダイアログ */}
+      {state === 'video-preview' && videoUrl && (
+        <div
+          className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center"
+          onClick={closeDialog}
+        >
+          <div
+            className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl p-6 animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              {t('snsShare.videoReady')}
+            </h3>
+
+            {/* 動画プレビュー */}
+            <div className="relative w-full rounded-xl overflow-hidden bg-black mb-4" style={{ aspectRatio: '9/16', maxHeight: '400px' }}>
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            {/* 動画を保存ボタン */}
+            <button
+              type="button"
+              onClick={handleVideoDownload}
+              className="w-full py-3 px-4 rounded-xl font-medium text-sm bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              {t('snsShare.saveVideo')}
+            </button>
+
+            {/* キャンセルボタン */}
+            <button
+              type="button"
+              onClick={closeDialog}
+              className="w-full mt-3 py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
             >
               {t('common.cancel')}
             </button>

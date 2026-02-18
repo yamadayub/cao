@@ -532,3 +532,16 @@ export interface GetSnsShareData {
 }
 
 export type GetSnsShareResponse = SuccessResponse<GetSnsShareData>;
+
+// =============================================================================
+// Video Generation API
+// =============================================================================
+
+/**
+ * 動画生成レスポンスデータ
+ */
+export interface VideoGenerateData {
+  video_url: string;
+  duration: number;
+  format: string;
+}

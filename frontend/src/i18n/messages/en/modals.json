@@ -65,6 +65,12 @@
     "beforeAfter": "Before/After Comparison",
     "beforeAfterDesc": "Compare changes side by side",
     "resultOnly": "Result Only",
-    "resultOnlyDesc": "Share only the simulation result"
+    "resultOnlyDesc": "Share only the simulation result",
+    "morphVideo": "Morphing Video",
+    "morphVideoDesc": "Before→After slider video (for Shorts/Reels)",
+    "generatingVideo": "Generating video...",
+    "videoReady": "Video is ready",
+    "saveVideo": "Save Video",
+    "videoFailed": "Failed to generate video"
   }
 }

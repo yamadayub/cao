@@ -65,6 +65,12 @@
     "beforeAfter": "前后对比",
     "beforeAfterDesc": "并排比较变化",
     "resultOnly": "仅结果",
-    "resultOnlyDesc": "仅分享模拟结果"
+    "resultOnlyDesc": "仅分享模拟结果",
+    "morphVideo": "变形动画视频",
+    "morphVideoDesc": "Before→After滑块视频（适合短视频）",
+    "generatingVideo": "正在生成视频...",
+    "videoReady": "视频已生成",
+    "saveVideo": "保存视频",
+    "videoFailed": "视频生成失败"
   }
 }

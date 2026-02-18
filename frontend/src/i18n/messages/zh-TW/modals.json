@@ -65,6 +65,12 @@
     "beforeAfter": "前後對比",
     "beforeAfterDesc": "並排比較變化",
     "resultOnly": "僅結果",
-    "resultOnlyDesc": "僅分享模擬結果"
+    "resultOnlyDesc": "僅分享模擬結果",
+    "morphVideo": "變形動畫影片",
+    "morphVideoDesc": "Before→After滑桿影片（適合短影片）",
+    "generatingVideo": "正在產生影片...",
+    "videoReady": "影片已完成",
+    "saveVideo": "儲存影片",
+    "videoFailed": "影片產生失敗"
   }
 }
