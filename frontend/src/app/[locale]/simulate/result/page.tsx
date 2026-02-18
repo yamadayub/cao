@@ -320,11 +320,13 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
    */
   const startVideoGenerationRef = useRef<(currentImg: string, swappedImg: string) => void>()
   startVideoGenerationRef.current = async (currentImg: string, swappedImg: string) => {
+    console.log('[VideoGen] Starting video generation...')
     setMorphVideoState({ url: null, isGenerating: true, error: null })
     try {
       const token = await getToken()
+      console.log('[VideoGen] Token obtained:', !!token)
       if (!token) {
-        // 未認証: スキップ（動画生成は認証必須）
+        console.log('[VideoGen] No auth token, skipping video generation')
         setMorphVideoState({ url: null, isGenerating: false, error: null })
         return
       }
@@ -334,14 +336,31 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       const base64Swapped = swappedImg.startsWith('data:')
         ? swappedImg.split(',')[1]
         : swappedImg
+      console.log('[VideoGen] Calling API with image sizes:', base64Current.length, base64Swapped.length)
       const result = await generateMorphVideo(base64Current, base64Swapped, token)
+      console.log('[VideoGen] Video generated, URL length:', result.video_url?.length)
       setMorphVideoState({ url: result.video_url, isGenerating: false, error: null })
     } catch (error) {
-      console.error('Video generation error:', error)
+      console.error('[VideoGen] Video generation error:', error)
       const errorMessage = error instanceof Error ? error.message : t('errors.videoGenerationFailed')
       setMorphVideoState({ url: null, isGenerating: false, error: errorMessage })
     }
   }
+
+  /**
+   * モーフィングタブクリック時に動画生成をトリガー（未生成の場合）
+   */
+  const handleMorphingTabClick = useCallback(() => {
+    setMorphSubView('morphing')
+    // 動画が未生成で、生成中でもなく、エラーでもない場合 → 生成を開始
+    if (!morphVideoState.url && !morphVideoState.isGenerating && !morphVideoState.error) {
+      const { currentImage: srcImg } = sourceImages
+      if (srcImg && swappedImage) {
+        console.log('[VideoGen] Triggering video generation from morphing tab click')
+        startVideoGenerationRef.current?.(srcImg, swappedImage)
+      }
+    }
+  }, [morphVideoState.url, morphVideoState.isGenerating, morphVideoState.error, sourceImages, swappedImage])
 
   /**
    * Face Swap画像を生成（Replicate API使用）
@@ -1270,13 +1289,23 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                           data-testid="morph-video"
                         />
                       ) : morphVideoState.error ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                          <p className="text-red-500 text-sm">{morphVideoState.error}</p>
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6">
+                          <p className="text-red-500 text-sm mb-3">{morphVideoState.error}</p>
+                          <button
+                            type="button"
+                            onClick={handleMorphingTabClick}
+                            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-full hover:bg-primary-700"
+                          >
+                            {t('retry')}
+                          </button>
                         </div>
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                          <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
-                          <p>{t('loading.generatingVideo')}</p>
+                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-neutral-500">
+                          <svg className="w-12 h-12 mb-3 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <p className="text-sm">{t('loading.generatingVideo')}</p>
                         </div>
                       )
                     ) : (
@@ -1410,7 +1439,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => setMorphSubView('morphing')}
+                      onClick={handleMorphingTabClick}
                       disabled={state.isSaving || state.isSharing}
                       className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'morphing'
