@@ -4,13 +4,12 @@ Generates a slider-style Before/After morphing video (9:16, 1080x1920)
 suitable for TikTok, Instagram Reels, and YouTube Shorts.
 """
 
-import base64
 import logging
-from io import BytesIO
+import os
+import tempfile
 from typing import List
 
 import cv2
-import imageio
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -334,7 +333,10 @@ class MorphVideoGenerator:
         return frames
 
     def _encode_to_mp4(self, frames: List[np.ndarray]) -> bytes:
-        """Encode frames to MP4 bytes using imageio-ffmpeg.
+        """Encode frames to MP4 bytes using OpenCV VideoWriter.
+
+        Uses mp4v (MPEG-4 Part 2) codec which is built into OpenCV
+        and requires no external ffmpeg dependency.
 
         Args:
             frames: List of BGR OpenCV frames
@@ -342,26 +344,27 @@ class MorphVideoGenerator:
         Returns:
             MP4 file bytes
         """
-        output = BytesIO()
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+            tmp_path = tmp.name
 
-        writer = imageio.get_writer(
-            output,
-            format="mp4",
-            fps=FPS,
-            codec="libx264",
-            quality=8,
-            pixelformat="yuv420p",
-            output_params=["-movflags", "frag_keyframe+empty_moov"],
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(
+            tmp_path, fourcc, FPS, (VIDEO_WIDTH, VIDEO_HEIGHT)
         )
 
+        if not writer.isOpened():
+            raise RuntimeError("Failed to open VideoWriter with mp4v codec")
+
         for frame in frames:
-            # Convert BGR to RGB for imageio
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            writer.append_data(rgb_frame)
+            writer.write(frame)
 
-        writer.close()
+        writer.release()
 
-        return output.getvalue()
+        with open(tmp_path, "rb") as f:
+            data = f.read()
+        os.unlink(tmp_path)
+
+        return data
 
 
 def get_video_generator() -> MorphVideoGenerator:

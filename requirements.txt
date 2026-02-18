@@ -26,9 +26,6 @@ replicate>=0.20.0
 # In-memory caching with TTL
 cachetools>=5.3.0
 
-# Video generation (morphing video)
-imageio>=2.34.0
-
 # Note: BiSeNet face parsing requires the face_parsing.onnx model file.
 # Download from: https://github.com/zllrunning/face-parsing.PyTorch
 # Place in backend/models/face_parsing.onnx
