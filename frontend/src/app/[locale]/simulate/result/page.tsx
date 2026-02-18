@@ -924,7 +924,8 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         // モーフィング動画をダウンロード
         const link = document.createElement('a')
         link.href = morphVideoState.url
-        link.download = 'cao-morphing.mp4'
+        const ext = morphVideoState.url.includes('.webm') || morphVideoState.url.includes('video/webm') ? 'webm' : 'mp4'
+        link.download = `cao-morphing.${ext}`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)

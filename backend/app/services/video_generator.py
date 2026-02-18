@@ -6,8 +6,6 @@ suitable for TikTok, Instagram Reels, and YouTube Shorts.
 
 import logging
 import os
-import shutil
-import subprocess
 import tempfile
 from typing import List, Tuple
 
@@ -41,12 +39,23 @@ HOLD_AFTER = 0.5  # Hold on After
 SLIDE_BACK = 0.5  # Slide right to left (fast)
 HOLD_END = 0.5  # Final hold
 
-# Codec fallback chain: (fourcc, extension)
-CODEC_CHAIN: List[Tuple[str, str]] = [
-    ("mp4v", ".mp4"),
-    ("XVID", ".avi"),
-    ("MJPG", ".avi"),
+# Codec fallback chain: (fourcc, extension, content_type)
+# VP80 (WebM/VP8) is browser-native and included in opencv-python-headless via libvpx.
+# mp4v (MPEG-4 Part 2) is NOT browser-playable but kept as fallback.
+CODEC_CHAIN: List[Tuple[str, str, str]] = [
+    ("VP80", ".webm", "video/webm"),
+    ("mp4v", ".mp4", "video/mp4"),
+    ("MJPG", ".avi", "video/x-msvideo"),
 ]
+
+
+class VideoResult:
+    """Result of video generation with format metadata."""
+
+    def __init__(self, data: bytes, content_type: str, extension: str):
+        self.data = data
+        self.content_type = content_type
+        self.extension = extension
 
 
 def _ease_in_out(t: float) -> float:
@@ -77,7 +86,7 @@ class MorphVideoGenerator:
         """Initialize generator (no external font dependencies)."""
         pass
 
-    def generate(self, source_image: bytes, result_image: bytes) -> bytes:
+    def generate(self, source_image: bytes, result_image: bytes) -> VideoResult:
         """Generate a morphing video from Before/After images.
 
         Args:
@@ -85,7 +94,7 @@ class MorphVideoGenerator:
             result_image: After image bytes (JPEG/PNG)
 
         Returns:
-            MP4 video bytes
+            VideoResult with video bytes and format metadata
         """
         # Decode images
         before_img = self._decode_image(source_image)
@@ -102,7 +111,7 @@ class MorphVideoGenerator:
         frames = self._generate_frames(base_frame, before_face, after_face)
 
         # Encode to video
-        return self._encode_to_mp4(frames)
+        return self._encode_video(frames)
 
     def _decode_image(self, image_data: bytes) -> np.ndarray:
         """Decode image bytes to OpenCV BGR array."""
@@ -337,33 +346,35 @@ class MorphVideoGenerator:
 
         return frames
 
-    def _encode_to_mp4(self, frames: List[np.ndarray]) -> bytes:
-        """Encode frames to a browser-playable MP4 (H.264).
+    def _encode_video(self, frames: List[np.ndarray]) -> VideoResult:
+        """Encode frames to a browser-playable video.
 
-        Strategy:
-        1. Write frames with cv2.VideoWriter (mp4v codec)
-        2. Re-encode to H.264 with ffmpeg (for browser compatibility)
-        3. If ffmpeg is unavailable, return the mp4v file as-is
+        Tries codecs in order: VP8 (WebM, browser-native) → mp4v → MJPG.
 
         Args:
             frames: List of BGR OpenCV frames
 
         Returns:
-            Video file bytes (H.264 MP4 if ffmpeg available)
+            VideoResult with video bytes and format metadata
         """
-        # Step 1: Write raw video with cv2 (mp4v is most reliable)
-        raw_data = None
-        raw_path = None
-        for codec, ext in CODEC_CHAIN:
+        for codec, ext, content_type in CODEC_CHAIN:
             try:
                 path, data = self._try_encode(frames, codec, ext)
                 if data and len(data) > 1024:
                     logger.info(
-                        f"Video encoded with {codec} codec: {len(data)} bytes"
+                        f"Video encoded with {codec} codec ({ext}): "
+                        f"{len(data)} bytes"
                     )
-                    raw_data = data
-                    raw_path = path
-                    break
+                    if path:
+                        try:
+                            os.unlink(path)
+                        except OSError:
+                            pass
+                    return VideoResult(
+                        data=data,
+                        content_type=content_type,
+                        extension=ext,
+                    )
                 logger.warning(
                     f"Codec {codec} produced too-small output "
                     f"({len(data) if data else 0} bytes), trying next"
@@ -376,93 +387,10 @@ class MorphVideoGenerator:
             except Exception as e:
                 logger.warning(f"Codec {codec} failed: {e}")
 
-        if not raw_data or not raw_path:
-            raise RuntimeError(
-                "All video codecs failed: "
-                + ", ".join(c for c, _ in CODEC_CHAIN)
-            )
-
-        # Step 2: Re-encode to H.264 with ffmpeg
-        h264_data = self._reencode_with_ffmpeg(raw_path)
-        if h264_data:
-            try:
-                os.unlink(raw_path)
-            except OSError:
-                pass
-            return h264_data
-
-        # Step 3: Fallback — return raw cv2 output
-        logger.warning(
-            "ffmpeg not available, returning mp4v video "
-            "(may not play in browsers)"
+        raise RuntimeError(
+            "All video codecs failed: "
+            + ", ".join(c for c, _, _ in CODEC_CHAIN)
         )
-        try:
-            os.unlink(raw_path)
-        except OSError:
-            pass
-        return raw_data
-
-    def _reencode_with_ffmpeg(self, input_path: str) -> bytes | None:
-        """Re-encode video to H.264 MP4 using system ffmpeg.
-
-        Returns H.264 MP4 bytes, or None if ffmpeg is unavailable.
-        """
-        if not shutil.which("ffmpeg"):
-            logger.info("ffmpeg not found in PATH, skipping H.264 re-encode")
-            return None
-
-        with tempfile.NamedTemporaryFile(
-            suffix=".mp4", delete=False
-        ) as tmp:
-            output_path = tmp.name
-
-        try:
-            result = subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-i", input_path,
-                    "-c:v", "libx264",
-                    "-preset", "fast",
-                    "-crf", "23",
-                    "-pix_fmt", "yuv420p",
-                    "-movflags", "+faststart",
-                    "-an",  # no audio
-                    output_path,
-                ],
-                capture_output=True,
-                timeout=120,
-            )
-
-            if result.returncode != 0:
-                logger.warning(
-                    f"ffmpeg re-encode failed (rc={result.returncode}): "
-                    f"{result.stderr.decode('utf-8', errors='replace')[:500]}"
-                )
-                return None
-
-            with open(output_path, "rb") as f:
-                data = f.read()
-
-            if len(data) < 1024:
-                logger.warning(
-                    f"ffmpeg output too small: {len(data)} bytes"
-                )
-                return None
-
-            logger.info(f"H.264 re-encode successful: {len(data)} bytes")
-            return data
-        except subprocess.TimeoutExpired:
-            logger.warning("ffmpeg re-encode timed out")
-            return None
-        except Exception as e:
-            logger.warning(f"ffmpeg re-encode error: {e}")
-            return None
-        finally:
-            try:
-                os.unlink(output_path)
-            except OSError:
-                pass
 
     def _try_encode(
         self, frames: List[np.ndarray], codec: str, ext: str

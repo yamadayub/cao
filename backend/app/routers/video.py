@@ -21,6 +21,7 @@ from app.services.video_generator import (
     HOLD_END,
     SLIDE_BACK,
     SLIDE_FORWARD,
+    VideoResult,
     get_video_generator,
 )
 
@@ -66,6 +67,8 @@ class VideoGenerateResponse(SuccessResponse[VideoGenerateData]):
 async def _upload_video_to_supabase(
     video_bytes: bytes,
     video_id: str,
+    extension: str = ".webm",
+    content_type: str = "video/webm",
 ) -> Optional[str]:
     """Upload video to Supabase storage.
 
@@ -78,12 +81,12 @@ async def _upload_video_to_supabase(
     try:
         settings = get_settings()
         bucket_name = "videos"
-        file_path = f"{video_id}/morph.mp4"
+        file_path = f"{video_id}/morph{extension}"
 
         client.storage.from_(bucket_name).upload(
             file_path,
             video_bytes,
-            file_options={"content-type": "video/mp4"},
+            file_options={"content-type": content_type},
         )
 
         storage_base = settings.supabase_url.replace(
@@ -146,8 +149,11 @@ async def generate_morph_video(
     # Generate video
     try:
         generator = get_video_generator()
-        video_bytes = generator.generate(source_bytes, result_bytes)
-        logger.info(f"Video generated: {len(video_bytes)} bytes")
+        result = generator.generate(source_bytes, result_bytes)
+        logger.info(
+            f"Video generated: {len(result.data)} bytes, "
+            f"format={result.content_type}"
+        )
     except Exception as e:
         logger.error(f"Video generation failed: {e}")
         return JSONResponse(
@@ -162,20 +168,23 @@ async def generate_morph_video(
 
     # Try to upload to Supabase storage
     video_id = str(uuid.uuid4())
-    video_url = await _upload_video_to_supabase(video_bytes, video_id)
+    video_url = await _upload_video_to_supabase(
+        result.data, video_id, result.extension, result.content_type
+    )
 
     # Fallback to base64 data URL
     if not video_url:
-        video_b64 = base64.b64encode(video_bytes).decode("utf-8")
-        video_url = f"data:video/mp4;base64,{video_b64}"
+        video_b64 = base64.b64encode(result.data).decode("utf-8")
+        video_url = f"data:{result.content_type};base64,{video_b64}"
 
     # Calculate duration
     duration = HOLD_BEFORE + SLIDE_FORWARD + HOLD_AFTER + SLIDE_BACK + HOLD_END
+    video_format = result.extension.lstrip(".")
 
     return VideoGenerateResponse(
         data=VideoGenerateData(
             video_url=video_url,
             duration=duration,
-            format="mp4",
+            format=video_format,
         )
     )
