@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { generateShareImage, shareImage, ShareResult, ShareImageType } from '@/lib/share';
-import { generateMorphVideo } from '@/lib/api/video';
 
 interface ShareButtonProps {
   /** 変更前画像（base64） */
@@ -14,8 +13,6 @@ interface ShareButtonProps {
   isSignedIn: boolean;
   /** ログインが必要な時に呼ばれるコールバック */
   onLoginRequired: () => void;
-  /** 認証トークン取得関数（動画生成用） */
-  getToken?: () => Promise<string | null>;
   /** 追加のクラス名 */
   className?: string;
   /** テスト用ID */
@@ -25,9 +22,100 @@ interface ShareButtonProps {
 type ShareState = 'idle' | 'selecting' | 'generating' | 'sharing' | 'success' | 'error' | 'generating-video' | 'video-preview';
 
 /**
+ * 画像をロードしてHTMLImageElementを返す
+ */
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/**
+ * Ease-in-out補間（smooth step）
+ */
+function easeInOut(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Canvasにスライダーフレームを描画
+ */
+function drawSliderFrame(
+  ctx: CanvasRenderingContext2D,
+  beforeImg: HTMLImageElement,
+  afterImg: HTMLImageElement,
+  size: number,
+  pos: number,
+) {
+  const splitX = pos * size;
+
+  // After画像（背景全体）
+  ctx.drawImage(afterImg, 0, 0, size, size);
+
+  // Before画像（左側クリップ）
+  if (splitX > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, splitX, size);
+    ctx.clip();
+    ctx.drawImage(beforeImg, 0, 0, size, size);
+    ctx.restore();
+  }
+
+  // スライダーライン
+  if (pos > 0.01 && pos < 0.99) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetX = 1;
+    ctx.fillStyle = 'white';
+    ctx.fillRect(splitX - 1.5, 0, 3, size);
+    ctx.restore();
+
+    // ハンドル（中央の円）
+    const cy = size / 2;
+    ctx.beginPath();
+    ctx.arc(splitX, cy, size * 0.03, 0, Math.PI * 2);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Before/Afterラベル
+  const labelSize = Math.max(12, size * 0.028);
+  ctx.font = `600 ${labelSize}px sans-serif`;
+  if (pos > 0.15) {
+    const lx = 8;
+    const ly = 8;
+    const metrics = ctx.measureText('Before');
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(lx, ly, metrics.width + 12, labelSize + 8);
+    ctx.fillStyle = 'white';
+    ctx.fillText('Before', lx + 6, ly + labelSize + 1);
+  }
+  if (pos < 0.85) {
+    const label = 'After';
+    const metrics = ctx.measureText(label);
+    const lx = size - metrics.width - 20;
+    const ly = 8;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(lx, ly, metrics.width + 12, labelSize + 8);
+    ctx.fillStyle = 'white';
+    ctx.fillText(label, lx + 6, ly + labelSize + 1);
+  }
+}
+
+/**
  * シェアボタン（タイプ選択ダイアログ付き）
  *
  * - シェアタイプ選択: Before/After比較、結果のみ、モーフィング動画
+ * - モーフィング動画: MediaRecorder APIでブラウザ内録画（サーバー不要）
  * - モバイル: Web Share APIでネイティブシェア
  * - デスクトップ: クリップボードにコピー
  */
@@ -36,7 +124,6 @@ export function ShareButton({
   afterImage,
   isSignedIn,
   onLoginRequired,
-  getToken,
   className = '',
   testId,
 }: ShareButtonProps) {
@@ -57,10 +144,14 @@ export function ShareButton({
   }, [isSignedIn, onLoginRequired]);
 
   const closeDialog = useCallback(() => {
+    // 動画のObject URLを解放
+    if (videoUrl) {
+      URL.revokeObjectURL(videoUrl);
+    }
     setState('idle');
     setMessage('');
     setVideoUrl(null);
-  }, []);
+  }, [videoUrl]);
 
   const handleShare = useCallback(async (shareType: ShareImageType) => {
     setState('generating');
@@ -112,23 +203,87 @@ export function ShareButton({
     }
   }, [beforeImage, afterImage, t]);
 
+  /**
+   * クライアント側でモーフィング動画を生成
+   * Canvas + MediaRecorder APIを使用（サーバー不要）
+   */
   const handleVideoGenerate = useCallback(async () => {
-    if (!getToken) return;
-
     setState('generating-video');
     setMessage('');
 
     try {
-      const token = await getToken();
-      if (!token) {
-        throw new Error('Authentication failed');
-      }
+      // 画像をロード
+      const [beforeImg, afterImg] = await Promise.all([
+        loadImageElement(beforeImage),
+        loadImageElement(afterImage),
+      ]);
 
-      const result = await generateMorphVideo(beforeImage, afterImage, token);
-      setVideoUrl(result.video_url);
+      const SIZE = 540; // 動画解像度（540x540、SNS共有に十分）
+      const canvas = document.createElement('canvas');
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext('2d')!;
+
+      // MIMEタイプを選択（Safari対応）
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : MediaRecorder.isTypeSupported('video/webm')
+        ? 'video/webm'
+        : 'video/mp4';
+
+      // MediaRecorder開始
+      const stream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      const videoPromise = new Promise<Blob>((resolve) => {
+        recorder.onstop = () => {
+          const baseMime = mimeType.split(';')[0];
+          resolve(new Blob(chunks, { type: baseMime }));
+        };
+      });
+
+      recorder.start();
+
+      // リアルタイムでアニメーション描画（4秒 = 1ループ）
+      const DURATION = 4000;
+      await new Promise<void>((resolve) => {
+        const startTime = performance.now();
+
+        const draw = (timestamp: number) => {
+          const elapsed = timestamp - startTime;
+          if (elapsed >= DURATION) {
+            // 最終フレーム描画
+            drawSliderFrame(ctx, beforeImg, afterImg, SIZE, 0);
+            resolve();
+            return;
+          }
+
+          const t = elapsed / DURATION;
+          let pos: number;
+          if (t < 0.125) pos = 0;
+          else if (t < 0.625) pos = easeInOut((t - 0.125) / 0.5);
+          else if (t < 0.75) pos = 1;
+          else if (t < 0.875) pos = 1 - easeInOut((t - 0.75) / 0.125);
+          else pos = 0;
+
+          drawSliderFrame(ctx, beforeImg, afterImg, SIZE, pos);
+          requestAnimationFrame(draw);
+        };
+
+        requestAnimationFrame(draw);
+      });
+
+      recorder.stop();
+      const videoBlob = await videoPromise;
+      const url = URL.createObjectURL(videoBlob);
+      setVideoUrl(url);
       setState('video-preview');
     } catch (error) {
-      console.error('Video generation error:', error);
+      console.error('Video recording error:', error);
       setState('error');
       setMessage(t('snsShare.videoFailed'));
 
@@ -137,18 +292,20 @@ export function ShareButton({
         setMessage('');
       }, 3000);
     }
-  }, [beforeImage, afterImage, getToken, t]);
+  }, [beforeImage, afterImage, t]);
 
   const handleVideoDownload = useCallback(async () => {
     if (!videoUrl) return;
 
-    // Try Web Share API with video file first (mobile)
-    if (navigator.share && videoUrl.startsWith('data:')) {
-      try {
-        const response = await fetch(videoUrl);
-        const blob = await response.blob();
-        const file = new File([blob], 'cao-morph.mp4', { type: 'video/mp4' });
+    // Blobを取得
+    const response = await fetch(videoUrl);
+    const blob = await response.blob();
+    const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+    const file = new File([blob], `cao-morph.${ext}`, { type: blob.type });
 
+    // Web Share APIを試す（モバイル）
+    if (navigator.share) {
+      try {
         if (navigator.canShare?.({ files: [file] })) {
           await navigator.share({
             files: [file],
@@ -164,17 +321,16 @@ export function ShareButton({
           return;
         }
       } catch (e) {
-        // User cancelled or share failed, fall through to download
         if ((e as Error).name === 'AbortError') {
           return;
         }
       }
     }
 
-    // Fallback: download the video
+    // フォールバック: ダウンロード
     const link = document.createElement('a');
     link.href = videoUrl;
-    link.download = 'cao-morph.mp4';
+    link.download = `cao-morph.${ext}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -361,32 +517,30 @@ export function ShareButton({
               </button>
 
               {/* モーフィング動画オプション */}
-              {getToken && (
-                <button
-                  type="button"
-                  onClick={handleVideoGenerate}
-                  data-testid="share-type-morph-video"
-                  className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
-                >
-                  <div className="flex items-center gap-4">
-                    {/* 動画アイコン */}
-                    <div className="flex-shrink-0 w-16 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+              <button
+                type="button"
+                onClick={handleVideoGenerate}
+                data-testid="share-type-morph-video"
+                className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
+              >
+                <div className="flex items-center gap-4">
+                  {/* 動画アイコン */}
+                  <div className="flex-shrink-0 w-16 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900 group-hover:text-primary-700">
+                      {t('snsShare.morphVideo')}
                     </div>
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900 group-hover:text-primary-700">
-                        {t('snsShare.morphVideo')}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {t('snsShare.morphVideoDesc')}
-                      </div>
+                    <div className="text-sm text-gray-500">
+                      {t('snsShare.morphVideoDesc')}
                     </div>
                   </div>
-                </button>
-              )}
+                </div>
+              </button>
             </div>
 
             {/* キャンセルボタン */}
@@ -431,6 +585,7 @@ export function ShareButton({
                 />
               </svg>
               <p className="text-gray-700 font-medium">{t('snsShare.generatingVideo')}</p>
+              <p className="text-sm text-gray-400 mt-2">~4s</p>
             </div>
           </div>
         </div>
@@ -451,7 +606,7 @@ export function ShareButton({
             </h3>
 
             {/* 動画プレビュー */}
-            <div className="relative w-full rounded-xl overflow-hidden bg-black mb-4" style={{ aspectRatio: '9/16', maxHeight: '400px' }}>
+            <div className="relative w-full rounded-xl overflow-hidden bg-black mb-4" style={{ aspectRatio: '1/1', maxHeight: '400px' }}>
               <video
                 ref={videoRef}
                 src={videoUrl}

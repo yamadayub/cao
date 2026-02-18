@@ -1655,7 +1655,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     })
                     setShowLoginModal(true)
                   }}
-                  getToken={getToken}
                   testId="share-button"
                 />
 
