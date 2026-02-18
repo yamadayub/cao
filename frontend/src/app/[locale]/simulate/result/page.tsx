@@ -1287,6 +1287,14 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                           playsInline
                           className="w-full h-full object-cover"
                           data-testid="morph-video"
+                          onError={(e) => {
+                            console.error('[VideoPlayer] Playback error:', e.currentTarget.error)
+                            setMorphVideoState(prev => ({
+                              ...prev,
+                              url: null,
+                              error: t('errors.videoGenerationFailed'),
+                            }))
+                          }}
                         />
                       ) : morphVideoState.error ? (
                         <div className="w-full h-full flex flex-col items-center justify-center p-6">
