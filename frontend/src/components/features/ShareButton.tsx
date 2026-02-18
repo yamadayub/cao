@@ -53,16 +53,16 @@ function drawSliderFrame(
 ) {
   const splitX = pos * size;
 
-  // After画像（背景全体）
-  ctx.drawImage(afterImg, 0, 0, size, size);
+  // Before画像（背景全体）
+  ctx.drawImage(beforeImg, 0, 0, size, size);
 
-  // Before画像（左側クリップ）
+  // After画像（左側クリップで徐々に表示）
   if (splitX > 0) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, splitX, size);
     ctx.clip();
-    ctx.drawImage(beforeImg, 0, 0, size, size);
+    ctx.drawImage(afterImg, 0, 0, size, size);
     ctx.restore();
   }
 
@@ -248,8 +248,8 @@ export function ShareButton({
 
       recorder.start();
 
-      // リアルタイムでアニメーション描画（4秒 = 1ループ）
-      const DURATION = 4000;
+      // リアルタイムでアニメーション描画（5秒 = 1ループ）
+      const DURATION = 5000;
       await new Promise<void>((resolve) => {
         const startTime = performance.now();
 
@@ -262,12 +262,13 @@ export function ShareButton({
             return;
           }
 
+          // Timeline: Before(0.5s) → Slide(2s) → After(1.5s) → SlideBack(0.5s) → End(0.5s)
           const t = elapsed / DURATION;
           let pos: number;
-          if (t < 0.125) pos = 0;
-          else if (t < 0.625) pos = easeInOut((t - 0.125) / 0.5);
-          else if (t < 0.75) pos = 1;
-          else if (t < 0.875) pos = 1 - easeInOut((t - 0.75) / 0.125);
+          if (t < 0.10) pos = 0;
+          else if (t < 0.50) pos = easeInOut((t - 0.10) / 0.40);
+          else if (t < 0.80) pos = 1;
+          else if (t < 0.90) pos = 1 - easeInOut((t - 0.80) / 0.10);
           else pos = 0;
 
           drawSliderFrame(ctx, beforeImg, afterImg, SIZE, pos);
@@ -585,7 +586,7 @@ export function ShareButton({
                 />
               </svg>
               <p className="text-gray-700 font-medium">{t('snsShare.generatingVideo')}</p>
-              <p className="text-sm text-gray-400 mt-2">~4s</p>
+              <p className="text-sm text-gray-400 mt-2">~5s</p>
             </div>
           </div>
         </div>

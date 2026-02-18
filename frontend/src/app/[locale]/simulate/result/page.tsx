@@ -318,26 +318,26 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       return
     }
     let startTime: number | null = null
-    const TOTAL_DURATION = 4000 // 4秒ループ (ms)
+    const TOTAL_DURATION = 5000 // 5秒ループ (ms)
 
     const animate = (timestamp: number) => {
       if (!startTime) startTime = timestamp
       const elapsed = timestamp - startTime
       const t = (elapsed % TOTAL_DURATION) / TOTAL_DURATION
 
-      // Timeline: hold before → slide forward → hold after → slide back → hold end
+      // Timeline: Before(0.5s) → Slide(2s) → After(1.5s) → SlideBack(0.5s) → End(0.5s)
       let pos: number
-      if (t < 0.125) pos = 0                                    // Hold Before
-      else if (t < 0.625) {                                     // Slide forward
-        const st = (t - 0.125) / 0.5
+      if (t < 0.10) pos = 0                                     // Hold Before (0.5s)
+      else if (t < 0.50) {                                      // Slide Before→After (2s)
+        const st = (t - 0.10) / 0.40
         pos = st * st * (3 - 2 * st) // ease-in-out
       }
-      else if (t < 0.75) pos = 1                                // Hold After
-      else if (t < 0.875) {                                     // Slide back
-        const st = (t - 0.75) / 0.125
+      else if (t < 0.80) pos = 1                                // Hold After (1.5s)
+      else if (t < 0.90) {                                      // Slide back (0.5s)
+        const st = (t - 0.80) / 0.10
         pos = 1 - st * st * (3 - 2 * st) // ease-in-out
       }
-      else pos = 0                                               // Hold End
+      else pos = 0                                               // Hold End (0.5s)
 
       setMorphSliderPos(pos)
       morphAnimFrameRef.current = requestAnimationFrame(animate)
@@ -1247,21 +1247,21 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       // モーフィングスライダーアニメーション（クライアント側）
                       sourceImages.currentImage && swappedImage ? (
                         <div className="relative w-full h-full">
-                          {/* Before画像（全体表示） */}
+                          {/* Before画像（背景・全体表示） */}
                           <img
-                            src={swappedImage}
-                            alt="After"
+                            src={sourceImages.currentImage}
+                            alt="Before"
                             className="absolute inset-0 w-full h-full object-cover"
                             draggable={false}
                           />
-                          {/* Before画像（クリップで左側を表示） */}
+                          {/* After画像（前面・左からクリップで徐々に表示） */}
                           <div
                             className="absolute inset-0 overflow-hidden"
                             style={{ clipPath: `inset(0 ${(1 - morphSliderPos) * 100}% 0 0)` }}
                           >
                             <img
-                              src={sourceImages.currentImage}
-                              alt="Before"
+                              src={swappedImage}
+                              alt="After"
                               className="w-full h-full object-cover"
                               draggable={false}
                             />
