@@ -7,11 +7,10 @@ suitable for TikTok, Instagram Reels, and YouTube Shorts.
 import logging
 import os
 import tempfile
-from typing import List
+from typing import List, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
@@ -24,14 +23,14 @@ FPS = 30
 FACE_IMAGE_SIZE = 1080  # Square face image area
 FACE_IMAGE_Y = 200  # Top offset for face image area
 
-# Colors (BGR for OpenCV, RGB for PIL)
-BG_COLOR_RGB = (255, 255, 255)
+# Colors (BGR for OpenCV)
+BG_COLOR_BGR = (255, 255, 255)
 SLIDER_LINE_COLOR_BGR = (255, 255, 255)  # White slider line
 SLIDER_HANDLE_COLOR_BGR = (255, 255, 255)  # White handle
 SLIDER_SHADOW_COLOR_BGR = (180, 180, 180)  # Shadow
-TEXT_COLOR_RGB = (64, 64, 64)
-ACCENT_COLOR_RGB = (59, 130, 246)  # Blue-500
-LABEL_BG_COLOR_RGB = (0, 0, 0)
+TEXT_COLOR_BGR = (64, 64, 64)
+ACCENT_COLOR_BGR = (246, 130, 59)  # Blue-500 in BGR
+LABEL_BG_COLOR_BGR = (0, 0, 0)
 
 # Timing (seconds)
 HOLD_BEFORE = 0.5  # Hold on Before
@@ -40,31 +39,41 @@ HOLD_AFTER = 0.5  # Hold on After
 SLIDE_BACK = 0.5  # Slide right to left (fast)
 HOLD_END = 0.5  # Final hold
 
+# Codec fallback chain: (fourcc, extension)
+CODEC_CHAIN: List[Tuple[str, str]] = [
+    ("mp4v", ".mp4"),
+    ("XVID", ".avi"),
+    ("MJPG", ".avi"),
+]
+
 
 def _ease_in_out(t: float) -> float:
     """Smooth ease-in-out interpolation."""
     return t * t * (3.0 - 2.0 * t)
 
 
+def _put_centered_text(
+    frame: np.ndarray,
+    text: str,
+    center_x: int,
+    y: int,
+    font_scale: float,
+    color: Tuple[int, int, int],
+    thickness: int = 2,
+    font: int = cv2.FONT_HERSHEY_SIMPLEX,
+) -> None:
+    """Draw text centered horizontally at given position."""
+    (tw, th), _ = cv2.getTextSize(text, font, font_scale, thickness)
+    x = center_x - tw // 2
+    cv2.putText(frame, text, (x, y + th), font, font_scale, color, thickness, cv2.LINE_AA)
+
+
 class MorphVideoGenerator:
     """Generate slider-style morphing videos from Before/After images."""
 
     def __init__(self):
-        """Initialize with fonts."""
-        try:
-            self.label_font = ImageFont.truetype(
-                "/System/Library/Fonts/Hiragino Sans GB.ttc", 36
-            )
-            self.brand_font = ImageFont.truetype(
-                "/System/Library/Fonts/Hiragino Sans GB.ttc", 32
-            )
-            self.small_font = ImageFont.truetype(
-                "/System/Library/Fonts/Hiragino Sans GB.ttc", 24
-            )
-        except (OSError, IOError):
-            self.label_font = ImageFont.load_default()
-            self.brand_font = ImageFont.load_default()
-            self.small_font = ImageFont.load_default()
+        """Initialize generator (no external font dependencies)."""
+        pass
 
     def generate(self, source_image: bytes, result_image: bytes) -> bytes:
         """Generate a morphing video from Before/After images.
@@ -90,7 +99,7 @@ class MorphVideoGenerator:
         # Generate all frames
         frames = self._generate_frames(base_frame, before_face, after_face)
 
-        # Encode to MP4
+        # Encode to video
         return self._encode_to_mp4(frames)
 
     def _decode_image(self, image_data: bytes) -> np.ndarray:
@@ -119,50 +128,33 @@ class MorphVideoGenerator:
     def _create_base_frame(self) -> np.ndarray:
         """Create the base frame with background and branding elements.
 
-        Uses PIL for text rendering, then converts to OpenCV format.
+        Uses cv2.putText() with Hershey fonts (no external font dependencies).
         """
-        # Create white background with PIL
-        pil_img = Image.new("RGB", (VIDEO_WIDTH, VIDEO_HEIGHT), BG_COLOR_RGB)
-        draw = ImageDraw.Draw(pil_img)
+        frame = np.full((VIDEO_HEIGHT, VIDEO_WIDTH, 3), 255, dtype=np.uint8)
 
         # Brand text area (below face image)
         brand_y = FACE_IMAGE_Y + FACE_IMAGE_SIZE + 80
+        center_x = VIDEO_WIDTH // 2
 
         # "Before -> After" label
-        label_text = "Before  \u2192  After"
-        bbox = draw.textbbox((0, 0), label_text, font=self.label_font)
-        text_w = bbox[2] - bbox[0]
-        draw.text(
-            ((VIDEO_WIDTH - text_w) // 2, brand_y),
-            label_text,
-            fill=TEXT_COLOR_RGB,
-            font=self.label_font,
+        _put_centered_text(
+            frame, "Before  ->  After", center_x, brand_y,
+            font_scale=1.2, color=TEXT_COLOR_BGR, thickness=2,
         )
 
-        # Brand name
-        brand_name = "Cao"
-        bbox = draw.textbbox((0, 0), brand_name, font=self.brand_font)
-        brand_w = bbox[2] - bbox[0]
-        draw.text(
-            ((VIDEO_WIDTH - brand_w) // 2, brand_y + 60),
-            brand_name,
-            fill=ACCENT_COLOR_RGB,
-            font=self.brand_font,
+        # Brand name "Cao"
+        _put_centered_text(
+            frame, "Cao", center_x, brand_y + 60,
+            font_scale=1.4, color=ACCENT_COLOR_BGR, thickness=3,
         )
 
-        # URL
-        url_text = "cao-ai.com"
-        bbox = draw.textbbox((0, 0), url_text, font=self.small_font)
-        url_w = bbox[2] - bbox[0]
-        draw.text(
-            ((VIDEO_WIDTH - url_w) // 2, brand_y + 100),
-            url_text,
-            fill=(150, 150, 150),
-            font=self.small_font,
+        # URL "cao-ai.com"
+        _put_centered_text(
+            frame, "cao-ai.com", center_x, brand_y + 110,
+            font_scale=0.8, color=(150, 150, 150), thickness=2,
         )
 
-        # Convert PIL to OpenCV BGR
-        return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+        return frame
 
     def _create_slider_frame(
         self,
@@ -241,44 +233,55 @@ class MorphVideoGenerator:
             )
             cv2.fillPoly(frame, [pts_right], SLIDER_SHADOW_COLOR_BGR)
 
-        # Draw Before/After labels using PIL for proper text rendering
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil_frame = Image.fromarray(frame_rgb)
-        draw = ImageDraw.Draw(pil_frame)
-
+        # Draw Before/After labels directly with OpenCV
         # "Before" label (left side) - show when slider hasn't passed
         if split_x > 150:
             label = "Before"
-            bbox = draw.textbbox((0, 0), label, font=self.small_font)
-            lw = bbox[2] - bbox[0]
-            lh = bbox[3] - bbox[1]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.8
+            thickness = 2
+            (lw, lh), _ = cv2.getTextSize(label, font, font_scale, thickness)
             lx = max(10, split_x // 2 - lw // 2)
             ly = y + 20
-            # Semi-transparent background
-            draw.rectangle(
-                [lx - 8, ly - 4, lx + lw + 8, ly + lh + 4],
-                fill=(0, 0, 0),
+            # Background rectangle
+            cv2.rectangle(
+                frame,
+                (lx - 8, ly - 4),
+                (lx + lw + 8, ly + lh + 8),
+                (0, 0, 0),
+                -1,
             )
-            draw.text((lx, ly), label, fill=(255, 255, 255), font=self.small_font)
+            cv2.putText(
+                frame, label, (lx, ly + lh),
+                font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA,
+            )
 
         # "After" label (right side) - show when slider hasn't covered it
         if split_x < FACE_IMAGE_SIZE - 150:
             label = "After"
-            bbox = draw.textbbox((0, 0), label, font=self.small_font)
-            lw = bbox[2] - bbox[0]
-            lh = bbox[3] - bbox[1]
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.8
+            thickness = 2
+            (lw, lh), _ = cv2.getTextSize(label, font, font_scale, thickness)
             lx = min(
                 FACE_IMAGE_SIZE - lw - 10,
                 split_x + (FACE_IMAGE_SIZE - split_x) // 2 - lw // 2,
             )
             ly = y + 20
-            draw.rectangle(
-                [lx - 8, ly - 4, lx + lw + 8, ly + lh + 4],
-                fill=(0, 0, 0),
+            # Background rectangle
+            cv2.rectangle(
+                frame,
+                (lx - 8, ly - 4),
+                (lx + lw + 8, ly + lh + 8),
+                (0, 0, 0),
+                -1,
             )
-            draw.text((lx, ly), label, fill=(255, 255, 255), font=self.small_font)
+            cv2.putText(
+                frame, label, (lx, ly + lh),
+                font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA,
+            )
 
-        return cv2.cvtColor(np.array(pil_frame), cv2.COLOR_RGB2BGR)
+        return frame
 
     def _generate_frames(
         self,
@@ -333,38 +336,70 @@ class MorphVideoGenerator:
         return frames
 
     def _encode_to_mp4(self, frames: List[np.ndarray]) -> bytes:
-        """Encode frames to MP4 bytes using OpenCV VideoWriter.
+        """Encode frames to video bytes using OpenCV VideoWriter.
 
-        Uses mp4v (MPEG-4 Part 2) codec which is built into OpenCV
-        and requires no external ffmpeg dependency.
+        Tries multiple codecs in order: mp4v, XVID, MJPG.
+        Validates output file size to catch silent failures.
 
         Args:
             frames: List of BGR OpenCV frames
 
         Returns:
-            MP4 file bytes
+            Video file bytes
         """
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
-            tmp_path = tmp.name
+        for codec, ext in CODEC_CHAIN:
+            try:
+                data = self._try_encode(frames, codec, ext)
+                if data and len(data) > 1024:
+                    logger.info(
+                        f"Video encoded with {codec} codec: {len(data)} bytes"
+                    )
+                    return data
+                logger.warning(
+                    f"Codec {codec} produced too-small output "
+                    f"({len(data) if data else 0} bytes), trying next"
+                )
+            except Exception as e:
+                logger.warning(f"Codec {codec} failed: {e}")
 
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(
-            tmp_path, fourcc, FPS, (VIDEO_WIDTH, VIDEO_HEIGHT)
+        raise RuntimeError(
+            "All video codecs failed: " + ", ".join(c for c, _ in CODEC_CHAIN)
         )
 
-        if not writer.isOpened():
-            raise RuntimeError("Failed to open VideoWriter with mp4v codec")
+    def _try_encode(
+        self, frames: List[np.ndarray], codec: str, ext: str
+    ) -> bytes | None:
+        """Attempt to encode frames with a specific codec.
 
-        for frame in frames:
-            writer.write(frame)
+        Returns video bytes or None on failure.
+        """
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
 
-        writer.release()
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            writer = cv2.VideoWriter(
+                tmp_path, fourcc, FPS, (VIDEO_WIDTH, VIDEO_HEIGHT)
+            )
 
-        with open(tmp_path, "rb") as f:
-            data = f.read()
-        os.unlink(tmp_path)
+            if not writer.isOpened():
+                logger.warning(f"VideoWriter failed to open with codec {codec}")
+                return None
 
-        return data
+            for frame in frames:
+                writer.write(frame)
+
+            writer.release()
+
+            with open(tmp_path, "rb") as f:
+                data = f.read()
+
+            return data
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
 
 def get_video_generator() -> MorphVideoGenerator:

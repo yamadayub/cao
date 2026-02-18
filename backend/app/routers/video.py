@@ -15,7 +15,14 @@ from app.config import get_settings
 from app.models.schemas import ErrorCodes, ErrorDetail, ErrorResponse, SuccessResponse
 from app.services.auth import get_current_user
 from app.services.supabase_client import get_supabase_client
-from app.services.video_generator import get_video_generator
+from app.services.video_generator import (
+    HOLD_AFTER,
+    HOLD_BEFORE,
+    HOLD_END,
+    SLIDE_BACK,
+    SLIDE_FORWARD,
+    get_video_generator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +131,23 @@ async def generate_morph_video(
             ).model_dump(),
         )
 
+    # Validate decoded data
+    if not source_bytes or not result_bytes:
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    message="Empty image data after decoding",
+                )
+            ).model_dump(),
+        )
+
     # Generate video
     try:
         generator = get_video_generator()
         video_bytes = generator.generate(source_bytes, result_bytes)
+        logger.info(f"Video generated: {len(video_bytes)} bytes")
     except Exception as e:
         logger.error(f"Video generation failed: {e}")
         return JSONResponse(
@@ -159,13 +179,3 @@ async def generate_morph_video(
             format="mp4",
         )
     )
-
-
-# Import timing constants for duration calculation
-from app.services.video_generator import (
-    HOLD_AFTER,
-    HOLD_BEFORE,
-    HOLD_END,
-    SLIDE_BACK,
-    SLIDE_FORWARD,
-)

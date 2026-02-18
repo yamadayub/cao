@@ -11,6 +11,7 @@ import { PartsBlurOverlay, type LoginPromptInfo } from '@/components/features/Pa
 import { ShareButton } from '@/components/features/ShareButton'
 import { createSimulation, createShareUrl, getSimulation } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
+import { generateMorphVideo } from '@/lib/api/video'
 import { ApiError } from '@/lib/api/client'
 import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
@@ -279,6 +280,17 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     error: null,
   })
 
+  // モーフィング動画の状態
+  const [morphVideoState, setMorphVideoState] = useState<{
+    url: string | null
+    isGenerating: boolean
+    error: string | null
+  }>({
+    url: null, isGenerating: false, error: null,
+  })
+  const [morphSubView, setMorphSubView] = useState<'current' | 'ideal' | 'morphing'>('ideal')
+  const videoRef = useRef<HTMLVideoElement>(null)
+
   // Face Swapの結果画像（パーツ合成のベース）
   const [swappedImage, setSwappedImage] = useState<string | null>(null)
 
@@ -301,6 +313,33 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     const image = state.images.find((img) => img.progress === state.currentProgress)
     return image?.image || null
   }, [state.images, state.currentProgress])
+
+  /**
+   * モーフィング動画をバックグラウンドで生成
+   */
+  const startVideoGeneration = useCallback(async (currentImg: string, swappedImg: string) => {
+    setMorphVideoState({ url: null, isGenerating: true, error: null })
+    try {
+      const token = await getToken()
+      if (!token) {
+        // 未認証: スキップ（動画生成は認証必須）
+        setMorphVideoState({ url: null, isGenerating: false, error: null })
+        return
+      }
+      const base64Current = currentImg.startsWith('data:')
+        ? currentImg.split(',')[1]
+        : currentImg
+      const base64Swapped = swappedImg.startsWith('data:')
+        ? swappedImg.split(',')[1]
+        : swappedImg
+      const result = await generateMorphVideo(base64Current, base64Swapped, token)
+      setMorphVideoState({ url: result.video_url, isGenerating: false, error: null })
+    } catch (error) {
+      console.error('Video generation error:', error)
+      const errorMessage = error instanceof Error ? error.message : t('errors.videoGenerationFailed')
+      setMorphVideoState({ url: null, isGenerating: false, error: errorMessage })
+    }
+  }, [getToken, t])
 
   /**
    * Face Swap画像を生成（Replicate API使用）
@@ -460,6 +499,9 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         loadingMessage: '',
         error: null,
       }))
+
+      // バックグラウンドでモーフィング動画を生成（awaitしない）
+      startVideoGeneration(currentImage, swappedDataUrl)
     } catch (error) {
       console.error('Face Swap error:', error)
       console.error('Error type:', error?.constructor?.name)
@@ -488,7 +530,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     } finally {
       isGeneratingRef.current = false
     }
-  }, [t])
+  }, [t, startVideoGeneration])
 
   /**
    * 保存済みシミュレーションをロード
@@ -857,6 +899,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     let filename = 'cao-simulation'
 
     if (viewMode === 'morph') {
+      if (morphSubView === 'morphing' && morphVideoState.url) {
+        // モーフィング動画をダウンロード
+        const link = document.createElement('a')
+        link.href = morphVideoState.url
+        link.download = 'cao-morphing.mp4'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        return
+      }
       // モーフィングモードでは現在表示中の画像をダウンロード
       imageToDownload = currentImage
       filename = state.currentProgress === 0 ? 'cao-current' : 'cao-ideal'
@@ -880,7 +932,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-  }, [viewMode, currentImage, state.currentProgress, partsViewMode, partsBlendState.image, sourceImages.currentImage])
+  }, [viewMode, morphSubView, morphVideoState.url, currentImage, state.currentProgress, partsViewMode, partsBlendState.image, sourceImages.currentImage])
 
   /**
    * パーツ選択変更ハンドラ
@@ -1196,18 +1248,49 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
               >
                 <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
                   {viewMode === 'morph' ? (
-                    // モーフィングモードの画像表示
-                    currentImage ? (
-                      <img
-                        src={currentImage}
-                        alt={t('imageAlt', { progress: Math.round(state.currentProgress * 100) })}
-                        className="w-full h-full object-cover"
-                        data-testid="result-image"
-                      />
+                    // モーフィングモードの画像/動画表示
+                    morphSubView === 'morphing' ? (
+                      // モーフィング動画表示
+                      morphVideoState.isGenerating ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                          <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
+                          <p>{t('loading.generatingVideo')}</p>
+                        </div>
+                      ) : morphVideoState.url ? (
+                        <video
+                          ref={videoRef}
+                          src={morphVideoState.url}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                          data-testid="morph-video"
+                        />
+                      ) : morphVideoState.error ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                          <p className="text-red-500 text-sm">{morphVideoState.error}</p>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
+                          <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
+                          <p>{t('loading.generatingVideo')}</p>
+                        </div>
+                      )
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-neutral-400">
-                        {t('loading.loadingImage')}
-                      </div>
+                      // 現在/理想の画像表示
+                      currentImage ? (
+                        <img
+                          src={currentImage}
+                          alt={t('imageAlt', { progress: Math.round(state.currentProgress * 100) })}
+                          className="w-full h-full object-cover"
+                          data-testid="result-image"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {t('loading.loadingImage')}
+                        </div>
+                      )
                     )
                   ) : (
                     // パーツブレンドモードの画像表示
@@ -1293,16 +1376,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 </div>
               </div>
 
-              {/* 全体モード */}
+              {/* 全体モード — 現在 / 理想 / モーフィング */}
               {viewMode === 'morph' && (
                 <div className="mb-8">
-                  <div className="flex justify-center gap-4">
+                  <div className="flex justify-center gap-3">
                     <button
                       type="button"
-                      onClick={() => handleProgressChange(0)}
+                      onClick={() => { setMorphSubView('current'); handleProgressChange(0) }}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
-                        state.currentProgress === 0
+                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        morphSubView === 'current'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
                       } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -1312,16 +1395,29 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleProgressChange(1.0)}
+                      onClick={() => { setMorphSubView('ideal'); handleProgressChange(1.0) }}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-8 py-3 text-base font-medium rounded-full transition-all duration-200 ${
-                        state.currentProgress === 1.0
+                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        morphSubView === 'ideal'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
                       } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
                       data-testid="view-ideal"
                     >
                       {t('viewMode.ideal')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMorphSubView('morphing')}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                        morphSubView === 'morphing'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="view-morphing"
+                    >
+                      {t('viewMode.morphing')}
                     </button>
                   </div>
                 </div>

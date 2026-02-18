@@ -14,6 +14,7 @@
     "parts": "分部位应用",
     "current": "当前",
     "ideal": "理想",
+    "morphing": "变形动画",
     "applied": "应用后"
   },
   "morph": {
@@ -24,7 +25,8 @@
     "generating": "正在生成模拟图像...",
     "processing": "处理中...",
     "loadingImage": "正在加载图像...",
-    "loadingSimulation": "正在加载模拟..."
+    "loadingSimulation": "正在加载模拟...",
+    "generatingVideo": "正在生成变形动画视频..."
   },
   "parts": {
     "selectParts": "选择要修改的部位",
@@ -72,7 +74,8 @@
     "loadSimulationFailed": "加载模拟失败。",
     "swapFirst": "请先执行Face Swap。",
     "selectParts": "请至少选择一个部位进行混合。",
-    "partsBlendError": "部位混合时发生错误。"
+    "partsBlendError": "部位混合时发生错误。",
+    "videoGenerationFailed": "视频生成失败。"
   },
   "partsBlur": {
     "loginTitle": "登录查看分部位结果",

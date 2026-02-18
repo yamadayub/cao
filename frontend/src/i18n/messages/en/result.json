@@ -14,6 +14,7 @@
     "parts": "Parts Application",
     "current": "Current",
     "ideal": "Ideal",
+    "morphing": "Morphing",
     "applied": "Applied"
   },
   "morph": {
@@ -24,7 +25,8 @@
     "generating": "Generating simulation image...",
     "processing": "Processing...",
     "loadingImage": "Loading image...",
-    "loadingSimulation": "Loading simulation..."
+    "loadingSimulation": "Loading simulation...",
+    "generatingVideo": "Generating morphing video..."
   },
   "parts": {
     "selectParts": "Select parts to modify",
@@ -72,7 +74,8 @@
     "loadSimulationFailed": "Failed to load the simulation.",
     "swapFirst": "Please run Face Swap first.",
     "selectParts": "Please select at least one part to blend.",
-    "partsBlendError": "An error occurred during parts blending."
+    "partsBlendError": "An error occurred during parts blending.",
+    "videoGenerationFailed": "Failed to generate video."
   },
   "partsBlur": {
     "loginTitle": "Login to view part-by-part results",

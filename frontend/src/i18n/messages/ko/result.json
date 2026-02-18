@@ -14,6 +14,7 @@
     "parts": "부위별 적용",
     "current": "현재",
     "ideal": "이상",
+    "morphing": "모핑 영상",
     "applied": "적용 후"
   },
   "morph": {
@@ -24,7 +25,8 @@
     "generating": "시뮬레이션 이미지 생성 중...",
     "processing": "처리 중...",
     "loadingImage": "이미지 로딩 중...",
-    "loadingSimulation": "시뮬레이션 로딩 중..."
+    "loadingSimulation": "시뮬레이션 로딩 중...",
+    "generatingVideo": "모핑 영상 생성 중..."
   },
   "parts": {
     "selectParts": "변경할 부위를 선택",
@@ -72,7 +74,8 @@
     "loadSimulationFailed": "시뮬레이션 로딩에 실패했습니다.",
     "swapFirst": "먼저 Face Swap을 실행해 주세요.",
     "selectParts": "블렌드할 부위를 1개 이상 선택해 주세요.",
-    "partsBlendError": "부위 블렌드 중 오류가 발생했습니다."
+    "partsBlendError": "부위 블렌드 중 오류가 발생했습니다.",
+    "videoGenerationFailed": "영상 생성에 실패했습니다."
   },
   "partsBlur": {
     "loginTitle": "부위별 결과를 보려면 로그인이 필요합니다",
