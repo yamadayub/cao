@@ -280,7 +280,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   })
 
   // モーフィングアニメーションの状態
-  const [morphSubView, setMorphSubView] = useState<'current' | 'ideal' | 'morphing'>('ideal')
+  const [morphSubView, setMorphSubView] = useState<'current' | 'ideal' | 'slider' | 'morphing'>('ideal')
   const [morphSliderPos, setMorphSliderPos] = useState(0)
   const morphCanvasRef = useRef<HTMLCanvasElement>(null)
   const morphAnimFrameRef = useRef<number>(0)
@@ -313,7 +313,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
    * Before/After画像を使ってクライアント側でスライダーアニメーションを実行
    */
   useEffect(() => {
-    if (morphSubView !== 'morphing') {
+    if (morphSubView !== 'slider' && morphSubView !== 'morphing') {
       cancelAnimationFrame(morphAnimFrameRef.current)
       return
     }
@@ -1243,18 +1243,16 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 <div className="aspect-square max-w-md mx-auto overflow-hidden rounded-xl bg-neutral-100">
                   {viewMode === 'morph' ? (
                     // モーフィングモードの画像/動画表示
-                    morphSubView === 'morphing' ? (
-                      // モーフィングスライダーアニメーション（クライアント側）
+                    morphSubView === 'slider' ? (
+                      // スライダーアニメーション
                       sourceImages.currentImage && swappedImage ? (
                         <div className="relative w-full h-full">
-                          {/* Before画像（背景・全体表示） */}
                           <img
                             src={sourceImages.currentImage}
                             alt="Before"
                             className="absolute inset-0 w-full h-full object-cover"
                             draggable={false}
                           />
-                          {/* After画像（前面・左からクリップで徐々に表示） */}
                           <div
                             className="absolute inset-0 overflow-hidden"
                             style={{ clipPath: `inset(0 ${(1 - morphSliderPos) * 100}% 0 0)` }}
@@ -1266,7 +1264,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                               draggable={false}
                             />
                           </div>
-                          {/* スライダーライン */}
                           {morphSliderPos > 0.01 && morphSliderPos < 0.99 && (
                             <div
                               className="absolute top-0 bottom-0 w-0.5 bg-white"
@@ -1275,19 +1272,40 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                                 boxShadow: '2px 0 4px rgba(0,0,0,0.3)',
                               }}
                             >
-                              {/* スライダーハンドル */}
                               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
                                 <span className="text-neutral-400 text-xs select-none">&lt;&gt;</span>
                               </div>
                             </div>
                           )}
-                          {/* Before/After ラベル */}
                           {morphSliderPos > 0.15 && (
                             <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">Before</div>
                           )}
                           {morphSliderPos < 0.85 && (
                             <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded">After</div>
                           )}
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {t('loading.loadingImage')}
+                        </div>
+                      )
+                    ) : morphSubView === 'morphing' ? (
+                      // クロスフェードモーフィングアニメーション
+                      sourceImages.currentImage && swappedImage ? (
+                        <div className="relative w-full h-full">
+                          <img
+                            src={sourceImages.currentImage}
+                            alt="Before"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            draggable={false}
+                          />
+                          <img
+                            src={swappedImage}
+                            alt="After"
+                            className="absolute inset-0 w-full h-full object-cover transition-none"
+                            style={{ opacity: morphSliderPos }}
+                            draggable={false}
+                          />
                         </div>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-neutral-400">
@@ -1401,7 +1419,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       type="button"
                       onClick={() => { setMorphSubView('current'); handleProgressChange(0) }}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'current'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
@@ -1414,7 +1432,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                       type="button"
                       onClick={() => { setMorphSubView('ideal'); handleProgressChange(1.0) }}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'ideal'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
@@ -1425,9 +1443,22 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     </button>
                     <button
                       type="button"
+                      onClick={() => setMorphSubView('slider')}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
+                        morphSubView === 'slider'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="view-slider"
+                    >
+                      {t('viewMode.slider')}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setMorphSubView('morphing')}
                       disabled={state.isSaving || state.isSharing}
-                      className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
+                      className={`px-4 py-3 text-sm font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'morphing'
                           ? 'bg-primary-700 text-white shadow-md'
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'

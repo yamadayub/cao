@@ -112,10 +112,30 @@ function drawSliderFrame(
 }
 
 /**
+ * Canvasにクロスフェードフレームを描画
+ */
+function drawCrossfadeFrame(
+  ctx: CanvasRenderingContext2D,
+  beforeImg: HTMLImageElement,
+  afterImg: HTMLImageElement,
+  size: number,
+  pos: number,
+) {
+  // Before画像（背景全体）
+  ctx.globalAlpha = 1;
+  ctx.drawImage(beforeImg, 0, 0, size, size);
+
+  // After画像（透明度で徐々に表示）
+  ctx.globalAlpha = pos;
+  ctx.drawImage(afterImg, 0, 0, size, size);
+  ctx.globalAlpha = 1;
+}
+
+/**
  * シェアボタン（タイプ選択ダイアログ付き）
  *
- * - シェアタイプ選択: Before/After比較、結果のみ、モーフィング動画
- * - モーフィング動画: MediaRecorder APIでブラウザ内録画（サーバー不要）
+ * - シェアタイプ選択: Before/After比較、結果のみ、スライダー動画、モーフィング動画
+ * - 動画: MediaRecorder APIでブラウザ内録画（サーバー不要）
  * - モバイル: Web Share APIでネイティブシェア
  * - デスクトップ: クリップボードにコピー
  */
@@ -204,10 +224,11 @@ export function ShareButton({
   }, [beforeImage, afterImage, t]);
 
   /**
-   * クライアント側でモーフィング動画を生成
+   * クライアント側で動画を生成
    * Canvas + MediaRecorder APIを使用（サーバー不要）
+   * @param mode 'slider' | 'crossfade'
    */
-  const handleVideoGenerate = useCallback(async () => {
+  const handleVideoGenerate = useCallback(async (mode: 'slider' | 'crossfade') => {
     setState('generating-video');
     setMessage('');
 
@@ -257,7 +278,8 @@ export function ShareButton({
           const elapsed = timestamp - startTime;
           if (elapsed >= DURATION) {
             // 最終フレーム描画
-            drawSliderFrame(ctx, beforeImg, afterImg, SIZE, 0);
+            const drawFn = mode === 'slider' ? drawSliderFrame : drawCrossfadeFrame;
+            drawFn(ctx, beforeImg, afterImg, SIZE, 0);
             resolve();
             return;
           }
@@ -271,7 +293,8 @@ export function ShareButton({
           else if (t < 0.90) pos = 1 - easeInOut((t - 0.80) / 0.10);
           else pos = 0;
 
-          drawSliderFrame(ctx, beforeImg, afterImg, SIZE, pos);
+          const drawFn = mode === 'slider' ? drawSliderFrame : drawCrossfadeFrame;
+          drawFn(ctx, beforeImg, afterImg, SIZE, pos);
           requestAnimationFrame(draw);
         };
 
@@ -517,15 +540,38 @@ export function ShareButton({
                 </div>
               </button>
 
+              {/* スライダー動画オプション */}
+              <button
+                type="button"
+                onClick={() => handleVideoGenerate('slider')}
+                data-testid="share-type-slider-video"
+                className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 w-16 h-10 bg-gray-100 rounded-lg flex items-center justify-center gap-0.5">
+                    <div className="w-4 h-6 bg-gray-300 rounded-sm" />
+                    <div className="w-px h-7 bg-primary-400" />
+                    <div className="w-4 h-6 bg-primary-300 rounded-sm" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-900 group-hover:text-primary-700">
+                      {t('snsShare.sliderVideo')}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {t('snsShare.sliderVideoDesc')}
+                    </div>
+                  </div>
+                </div>
+              </button>
+
               {/* モーフィング動画オプション */}
               <button
                 type="button"
-                onClick={handleVideoGenerate}
+                onClick={() => handleVideoGenerate('crossfade')}
                 data-testid="share-type-morph-video"
                 className="w-full p-4 rounded-xl border-2 border-gray-200 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
               >
                 <div className="flex items-center gap-4">
-                  {/* 動画アイコン */}
                   <div className="flex-shrink-0 w-16 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
                     <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
