@@ -11,7 +11,6 @@ import { PartsBlurOverlay, type LoginPromptInfo } from '@/components/features/Pa
 import { ShareButton } from '@/components/features/ShareButton'
 import { createSimulation, createShareUrl, getSimulation } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
-import { generateMorphVideo } from '@/lib/api/video'
 import { ApiError } from '@/lib/api/client'
 import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
@@ -280,16 +279,11 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     error: null,
   })
 
-  // モーフィング動画の状態
-  const [morphVideoState, setMorphVideoState] = useState<{
-    url: string | null
-    isGenerating: boolean
-    error: string | null
-  }>({
-    url: null, isGenerating: false, error: null,
-  })
+  // モーフィングアニメーションの状態
   const [morphSubView, setMorphSubView] = useState<'current' | 'ideal' | 'morphing'>('ideal')
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [morphSliderPos, setMorphSliderPos] = useState(0)
+  const morphCanvasRef = useRef<HTMLCanvasElement>(null)
+  const morphAnimFrameRef = useRef<number>(0)
 
   // Face Swapの結果画像（パーツ合成のベース）
   const [swappedImage, setSwappedImage] = useState<string | null>(null)
@@ -315,52 +309,43 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   }, [state.images, state.currentProgress])
 
   /**
-   * モーフィング動画をバックグラウンドで生成
-   * refを使ってgenerateMorphImagesの依存配列から外す（getToken変化による再実行防止）
+   * モーフィングスライダーアニメーション
+   * Before/After画像を使ってクライアント側でスライダーアニメーションを実行
    */
-  const startVideoGenerationRef = useRef<(currentImg: string, swappedImg: string) => void>()
-  startVideoGenerationRef.current = async (currentImg: string, swappedImg: string) => {
-    console.log('[VideoGen] Starting video generation...')
-    setMorphVideoState({ url: null, isGenerating: true, error: null })
-    try {
-      const token = await getToken()
-      console.log('[VideoGen] Token obtained:', !!token)
-      if (!token) {
-        console.log('[VideoGen] No auth token, skipping video generation')
-        setMorphVideoState({ url: null, isGenerating: false, error: null })
-        return
-      }
-      const base64Current = currentImg.startsWith('data:')
-        ? currentImg.split(',')[1]
-        : currentImg
-      const base64Swapped = swappedImg.startsWith('data:')
-        ? swappedImg.split(',')[1]
-        : swappedImg
-      console.log('[VideoGen] Calling API with image sizes:', base64Current.length, base64Swapped.length)
-      const result = await generateMorphVideo(base64Current, base64Swapped, token)
-      console.log('[VideoGen] Video generated, URL length:', result.video_url?.length)
-      setMorphVideoState({ url: result.video_url, isGenerating: false, error: null })
-    } catch (error) {
-      console.error('[VideoGen] Video generation error:', error)
-      const errorMessage = error instanceof Error ? error.message : t('errors.videoGenerationFailed')
-      setMorphVideoState({ url: null, isGenerating: false, error: errorMessage })
+  useEffect(() => {
+    if (morphSubView !== 'morphing') {
+      cancelAnimationFrame(morphAnimFrameRef.current)
+      return
     }
-  }
+    let startTime: number | null = null
+    const TOTAL_DURATION = 4000 // 4秒ループ (ms)
 
-  /**
-   * モーフィングタブクリック時に動画生成をトリガー（未生成の場合）
-   */
-  const handleMorphingTabClick = useCallback(() => {
-    setMorphSubView('morphing')
-    // 動画が未生成で、生成中でもなく、エラーでもない場合 → 生成を開始
-    if (!morphVideoState.url && !morphVideoState.isGenerating && !morphVideoState.error) {
-      const { currentImage: srcImg } = sourceImages
-      if (srcImg && swappedImage) {
-        console.log('[VideoGen] Triggering video generation from morphing tab click')
-        startVideoGenerationRef.current?.(srcImg, swappedImage)
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp
+      const elapsed = timestamp - startTime
+      const t = (elapsed % TOTAL_DURATION) / TOTAL_DURATION
+
+      // Timeline: hold before → slide forward → hold after → slide back → hold end
+      let pos: number
+      if (t < 0.125) pos = 0                                    // Hold Before
+      else if (t < 0.625) {                                     // Slide forward
+        const st = (t - 0.125) / 0.5
+        pos = st * st * (3 - 2 * st) // ease-in-out
       }
+      else if (t < 0.75) pos = 1                                // Hold After
+      else if (t < 0.875) {                                     // Slide back
+        const st = (t - 0.75) / 0.125
+        pos = 1 - st * st * (3 - 2 * st) // ease-in-out
+      }
+      else pos = 0                                               // Hold End
+
+      setMorphSliderPos(pos)
+      morphAnimFrameRef.current = requestAnimationFrame(animate)
     }
-  }, [morphVideoState.url, morphVideoState.isGenerating, morphVideoState.error, sourceImages, swappedImage])
+
+    morphAnimFrameRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(morphAnimFrameRef.current)
+  }, [morphSubView])
 
   /**
    * Face Swap画像を生成（Replicate API使用）
@@ -521,8 +506,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
         error: null,
       }))
 
-      // バックグラウンドでモーフィング動画を生成（awaitしない）
-      startVideoGenerationRef.current?.(currentImage, swappedDataUrl)
     } catch (error) {
       console.error('Face Swap error:', error)
       console.error('Error type:', error?.constructor?.name)
@@ -920,17 +903,6 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     let filename = 'cao-simulation'
 
     if (viewMode === 'morph') {
-      if (morphSubView === 'morphing' && morphVideoState.url) {
-        // モーフィング動画をダウンロード
-        const link = document.createElement('a')
-        link.href = morphVideoState.url
-        const ext = morphVideoState.url.includes('.webm') || morphVideoState.url.includes('video/webm') ? 'webm' : 'mp4'
-        link.download = `cao-morphing.${ext}`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        return
-      }
       // モーフィングモードでは現在表示中の画像をダウンロード
       imageToDownload = currentImage
       filename = state.currentProgress === 0 ? 'cao-current' : 'cao-ideal'
@@ -954,7 +926,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-  }, [viewMode, morphSubView, morphVideoState.url, currentImage, state.currentProgress, partsViewMode, partsBlendState.image, sourceImages.currentImage])
+  }, [viewMode, currentImage, state.currentProgress, partsViewMode, partsBlendState.image, sourceImages.currentImage])
 
   /**
    * パーツ選択変更ハンドラ
@@ -1272,49 +1244,54 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                   {viewMode === 'morph' ? (
                     // モーフィングモードの画像/動画表示
                     morphSubView === 'morphing' ? (
-                      // モーフィング動画表示
-                      morphVideoState.isGenerating ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400">
-                          <div className="w-10 h-10 border-2 border-primary-200 border-t-primary-700 rounded-full animate-spin mb-3"></div>
-                          <p>{t('loading.generatingVideo')}</p>
-                        </div>
-                      ) : morphVideoState.url ? (
-                        <video
-                          ref={videoRef}
-                          src={morphVideoState.url}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          className="w-full h-full object-cover"
-                          data-testid="morph-video"
-                          onError={(e) => {
-                            console.error('[VideoPlayer] Playback error:', e.currentTarget.error)
-                            setMorphVideoState(prev => ({
-                              ...prev,
-                              url: null,
-                              error: t('errors.videoGenerationFailed'),
-                            }))
-                          }}
-                        />
-                      ) : morphVideoState.error ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-6">
-                          <p className="text-red-500 text-sm mb-3">{morphVideoState.error}</p>
-                          <button
-                            type="button"
-                            onClick={handleMorphingTabClick}
-                            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-full hover:bg-primary-700"
+                      // モーフィングスライダーアニメーション（クライアント側）
+                      sourceImages.currentImage && swappedImage ? (
+                        <div className="relative w-full h-full">
+                          {/* Before画像（全体表示） */}
+                          <img
+                            src={swappedImage}
+                            alt="After"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            draggable={false}
+                          />
+                          {/* Before画像（クリップで左側を表示） */}
+                          <div
+                            className="absolute inset-0 overflow-hidden"
+                            style={{ clipPath: `inset(0 ${(1 - morphSliderPos) * 100}% 0 0)` }}
                           >
-                            {t('retry')}
-                          </button>
+                            <img
+                              src={sourceImages.currentImage}
+                              alt="Before"
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          </div>
+                          {/* スライダーライン */}
+                          {morphSliderPos > 0.01 && morphSliderPos < 0.99 && (
+                            <div
+                              className="absolute top-0 bottom-0 w-0.5 bg-white"
+                              style={{
+                                left: `${morphSliderPos * 100}%`,
+                                boxShadow: '2px 0 4px rgba(0,0,0,0.3)',
+                              }}
+                            >
+                              {/* スライダーハンドル */}
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
+                                <span className="text-neutral-400 text-xs select-none">&lt;&gt;</span>
+                              </div>
+                            </div>
+                          )}
+                          {/* Before/After ラベル */}
+                          {morphSliderPos > 0.15 && (
+                            <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">Before</div>
+                          )}
+                          {morphSliderPos < 0.85 && (
+                            <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded">After</div>
+                          )}
                         </div>
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-neutral-500">
-                          <svg className="w-12 h-12 mb-3 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <p className="text-sm">{t('loading.generatingVideo')}</p>
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {t('loading.loadingImage')}
                         </div>
                       )
                     ) : (
@@ -1448,7 +1425,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                     </button>
                     <button
                       type="button"
-                      onClick={handleMorphingTabClick}
+                      onClick={() => setMorphSubView('morphing')}
                       disabled={state.isSaving || state.isSharing}
                       className={`px-6 py-3 text-base font-medium rounded-full transition-all duration-200 ${
                         morphSubView === 'morphing'
