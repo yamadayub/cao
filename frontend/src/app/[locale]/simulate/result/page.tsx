@@ -316,8 +316,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
 
   /**
    * モーフィング動画をバックグラウンドで生成
+   * refを使ってgenerateMorphImagesの依存配列から外す（getToken変化による再実行防止）
    */
-  const startVideoGeneration = useCallback(async (currentImg: string, swappedImg: string) => {
+  const startVideoGenerationRef = useRef<(currentImg: string, swappedImg: string) => void>()
+  startVideoGenerationRef.current = async (currentImg: string, swappedImg: string) => {
     setMorphVideoState({ url: null, isGenerating: true, error: null })
     try {
       const token = await getToken()
@@ -339,7 +341,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       const errorMessage = error instanceof Error ? error.message : t('errors.videoGenerationFailed')
       setMorphVideoState({ url: null, isGenerating: false, error: errorMessage })
     }
-  }, [getToken, t])
+  }
 
   /**
    * Face Swap画像を生成（Replicate API使用）
@@ -501,7 +503,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       }))
 
       // バックグラウンドでモーフィング動画を生成（awaitしない）
-      startVideoGeneration(currentImage, swappedDataUrl)
+      startVideoGenerationRef.current?.(currentImage, swappedDataUrl)
     } catch (error) {
       console.error('Face Swap error:', error)
       console.error('Error type:', error?.constructor?.name)
@@ -530,7 +532,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     } finally {
       isGeneratingRef.current = false
     }
-  }, [t, startVideoGeneration])
+  }, [t])
 
   /**
    * 保存済みシミュレーションをロード
