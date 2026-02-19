@@ -3,6 +3,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { useAuth, useUser } from '@clerk/nextjs'
+import { isClerkAvailable } from '@/hooks/useClerkSafe'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
 import { LoginPromptModal } from '@/components/features/LoginPromptModal'
@@ -24,13 +26,6 @@ import {
   clearSimulationImages,
   type PendingActionType,
 } from '@/lib/pending-action'
-
-// Clerkの型定義
-interface ClerkInstance {
-  user?: { primaryEmailAddress?: { emailAddress: string } | null } | null
-  session?: { getToken: () => Promise<string | null> } | null
-  addListener?: (callback: (resources: unknown) => void) => (() => void)
-}
 
 /**
  * 画像データの型
@@ -125,107 +120,54 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
 
 /**
  * Clerkの状態を安全に取得するカスタムフック
+ * Clerkの公式React Hooks（useAuth/useUser）を使用し、
  * ログイン状態の変更を検知して自動更新
  */
 function useClerkState() {
-  const [clerkState, setClerkState] = useState<{
-    isSignedIn: boolean
-    wasSignedIn: boolean // 直前のログイン状態（ログイン完了検知用）
-    justLoggedIn: boolean // ログインが完了したかどうか
-    user: { primaryEmailAddress?: { emailAddress: string } | null } | null
-    getToken: () => Promise<string | null>
-  }>({
-    isSignedIn: false,
-    wasSignedIn: false,
-    justLoggedIn: false,
-    user: null,
-    getToken: async () => null,
-  })
+  /* eslint-disable react-hooks/rules-of-hooks */
+  const clerkAvailable = isClerkAvailable()
 
+  // Clerk hooks — build-time定数による条件分岐のため、呼び出し順は常に同じ
+  const {
+    isSignedIn: rawIsSignedIn,
+    isLoaded,
+    getToken,
+  } = clerkAvailable
+    ? useAuth()
+    : { isSignedIn: false as boolean | undefined, isLoaded: true, getToken: (async () => null) as unknown as ReturnType<typeof useAuth>['getToken'] }
+
+  const { user } = clerkAvailable
+    ? useUser()
+    : { user: null }
+  /* eslint-enable react-hooks/rules-of-hooks */
+
+  const isSignedIn = !!rawIsSignedIn
+  const prevSignedInRef = useRef<boolean | undefined>(undefined)
+  const [justLoggedIn, setJustLoggedIn] = useState(false)
+
+  // ログイン状態の変化を検知
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null
-    let listenerRetryTimer: ReturnType<typeof setInterval> | null = null
+    if (!isLoaded) return
 
-    const updateClerkState = () => {
-      const win = window as unknown as { Clerk?: ClerkInstance }
-      if (win.Clerk) {
-        const clerk = win.Clerk
-        const currentSignedIn = !!clerk.user
-        setClerkState(prev => {
-          // ログイン状態が変化したかどうかを判定
-          const justLoggedIn = !prev.isSignedIn && currentSignedIn
-          if (justLoggedIn) {
-            console.log('[useClerkState] Login detected')
-          }
-          // 変化がない場合は同一参照を返してリレンダー回避
-          if (prev.isSignedIn === currentSignedIn && !justLoggedIn) {
-            return prev
-          }
-          return {
-            isSignedIn: currentSignedIn,
-            wasSignedIn: prev.isSignedIn,
-            // 既にjustLoggedInがtrueの場合は維持（リセットされるまで）
-            justLoggedIn: prev.justLoggedIn || justLoggedIn,
-            user: clerk.user || null,
-            getToken: async () => {
-              try {
-                return clerk.session?.getToken() || null
-              } catch {
-                return null
-              }
-            },
-          }
-        })
-      }
+    // 未ログイン → ログイン への遷移を検出
+    if (prevSignedInRef.current === false && isSignedIn) {
+      console.log('[useClerkState] Login detected')
+      setJustLoggedIn(true)
     }
+    prevSignedInRef.current = isSignedIn
+  }, [isLoaded, isSignedIn])
 
-    // Clerkのイベントリスナーをセットアップ（ポーリングの代替）
-    const setupListener = (): boolean => {
-      const win = window as unknown as { Clerk?: ClerkInstance }
-      if (win.Clerk?.addListener) {
-        unsubscribe = win.Clerk.addListener(() => {
-          updateClerkState()
-        })
-        console.log('[useClerkState] Clerk addListener registered')
-        return true
-      }
-      return false
-    }
-
-    // 初回チェック
-    updateClerkState()
-
-    // Clerkがまだロードされていない場合は少し待って再試行
-    const timer = setTimeout(updateClerkState, 500)
-    const timer2 = setTimeout(updateClerkState, 1500)
-
-    // Clerkのリスナーを登録（まだ利用不可の場合は1秒ごとにリトライ、最大10秒）
-    if (!setupListener()) {
-      let retryCount = 0
-      listenerRetryTimer = setInterval(() => {
-        retryCount++
-        updateClerkState()
-        if (setupListener() || retryCount >= 10) {
-          if (listenerRetryTimer) clearInterval(listenerRetryTimer)
-          listenerRetryTimer = null
-        }
-      }, 1000)
-    }
-
-    return () => {
-      clearTimeout(timer)
-      clearTimeout(timer2)
-      if (listenerRetryTimer) clearInterval(listenerRetryTimer)
-      unsubscribe?.()
-    }
-  }, [])
-
-  // justLoggedInフラグをリセット
   const resetJustLoggedIn = useCallback(() => {
-    setClerkState(prev => ({ ...prev, justLoggedIn: false }))
+    setJustLoggedIn(false)
   }, [])
 
-  return { ...clerkState, resetJustLoggedIn }
+  return {
+    isSignedIn,
+    justLoggedIn,
+    resetJustLoggedIn,
+    user: user ? { primaryEmailAddress: user.primaryEmailAddress } : null,
+    getToken: getToken as (options?: unknown) => Promise<string | null>,
+  }
 }
 
 /**
