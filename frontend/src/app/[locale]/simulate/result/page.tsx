@@ -29,6 +29,7 @@ import {
 interface ClerkInstance {
   user?: { primaryEmailAddress?: { emailAddress: string } | null } | null
   session?: { getToken: () => Promise<string | null> } | null
+  addListener?: (callback: (resources: unknown) => void) => (() => void)
 }
 
 /**
@@ -142,6 +143,9 @@ function useClerkState() {
   })
 
   useEffect(() => {
+    let unsubscribe: (() => void) | null = null
+    let listenerRetryTimer: ReturnType<typeof setInterval> | null = null
+
     const updateClerkState = () => {
       const win = window as unknown as { Clerk?: ClerkInstance }
       if (win.Clerk) {
@@ -151,7 +155,11 @@ function useClerkState() {
           // ログイン状態が変化したかどうかを判定
           const justLoggedIn = !prev.isSignedIn && currentSignedIn
           if (justLoggedIn) {
-            console.log('[useClerkState] Login detected in updateClerkState')
+            console.log('[useClerkState] Login detected')
+          }
+          // 変化がない場合は同一参照を返してリレンダー回避
+          if (prev.isSignedIn === currentSignedIn && !justLoggedIn) {
+            return prev
           }
           return {
             isSignedIn: currentSignedIn,
@@ -171,6 +179,19 @@ function useClerkState() {
       }
     }
 
+    // Clerkのイベントリスナーをセットアップ（ポーリングの代替）
+    const setupListener = (): boolean => {
+      const win = window as unknown as { Clerk?: ClerkInstance }
+      if (win.Clerk?.addListener) {
+        unsubscribe = win.Clerk.addListener(() => {
+          updateClerkState()
+        })
+        console.log('[useClerkState] Clerk addListener registered')
+        return true
+      }
+      return false
+    }
+
     // 初回チェック
     updateClerkState()
 
@@ -178,42 +199,24 @@ function useClerkState() {
     const timer = setTimeout(updateClerkState, 500)
     const timer2 = setTimeout(updateClerkState, 1500)
 
-    // Clerkの認証状態変更を監視（ポーリング）
-    // Clerkのモーダルログイン後に状態を更新するため
-    const pollInterval = setInterval(() => {
-      const win = window as unknown as { Clerk?: ClerkInstance }
-      if (win.Clerk) {
-        const currentSignedIn = !!win.Clerk.user
-        setClerkState(prev => {
-          // ログイン状態が変化した場合のみ更新
-          if (prev.isSignedIn !== currentSignedIn) {
-            const justLoggedIn = !prev.isSignedIn && currentSignedIn
-            if (justLoggedIn) {
-              console.log('[useClerkState] Login detected in polling')
-            }
-            return {
-              isSignedIn: currentSignedIn,
-              wasSignedIn: prev.isSignedIn,
-              justLoggedIn,
-              user: win.Clerk?.user || null,
-              getToken: async () => {
-                try {
-                  return win.Clerk?.session?.getToken() || null
-                } catch {
-                  return null
-                }
-              },
-            }
-          }
-          return prev
-        })
-      }
-    }, 500) // ポーリング間隔を500msに短縮
+    // Clerkのリスナーを登録（まだ利用不可の場合は1秒ごとにリトライ、最大10秒）
+    if (!setupListener()) {
+      let retryCount = 0
+      listenerRetryTimer = setInterval(() => {
+        retryCount++
+        updateClerkState()
+        if (setupListener() || retryCount >= 10) {
+          if (listenerRetryTimer) clearInterval(listenerRetryTimer)
+          listenerRetryTimer = null
+        }
+      }, 1000)
+    }
 
     return () => {
       clearTimeout(timer)
       clearTimeout(timer2)
-      clearInterval(pollInterval)
+      if (listenerRetryTimer) clearInterval(listenerRetryTimer)
+      unsubscribe?.()
     }
   }, [])
 
