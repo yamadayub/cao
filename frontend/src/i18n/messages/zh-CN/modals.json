@@ -72,6 +72,7 @@
     "morphVideoDesc": "面部平滑渐变动画视频",
     "generatingVideo": "正在生成视频...",
     "videoReady": "视频已生成",
+    "shareVideo": "分享",
     "saveVideo": "保存视频",
     "videoFailed": "视频生成失败"
   }

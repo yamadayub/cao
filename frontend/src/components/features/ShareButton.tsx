@@ -318,40 +318,49 @@ export function ShareButton({
     }
   }, [beforeImage, afterImage, t]);
 
-  const handleVideoDownload = useCallback(async () => {
+  /**
+   * 動画をWeb Share APIでシェア
+   */
+  const handleVideoShare = useCallback(async () => {
     if (!videoUrl) return;
 
-    // Blobを取得
     const response = await fetch(videoUrl);
     const blob = await response.blob();
     const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
     const file = new File([blob], `cao-morph.${ext}`, { type: blob.type });
 
-    // Web Share APIを試す（モバイル）
-    if (navigator.share) {
-      try {
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: 'Cao - Before/After',
-          });
-          setState('success');
-          setMessage(t('snsShare.shared'));
-          setTimeout(() => {
-            setState('idle');
-            setMessage('');
-            setVideoUrl(null);
-          }, 3000);
-          return;
-        }
-      } catch (e) {
-        if ((e as Error).name === 'AbortError') {
-          return;
-        }
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Cao - Before/After',
+        });
+        setState('success');
+        setMessage(t('snsShare.shared'));
+        setTimeout(() => {
+          setState('idle');
+          setMessage('');
+          setVideoUrl(null);
+        }, 3000);
       }
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') {
+        return;
+      }
+      console.error('Video share error:', e);
     }
+  }, [videoUrl, t]);
 
-    // フォールバック: ダウンロード
+  /**
+   * 動画をダウンロード
+   */
+  const handleVideoDownload = useCallback(async () => {
+    if (!videoUrl) return;
+
+    const response = await fetch(videoUrl);
+    const blob = await response.blob();
+    const ext = blob.type.includes('webm') ? 'webm' : 'mp4';
+
     const link = document.createElement('a');
     link.href = videoUrl;
     link.download = `cao-morph.${ext}`;
@@ -367,6 +376,11 @@ export function ShareButton({
       setVideoUrl(null);
     }, 3000);
   }, [videoUrl, t]);
+
+  /**
+   * Web Share APIでファイル共有がサポートされているかどうか
+   */
+  const canShareFiles = typeof navigator !== 'undefined' && !!navigator.share;
 
   const isProcessing = state === 'generating' || state === 'sharing' || state === 'generating-video';
 
@@ -665,11 +679,29 @@ export function ShareButton({
               />
             </div>
 
+            {/* シェアボタン（Web Share API対応時） */}
+            {canShareFiles && (
+              <button
+                type="button"
+                onClick={handleVideoShare}
+                className="w-full py-3 px-4 rounded-xl font-medium text-sm bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                {t('snsShare.shareVideo')}
+              </button>
+            )}
+
             {/* 動画を保存ボタン */}
             <button
               type="button"
               onClick={handleVideoDownload}
-              className="w-full py-3 px-4 rounded-xl font-medium text-sm bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className={`w-full py-3 px-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 ${
+                canShareFiles
+                  ? 'mt-2 bg-white text-neutral-700 border border-neutral-300 hover:bg-neutral-50 hover:border-neutral-400'
+                  : 'bg-primary-600 text-white hover:bg-primary-700 active:scale-[0.98]'
+              }`}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

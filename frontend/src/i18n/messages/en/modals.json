@@ -72,6 +72,7 @@
     "morphVideoDesc": "Smooth face morphing transition video",
     "generatingVideo": "Generating video...",
     "videoReady": "Video is ready",
+    "shareVideo": "Share",
     "saveVideo": "Save Video",
     "videoFailed": "Failed to generate video"
   }
