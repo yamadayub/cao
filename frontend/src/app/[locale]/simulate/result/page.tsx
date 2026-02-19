@@ -12,7 +12,7 @@ import { ShareButton } from '@/components/features/ShareButton'
 import { createSimulation, createShareUrl, getSimulation } from '@/lib/api/simulations'
 import { swapAndWait, applySwapParts } from '@/lib/api/swap'
 import { ApiError } from '@/lib/api/client'
-import type { PartsSelection, SwapJobStatus, SwapPartsIntensity } from '@/lib/api/types'
+import type { PartsSelection, SwapPartsIntensity } from '@/lib/api/types'
 import { PartsSelector } from '@/components/features/PartsSelector'
 import {
   savePendingAction,
@@ -380,6 +380,9 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       error: null
     }))
 
+    // プログレスバーのタイマー（try/catch両方でクリーンアップするためスコープ外で宣言）
+    let progressTimer: ReturnType<typeof setInterval> | null = null
+
     try {
       // Base64データを取得（Data URLプレフィックスを除去）
       const base64Current = currentImage.startsWith('data:')
@@ -392,7 +395,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       // Face Swap APIを呼び出し
       setState((prev) => ({
         ...prev,
-        loadingProgress: 10,
+        loadingProgress: 5,
         loadingMessage: t('loading.processing'),
       }))
 
@@ -400,21 +403,27 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       console.log('current_image length:', base64Current.length)
       console.log('ideal_image length:', base64Ideal.length)
 
+      // 徐々に進むプログレスバー（API待機中に5%→85%まで減速しながら進む）
+      let simulatedProgress = 5
+      progressTimer = setInterval(() => {
+        simulatedProgress += (85 - simulatedProgress) * 0.04
+        setState((prev) => ({
+          ...prev,
+          loadingProgress: Math.round(simulatedProgress),
+        }))
+      }, 500)
+
       const swapResult = await swapAndWait({
         current_image: base64Current,
         ideal_image: base64Ideal,
-      }, {
-        onProgress: (status: SwapJobStatus) => {
-          console.log('Swap progress:', status)
-          let progress = 10
-          if (status === 'processing') progress = 50
-          if (status === 'completed') progress = 90
-          setState((prev) => ({
-            ...prev,
-            loadingProgress: progress,
-          }))
-        },
       })
+
+      clearInterval(progressTimer)
+      progressTimer = null
+      setState((prev) => ({
+        ...prev,
+        loadingProgress: 90,
+      }))
 
       console.log('Face Swap API response received')
       console.log('swapResult.status:', swapResult.status)
@@ -507,6 +516,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       }))
 
     } catch (error) {
+      if (progressTimer) clearInterval(progressTimer)
       console.error('Face Swap error:', error)
       console.error('Error type:', error?.constructor?.name)
       console.error('Error details:', {
