@@ -87,20 +87,20 @@ function drawSliderFrame(
     ctx.stroke();
   }
 
-  // Before/Afterラベル
+  // Before/Afterラベル（左=After、右=Before）
   const labelSize = Math.max(12, size * 0.028);
   ctx.font = `600 ${labelSize}px sans-serif`;
   if (pos > 0.15) {
     const lx = 8;
     const ly = 8;
-    const metrics = ctx.measureText('Before');
+    const metrics = ctx.measureText('After');
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(lx, ly, metrics.width + 12, labelSize + 8);
     ctx.fillStyle = 'white';
-    ctx.fillText('Before', lx + 6, ly + labelSize + 1);
+    ctx.fillText('After', lx + 6, ly + labelSize + 1);
   }
   if (pos < 0.85) {
-    const label = 'After';
+    const label = 'Before';
     const metrics = ctx.measureText(label);
     const lx = size - metrics.width - 20;
     const ly = 8;

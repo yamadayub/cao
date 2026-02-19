@@ -1288,10 +1288,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                             </div>
                           )}
                           {morphSliderPos > 0.15 && (
-                            <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">Before</div>
+                            <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">After</div>
                           )}
                           {morphSliderPos < 0.85 && (
-                            <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded">After</div>
+                            <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded">Before</div>
                           )}
                         </div>
                       ) : (
