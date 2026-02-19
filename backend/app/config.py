@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     max_image_size_mb: int = 10
     max_image_dimension: int = 2048
 
+    # Clerk Webhook
+    clerk_webhook_secret: str = ""
+
+    # PII Encryption
+    encryption_key: str = ""
+
     # Replicate API (Face Swap)
     replicate_api_token: str = ""
     swap_cache_ttl: int = 3600  # 1 hour
