@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # PII Encryption
     encryption_key: str = ""
 
+    # Internal API Key (for scripts/marketing automation)
+    internal_api_key: str = ""
+
     # Replicate API (Face Swap)
     replicate_api_token: str = ""
     swap_cache_ttl: int = 3600  # 1 hour

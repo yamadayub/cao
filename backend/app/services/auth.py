@@ -4,21 +4,52 @@ from typing import Optional
 
 from fastapi import Header, HTTPException
 
+from app.config import get_settings
 from app.models.schemas import ErrorCodes, ErrorDetail, ErrorResponse
 
+# Internal API key user ID prefix
+_INTERNAL_USER_PREFIX = "internal_api"
 
-def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
-    """Verify JWT token and return user info.
+
+def get_current_user(
+    authorization: Optional[str] = Header(None),
+    x_api_key: Optional[str] = Header(None),
+) -> dict:
+    """Verify JWT token or API key and return user info.
+
+    Supports two authentication methods:
+    1. Bearer JWT token (Clerk) via Authorization header
+    2. Internal API key via X-API-Key header (for scripts/automation)
 
     Args:
         authorization: Bearer token from Authorization header
+        x_api_key: API key from X-API-Key header
 
     Returns:
         dict with user info including 'id' and 'email'
 
     Raises:
-        HTTPException: If token is missing or invalid
+        HTTPException: If no valid credentials provided
     """
+    # Try API key authentication first
+    if x_api_key:
+        settings = get_settings()
+        if settings.internal_api_key and x_api_key == settings.internal_api_key:
+            return {
+                "id": _INTERNAL_USER_PREFIX,
+                "email": None,
+            }
+        raise HTTPException(
+            status_code=401,
+            detail=ErrorResponse(
+                error=ErrorDetail(
+                    code=ErrorCodes.UNAUTHORIZED,
+                    message="Invalid API key",
+                )
+            ).model_dump(),
+        )
+
+    # Fall back to Bearer JWT token
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=401,
