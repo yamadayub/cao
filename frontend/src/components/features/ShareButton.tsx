@@ -3,12 +3,17 @@
 import { useState, useCallback, useRef } from 'react';
 import { useTranslations } from 'next-intl';
 import { generateShareImage, shareImage, ShareResult, ShareImageType } from '@/lib/share';
+import { generateBlendVideo } from '@/lib/api/video';
 
 interface ShareButtonProps {
   /** 変更前画像（base64） */
   beforeImage: string;
   /** 変更後画像（base64） */
   afterImage: string;
+  /** 理想の顔画像（base64）— ブレンド動画用 */
+  idealImage?: string;
+  /** 認証トークン取得関数 — ブレンド動画用 */
+  getAuthToken?: () => Promise<string | null>;
   /** ログイン済みかどうか */
   isSignedIn: boolean;
   /** ログインが必要な時に呼ばれるコールバック */
@@ -142,6 +147,8 @@ function drawCrossfadeFrame(
 export function ShareButton({
   beforeImage,
   afterImage,
+  idealImage,
+  getAuthToken,
   isSignedIn,
   onLoginRequired,
   className = '',
@@ -378,6 +385,49 @@ export function ShareButton({
   }, [videoUrl, t]);
 
   /**
+   * サーバー側でブレンドリビール動画を生成
+   */
+  const handleBlendVideoGenerate = useCallback(async () => {
+    if (!idealImage || !getAuthToken) return;
+
+    setState('generating-video');
+    setMessage('');
+
+    try {
+      const token = await getAuthToken();
+      if (!token) {
+        setState('error');
+        setMessage(t('snsShare.failed'));
+        setTimeout(() => { setState('idle'); setMessage(''); }, 3000);
+        return;
+      }
+
+      const result = await generateBlendVideo(beforeImage, idealImage, afterImage, token);
+
+      // サーバーから返されたURLがdata URIの場合はBlobに変換
+      let blobUrl: string;
+      if (result.video_url.startsWith('data:')) {
+        const res = await fetch(result.video_url);
+        const blob = await res.blob();
+        blobUrl = URL.createObjectURL(blob);
+      } else {
+        // Supabase URL → fetch → blob
+        const res = await fetch(result.video_url);
+        const blob = await res.blob();
+        blobUrl = URL.createObjectURL(blob);
+      }
+
+      setVideoUrl(blobUrl);
+      setState('video-preview');
+    } catch (error) {
+      console.error('Blend video generation error:', error);
+      setState('error');
+      setMessage(t('snsShare.videoFailed'));
+      setTimeout(() => { setState('idle'); setMessage(''); }, 3000);
+    }
+  }, [beforeImage, afterImage, idealImage, getAuthToken, t]);
+
+  /**
    * Web Share APIでファイル共有がサポートされているかどうか
    */
   const canShareFiles = typeof navigator !== 'undefined' && !!navigator.share;
@@ -602,6 +652,32 @@ export function ShareButton({
                   </div>
                 </div>
               </button>
+
+              {/* ブレンドリビール動画オプション（idealImage がある場合のみ表示） */}
+              {idealImage && getAuthToken && (
+                <button
+                  type="button"
+                  onClick={handleBlendVideoGenerate}
+                  data-testid="share-type-blend-video"
+                  className="w-full p-4 rounded-xl border-2 border-primary-200 bg-primary-50/50 hover:border-primary-500 hover:bg-primary-50 transition-all text-left group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex-shrink-0 w-16 h-10 bg-gradient-to-r from-gray-200 via-primary-200 to-primary-400 rounded-lg flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900 group-hover:text-primary-700">
+                        {t('snsShare.blendVideo')}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {t('snsShare.blendVideoDesc')}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )}
             </div>
 
             {/* キャンセルボタン */}

@@ -74,6 +74,8 @@
     "videoReady": "動画が完成しました",
     "shareVideo": "シェアする",
     "saveVideo": "動画を保存",
-    "videoFailed": "動画の生成に失敗しました"
+    "videoFailed": "動画の生成に失敗しました",
+    "blendVideo": "ブレンドリビール動画",
+    "blendVideoDesc": "現在→理想→シミュレーション結果をアーティスティックに演出"
   }
 }

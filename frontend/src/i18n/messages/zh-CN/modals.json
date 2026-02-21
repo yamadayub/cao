@@ -74,6 +74,8 @@
     "videoReady": "视频已生成",
     "shareVideo": "分享",
     "saveVideo": "保存视频",
-    "videoFailed": "视频生成失败"
+    "videoFailed": "视频生成失败",
+    "blendVideo": "融合揭示视频",
+    "blendVideoDesc": "从当前面孔到模拟结果的艺术化演绎"
   }
 }

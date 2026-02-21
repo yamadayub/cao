@@ -74,6 +74,8 @@
     "videoReady": "影片已完成",
     "shareVideo": "分享",
     "saveVideo": "儲存影片",
-    "videoFailed": "影片產生失敗"
+    "videoFailed": "影片產生失敗",
+    "blendVideo": "融合揭示影片",
+    "blendVideoDesc": "從當前面孔到模擬結果的藝術化演繹"
   }
 }

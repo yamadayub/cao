@@ -74,6 +74,8 @@
     "videoReady": "Video is ready",
     "shareVideo": "Share",
     "saveVideo": "Save Video",
-    "videoFailed": "Failed to generate video"
+    "videoFailed": "Failed to generate video",
+    "blendVideo": "Blend Reveal Video",
+    "blendVideoDesc": "Artistic blend from your face to simulation result"
   }
 }

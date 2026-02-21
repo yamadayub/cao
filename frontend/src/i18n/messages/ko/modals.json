@@ -74,6 +74,8 @@
     "videoReady": "동영상이 완성되었습니다",
     "shareVideo": "공유하기",
     "saveVideo": "동영상 저장",
-    "videoFailed": "동영상 생성에 실패했습니다"
+    "videoFailed": "동영상 생성에 실패했습니다",
+    "blendVideo": "블렌드 리빌 동영상",
+    "blendVideoDesc": "현재 얼굴에서 시뮬레이션 결과까지 아티스틱하게 연출"
   }
 }

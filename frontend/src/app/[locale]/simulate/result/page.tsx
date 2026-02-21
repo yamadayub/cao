@@ -230,6 +230,10 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   const morphCanvasRef = useRef<HTMLCanvasElement>(null)
   const morphAnimFrameRef = useRef<number>(0)
 
+  // パーツモード用アニメーション状態
+  const [partsSliderPos, setPartsSliderPos] = useState(0)
+  const partsAnimFrameRef = useRef<number>(0)
+
   // Face Swapの結果画像（パーツ合成のベース）
   const [swappedImage, setSwappedImage] = useState<string | null>(null)
 
@@ -243,7 +247,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
   const [viewMode, setViewMode] = useState<'morph' | 'parts'>('morph')
 
   // パーツモードの表示切替（'current' または 'applied'）
-  const [partsViewMode, setPartsViewMode] = useState<'current' | 'applied'>('applied')
+  const [partsViewMode, setPartsViewMode] = useState<'current' | 'applied' | 'slider' | 'morphing'>('applied')
 
   /**
    * 現在の変化度に対応する画像を取得
@@ -291,6 +295,43 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
     morphAnimFrameRef.current = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(morphAnimFrameRef.current)
   }, [morphSubView])
+
+  /**
+   * パーツモード用スライダー/モーフィングアニメーション
+   */
+  useEffect(() => {
+    if (partsViewMode !== 'slider' && partsViewMode !== 'morphing') {
+      cancelAnimationFrame(partsAnimFrameRef.current)
+      return
+    }
+    let startTime: number | null = null
+    const TOTAL_DURATION = 5000
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp
+      const elapsed = timestamp - startTime
+      const t = (elapsed % TOTAL_DURATION) / TOTAL_DURATION
+
+      let pos: number
+      if (t < 0.10) pos = 0
+      else if (t < 0.50) {
+        const st = (t - 0.10) / 0.40
+        pos = st * st * (3 - 2 * st)
+      }
+      else if (t < 0.80) pos = 1
+      else if (t < 0.90) {
+        const st = (t - 0.80) / 0.10
+        pos = 1 - st * st * (3 - 2 * st)
+      }
+      else pos = 0
+
+      setPartsSliderPos(pos)
+      partsAnimFrameRef.current = requestAnimationFrame(animate)
+    }
+
+    partsAnimFrameRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(partsAnimFrameRef.current)
+  }, [partsViewMode])
 
   /**
    * Face Swap画像を生成（Replicate API使用）
@@ -894,6 +935,7 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
       image: null,
       error: null,
     }))
+    setPartsViewMode('applied')
   }, [])
 
   /**
@@ -1303,6 +1345,75 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                           {t('loading.loadingImage')}
                         </div>
                       )
+                    ) : partsViewMode === 'slider' ? (
+                      // パーツ用スライダーアニメーション
+                      sourceImages.currentImage && partsBlendState.image ? (
+                        <div className="relative w-full h-full">
+                          <img
+                            src={sourceImages.currentImage}
+                            alt="Before"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            draggable={false}
+                          />
+                          <div
+                            className="absolute inset-0 overflow-hidden"
+                            style={{ clipPath: `inset(0 ${(1 - partsSliderPos) * 100}% 0 0)` }}
+                          >
+                            <img
+                              src={partsBlendState.image}
+                              alt="After"
+                              className="w-full h-full object-cover"
+                              draggable={false}
+                            />
+                          </div>
+                          {partsSliderPos > 0.01 && partsSliderPos < 0.99 && (
+                            <div
+                              className="absolute top-0 bottom-0 w-0.5 bg-white"
+                              style={{
+                                left: `${partsSliderPos * 100}%`,
+                                boxShadow: '2px 0 4px rgba(0,0,0,0.3)',
+                              }}
+                            >
+                              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
+                                <span className="text-neutral-400 text-xs select-none">&lt;&gt;</span>
+                              </div>
+                            </div>
+                          )}
+                          {partsSliderPos > 0.15 && (
+                            <div className="absolute top-3 left-3 bg-black/60 text-white text-xs px-2 py-1 rounded">After</div>
+                          )}
+                          {partsSliderPos < 0.85 && (
+                            <div className="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-1 rounded">Before</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {t('loading.loadingImage')}
+                        </div>
+                      )
+                    ) : partsViewMode === 'morphing' ? (
+                      // パーツ用クロスフェードモーフィングアニメーション
+                      sourceImages.currentImage && partsBlendState.image ? (
+                        <div className="relative w-full h-full">
+                          <img
+                            src={sourceImages.currentImage}
+                            alt="Before"
+                            className="absolute inset-0 w-full h-full object-cover"
+                            draggable={false}
+                          />
+                          <img
+                            src={partsBlendState.image}
+                            alt="After"
+                            className="absolute inset-0 w-full h-full object-cover transition-none"
+                            style={{ opacity: partsSliderPos }}
+                            draggable={false}
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                          {t('loading.loadingImage')}
+                        </div>
+                      )
                     ) : (
                       // 適用後の画像を表示
                       partsBlendState.image ? (
@@ -1434,6 +1545,40 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                           : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
                       } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
                       data-testid="view-morphing"
+                    >
+                      {t('viewMode.morphing')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* パーツ別アニメーション切り替え（スライダー / モーフィング） */}
+              {viewMode === 'parts' && partsBlendState.image && (
+                <div className="mb-8">
+                  <div className="flex justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPartsViewMode('slider')}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-6 py-2.5 text-sm font-medium rounded-full transition-all duration-200 ${
+                        partsViewMode === 'slider'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="parts-view-slider"
+                    >
+                      {t('viewMode.slider')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPartsViewMode('morphing')}
+                      disabled={state.isSaving || state.isSharing}
+                      className={`px-6 py-2.5 text-sm font-medium rounded-full transition-all duration-200 ${
+                        partsViewMode === 'morphing'
+                          ? 'bg-primary-700 text-white shadow-md'
+                          : 'bg-white text-neutral-600 border border-neutral-300 hover:bg-neutral-50'
+                      } ${(state.isSaving || state.isSharing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      data-testid="parts-view-morphing"
                     >
                       {t('viewMode.morphing')}
                     </button>
@@ -1611,6 +1756,8 @@ function SimulationResultContent({ isSignedIn, justLoggedIn, resetJustLoggedIn, 
                 <ShareButton
                   beforeImage={sourceImages.currentImage || ''}
                   afterImage={getShareImage()}
+                  idealImage={sourceImages.idealImage || undefined}
+                  getAuthToken={getToken}
                   isSignedIn={isSignedIn}
                   onLoginRequired={() => {
                     setLoginAction('sns-share')

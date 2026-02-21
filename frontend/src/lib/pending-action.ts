@@ -25,7 +25,7 @@ export interface PendingAction {
   /** パーツ選択状態（パーツモードの場合） */
   partsSelection?: PartsSelection
   /** パーツ表示モード（パーツモードの場合） */
-  partsViewMode?: 'current' | 'applied'
+  partsViewMode?: 'current' | 'applied' | 'slider' | 'morphing'
   /** タイムスタンプ */
   timestamp?: number
 }
