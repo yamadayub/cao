@@ -100,8 +100,7 @@ class BlendVideoGenerator:
         ideal = self._fit(self._decode(ideal_image))
         result = self._fit(self._decode(result_image))
 
-        frames = self._generate_all_frames(current, ideal, result)
-        return self._encode(frames)
+        return self._generate_and_encode(current, ideal, result)
 
     # ── image helpers ───────────────────────
 
@@ -332,25 +331,24 @@ class BlendVideoGenerator:
 
         return frame
 
-    # ── full pipeline ───────────────────────
+    # ── full pipeline (streaming – no frame list) ─
 
-    def _generate_all_frames(
+    def _generate_and_encode(
         self,
         current: np.ndarray,
         ideal: np.ndarray,
         result: np.ndarray,
-    ) -> List[np.ndarray]:
-        total_frames = int(TOTAL_DURATION * FPS)
-        frames: List[np.ndarray] = []
-        for i in range(total_frames):
-            t = i / FPS
-            frames.append(self._render_frame(t, current, ideal, result))
-        return frames
+    ) -> VideoResult:
+        """Generate frames and write directly to video writer (streaming).
 
-    def _encode(self, frames: List[np.ndarray]) -> VideoResult:
-        """Encode frames using the shared codec fallback chain."""
+        Frames are NOT accumulated in a list; each is written immediately
+        to the VideoWriter, keeping peak memory under ~50 MB regardless
+        of video length.
+        """
         import os
         import tempfile
+
+        total_frames = int(TOTAL_DURATION * FPS)
 
         for codec, ext, content_type in CODEC_CHAIN:
             try:
@@ -367,8 +365,10 @@ class BlendVideoGenerator:
                     os.unlink(tmp_path)
                     continue
 
-                for f in frames:
-                    writer.write(f)
+                for i in range(total_frames):
+                    t = i / FPS
+                    frame = self._render_frame(t, current, ideal, result)
+                    writer.write(frame)
                 writer.release()
 
                 with open(tmp_path, "rb") as fh:

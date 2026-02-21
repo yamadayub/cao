@@ -40,9 +40,12 @@ SLIDE_BACK = 0.5  # Slide right to left (fast)
 HOLD_END = 0.5  # Final hold
 
 # Codec fallback chain: (fourcc, extension, content_type)
-# VP80 (WebM/VP8) is browser-native and included in opencv-python-headless via libvpx.
-# mp4v (MPEG-4 Part 2) is NOT browser-playable but kept as fallback.
+# avc1 (H.264 / MP4) is the most widely browser-supported format.
+# VP80 (WebM/VP8) is browser-native but needs libvpx (not always available).
+# mp4v (MPEG-4 Part 2) plays in most modern browsers.
+# MJPG is a last-resort universal fallback.
 CODEC_CHAIN: List[Tuple[str, str, str]] = [
+    ("avc1", ".mp4", "video/mp4"),
     ("VP80", ".webm", "video/webm"),
     ("mp4v", ".mp4", "video/mp4"),
     ("MJPG", ".avi", "video/x-msvideo"),
