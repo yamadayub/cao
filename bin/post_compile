@@ -1,5 +1,6 @@
 #!/bin/bash
-# Remove non-headless opencv-contrib-python installed by mediapipe.
-# We use opencv-contrib-python-headless instead to avoid libGL.so dependency.
+# Remove non-headless opencv packages installed by mediapipe.
+# Then reinstall headless variants to restore cv2 without libGL dependency.
 pip uninstall -y opencv-contrib-python 2>/dev/null || true
-echo "post_compile: Removed non-headless opencv-contrib-python"
+pip install --force-reinstall --no-deps opencv-contrib-python-headless opencv-python-headless 2>/dev/null || true
+echo "post_compile: Replaced non-headless opencv with headless variant"
