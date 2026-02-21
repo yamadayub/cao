@@ -1,0 +1,5 @@
+#!/bin/bash
+# Remove non-headless opencv-contrib-python installed by mediapipe.
+# We use opencv-contrib-python-headless instead to avoid libGL.so dependency.
+pip uninstall -y opencv-contrib-python 2>/dev/null || true
+echo "post_compile: Removed non-headless opencv-contrib-python"
