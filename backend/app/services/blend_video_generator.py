@@ -12,18 +12,18 @@ Output: 9:16 vertical (1080x1920), 30fps, ~6s
 
 import logging
 import math
-from typing import List, Tuple
+from typing import List
 
 import cv2
 import numpy as np
 
 from app.services.video_generator import (
     CODEC_CHAIN,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
-    FPS,
     FACE_IMAGE_SIZE,
     FACE_IMAGE_Y,
+    FPS,
+    VIDEO_HEIGHT,
+    VIDEO_WIDTH,
     VideoResult,
     _ease_in_out,
     _put_centered_text,

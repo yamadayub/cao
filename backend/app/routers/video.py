@@ -14,6 +14,12 @@ from slowapi.util import get_remote_address
 from app.config import get_settings
 from app.models.schemas import ErrorCodes, ErrorDetail, ErrorResponse, SuccessResponse
 from app.services.auth import get_current_user
+from app.services.blend_video_generator import (
+    TOTAL_DURATION as BLEND_TOTAL_DURATION,
+)
+from app.services.blend_video_generator import (
+    get_blend_video_generator,
+)
 from app.services.supabase_client import get_supabase_client
 from app.services.video_generator import (
     HOLD_AFTER,
@@ -21,12 +27,7 @@ from app.services.video_generator import (
     HOLD_END,
     SLIDE_BACK,
     SLIDE_FORWARD,
-    VideoResult,
     get_video_generator,
-)
-from app.services.blend_video_generator import (
-    TOTAL_DURATION as BLEND_TOTAL_DURATION,
-    get_blend_video_generator,
 )
 
 logger = logging.getLogger(__name__)
