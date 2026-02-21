@@ -6,8 +6,10 @@ suitable for TikTok, Instagram Reels, and YouTube Shorts.
 
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -347,20 +349,48 @@ class MorphVideoGenerator:
         return frames
 
     def _encode_video(self, frames: List[np.ndarray]) -> VideoResult:
-        """Encode frames to a browser-playable video.
+        """Encode frames to a browser-playable H.264 video.
 
-        Tries codecs in order: VP8 (WebM, browser-native) → mp4v → MJPG.
-
-        Args:
-            frames: List of BGR OpenCV frames
-
-        Returns:
-            VideoResult with video bytes and format metadata
+        Strategy:
+        1. Try ffmpeg pipe (raw BGR → H.264 mp4) for browser-native playback.
+        2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
+        3. Last resort: OpenCV mp4v as-is.
         """
+        has_ffmpeg = shutil.which("ffmpeg") is not None
+
+        # Strategy 1: Pipe raw frames to ffmpeg for direct H.264 encoding
+        if has_ffmpeg:
+            try:
+                result = self._encode_ffmpeg_pipe(frames)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning(f"ffmpeg pipe encoding failed: {e}")
+
+        # Strategy 2 & 3: OpenCV + optional ffmpeg re-encode
         for codec, ext, content_type in CODEC_CHAIN:
             try:
                 path, data = self._try_encode(frames, codec, ext)
                 if data and len(data) > 1024:
+                    # Try re-encoding with ffmpeg for browser compatibility
+                    if has_ffmpeg and path:
+                        h264_data = self._ffmpeg_reencode(path)
+                        try:
+                            os.unlink(path)
+                        except OSError:
+                            pass
+                        if h264_data and len(h264_data) > 1024:
+                            logger.info(
+                                f"Video re-encoded to H.264: "
+                                f"{len(h264_data)} bytes"
+                            )
+                            return VideoResult(
+                                data=h264_data,
+                                content_type="video/mp4",
+                                extension=".mp4",
+                            )
+
+                    # Fallback: use as-is
                     logger.info(
                         f"Video encoded with {codec} codec ({ext}): "
                         f"{len(data)} bytes"
@@ -392,9 +422,126 @@ class MorphVideoGenerator:
             + ", ".join(c for c, _, _ in CODEC_CHAIN)
         )
 
+    def _encode_ffmpeg_pipe(
+        self, frames: List[np.ndarray]
+    ) -> Optional[VideoResult]:
+        """Pipe raw BGR frames directly to ffmpeg for H.264 encoding."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4", delete=False
+        ) as tmp:
+            out_path = tmp.name
+
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "rawvideo",
+                "-vcodec", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "-s", f"{VIDEO_WIDTH}x{VIDEO_HEIGHT}",
+                "-r", str(FPS),
+                "-i", "pipe:0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            for frame in frames:
+                try:
+                    proc.stdin.write(frame.tobytes())
+                except BrokenPipeError:
+                    break
+            try:
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+
+            proc.wait(timeout=60)
+            stderr = proc.stderr.read()
+            if proc.returncode != 0:
+                logger.warning(
+                    f"ffmpeg pipe failed (rc={proc.returncode}): "
+                    f"{stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                os.unlink(out_path)
+                return None
+
+            with open(out_path, "rb") as f:
+                data = f.read()
+            os.unlink(out_path)
+
+            if len(data) > 1024:
+                logger.info(
+                    f"Video encoded via ffmpeg pipe (H.264): "
+                    f"{len(data)} bytes"
+                )
+                return VideoResult(
+                    data=data,
+                    content_type="video/mp4",
+                    extension=".mp4",
+                )
+            return None
+        except Exception:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def _ffmpeg_reencode(input_path: str) -> Optional[bytes]:
+        """Re-encode an existing video file to H.264 with ffmpeg."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4", delete=False
+        ) as tmp:
+            out_path = tmp.name
+
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    f"ffmpeg re-encode failed: "
+                    f"{result.stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                os.unlink(out_path)
+                return None
+
+            with open(out_path, "rb") as fh:
+                data = fh.read()
+            os.unlink(out_path)
+            return data
+        except Exception:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            raise
+
     def _try_encode(
         self, frames: List[np.ndarray], codec: str, ext: str
-    ) -> Tuple[str | None, bytes | None]:
+    ) -> Tuple[Optional[str], Optional[bytes]]:
         """Attempt to encode frames with a specific codec.
 
         Returns (temp_file_path, video_bytes) or (None, None) on failure.

@@ -15,6 +15,8 @@ Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 import logging
 import math
 import os
+import shutil
+import subprocess
 import tempfile
 from typing import List, Tuple
 
@@ -266,15 +268,39 @@ class BlendVideoGenerator:
 
     # ── encoding (streaming) ─────────────────
 
+    @staticmethod
+    def _has_ffmpeg() -> bool:
+        """Check if ffmpeg is available on the system."""
+        return shutil.which("ffmpeg") is not None
+
     def _generate_and_encode(
         self,
         current: np.ndarray,
         ideal: np.ndarray,
         result: np.ndarray,
     ) -> VideoResult:
-        """Generate frames and write directly to video file (streaming)."""
-        total_frames = int(TOTAL_DURATION * BLEND_FPS)
+        """Generate frames and encode to browser-playable H.264 video.
 
+        Strategy:
+        1. Try ffmpeg pipe (raw BGR → H.264 mp4) — browser-native playback.
+        2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
+        3. Last resort: OpenCV mp4v as-is (may not play in all browsers).
+        """
+        total_frames = int(TOTAL_DURATION * BLEND_FPS)
+        has_ffmpeg = self._has_ffmpeg()
+
+        # ── Strategy 1: Pipe raw frames directly to ffmpeg ────
+        if has_ffmpeg:
+            try:
+                result_video = self._encode_with_ffmpeg_pipe(
+                    current, ideal, result, total_frames
+                )
+                if result_video:
+                    return result_video
+            except Exception as e:
+                logger.warning(f"ffmpeg pipe encoding failed: {e}")
+
+        # ── Strategy 2 & 3: OpenCV write + optional ffmpeg re-encode ──
         for codec, ext, content_type in BLEND_CODEC_CHAIN:
             try:
                 with tempfile.NamedTemporaryFile(
@@ -296,6 +322,18 @@ class BlendVideoGenerator:
                     writer.write(frame)
                 writer.release()
 
+                # Try to re-encode with ffmpeg for browser compatibility
+                if has_ffmpeg:
+                    h264_data = self._ffmpeg_reencode(tmp_path)
+                    os.unlink(tmp_path)
+                    if h264_data and len(h264_data) > 1024:
+                        logger.info(
+                            f"Blend video re-encoded to H.264: "
+                            f"{len(h264_data)} bytes, {TOTAL_DURATION:.1f}s"
+                        )
+                        return VideoResult(h264_data, "video/mp4", ".mp4")
+
+                # Fallback: use mp4v as-is
                 with open(tmp_path, "rb") as fh:
                     data = fh.read()
                 os.unlink(tmp_path)
@@ -310,6 +348,125 @@ class BlendVideoGenerator:
                 logger.warning(f"Blend video codec {codec} failed: {e}")
 
         raise RuntimeError("All video codecs failed")
+
+    def _encode_with_ffmpeg_pipe(
+        self,
+        current: np.ndarray,
+        ideal: np.ndarray,
+        result: np.ndarray,
+        total_frames: int,
+    ) -> "VideoResult | None":
+        """Pipe raw BGR frames to ffmpeg for direct H.264 encoding."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4", delete=False
+        ) as tmp:
+            out_path = tmp.name
+
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-f", "rawvideo",
+                "-vcodec", "rawvideo",
+                "-pix_fmt", "bgr24",
+                "-s", f"{BLEND_WIDTH}x{BLEND_HEIGHT}",
+                "-r", str(BLEND_FPS),
+                "-i", "pipe:0",
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            for i in range(total_frames):
+                t = i / BLEND_FPS
+                frame = self._render_frame(t, current, ideal, result)
+                try:
+                    proc.stdin.write(frame.tobytes())
+                except BrokenPipeError:
+                    break
+            try:
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
+
+            proc.wait(timeout=60)
+            stderr = proc.stderr.read()
+            if proc.returncode != 0:
+                logger.warning(
+                    f"ffmpeg pipe failed (rc={proc.returncode}): "
+                    f"{stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                os.unlink(out_path)
+                return None
+
+            with open(out_path, "rb") as fh:
+                data = fh.read()
+            os.unlink(out_path)
+
+            if len(data) > 1024:
+                logger.info(
+                    f"Blend video encoded via ffmpeg pipe (H.264): "
+                    f"{len(data)} bytes, {TOTAL_DURATION:.1f}s"
+                )
+                return VideoResult(data, "video/mp4", ".mp4")
+            return None
+        except Exception:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            raise
+
+    @staticmethod
+    def _ffmpeg_reencode(input_path: str) -> "bytes | None":
+        """Re-encode an existing video file to H.264 with ffmpeg."""
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4", delete=False
+        ) as tmp:
+            out_path = tmp.name
+
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                out_path,
+            ]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    f"ffmpeg re-encode failed: "
+                    f"{result.stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                os.unlink(out_path)
+                return None
+
+            with open(out_path, "rb") as fh:
+                data = fh.read()
+            os.unlink(out_path)
+            return data
+        except Exception:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            raise
 
 
 def get_blend_video_generator() -> BlendVideoGenerator:
