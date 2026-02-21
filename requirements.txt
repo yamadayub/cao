@@ -7,6 +7,7 @@ python-multipart>=0.0.9
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
 opencv-python-headless>=4.9.0.80
+opencv-contrib-python-headless>=4.9.0.80
 mediapipe==0.10.14
 pillow>=10.2.0
 pillow-heif>=0.16.0
