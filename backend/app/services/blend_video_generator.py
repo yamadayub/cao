@@ -1,82 +1,55 @@
-"""Artistic blend reveal video generator.
+"""Blend reveal video generator.
 
-Creates a shareable video showing:
-1. Current face (1s) with Ken Burns effect
-2. Ideal face (1s) with Ken Burns effect
-3. Artistic blend transition (circular reveal + golden glow + sparkles)
-4. Simulation result revealed
-5. Branding
+Creates a cinematic vertical video (9:16, 1080x1920, ~6s):
+1. Current face – full bleed, slow Ken Burns
+2. Brief flash transition
+3. Ideal face – full bleed, slow Ken Burns
+4. Horizontal gradient wipe → simulation result
+5. Result hold
+6. Minimal brand overlay
 
-Output: 9:16 vertical (1080x1920), 30fps, ~6s
+All images are cover-fitted to fill the entire frame (no borders).
 """
 
 import logging
 import math
-from typing import List
+import os
+import tempfile
 
 import cv2
 import numpy as np
 
 from app.services.video_generator import (
     CODEC_CHAIN,
-    FACE_IMAGE_SIZE,
-    FACE_IMAGE_Y,
     FPS,
     VIDEO_HEIGHT,
     VIDEO_WIDTH,
     VideoResult,
     _ease_in_out,
-    _put_centered_text,
 )
 
 logger = logging.getLogger(__name__)
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_HOLD_CURRENT = 1.0
-PHASE_FLASH_1 = 0.15
-PHASE_HOLD_IDEAL = 1.0
-PHASE_FLASH_2 = 0.2
-PHASE_BLEND = 1.2
-PHASE_GLOW_SETTLE = 0.3
-PHASE_HOLD_RESULT = 1.5
-PHASE_BRANDING = 0.65
+PHASE_CURRENT = 1.0
+PHASE_FLASH = 0.3
+PHASE_IDEAL = 0.8
+PHASE_WIPE = 1.2
+PHASE_RESULT = 1.7
+PHASE_BRAND = 1.0
 
 TOTAL_DURATION = (
-    PHASE_HOLD_CURRENT
-    + PHASE_FLASH_1
-    + PHASE_HOLD_IDEAL
-    + PHASE_FLASH_2
-    + PHASE_BLEND
-    + PHASE_GLOW_SETTLE
-    + PHASE_HOLD_RESULT
-    + PHASE_BRANDING
+    PHASE_CURRENT
+    + PHASE_FLASH
+    + PHASE_IDEAL
+    + PHASE_WIPE
+    + PHASE_RESULT
+    + PHASE_BRAND
 )
-
-# ── Colors (BGR) ────────────────────────────
-ACCENT_BGR = (59, 130, 246)  # warm orange-ish in BGR
-GOLD_BGR = (0, 200, 255)
-TEXT_GRAY = (100, 100, 100)
-LIGHT_GRAY = (180, 180, 180)
 
 
 class BlendVideoGenerator:
-    """Generate artistic blend-reveal videos from 3 images."""
-
-    def __init__(self) -> None:
-        # Pre-generate sparkle animation data
-        rng = np.random.RandomState(42)
-        self._sparkles: List[dict] = []
-        for _ in range(80):
-            self._sparkles.append(
-                {
-                    "x": rng.randint(0, FACE_IMAGE_SIZE),
-                    "y": rng.randint(0, FACE_IMAGE_SIZE),
-                    "birth": rng.uniform(0.0, 0.7),
-                    "life": rng.uniform(0.15, 0.45),
-                    "brightness": rng.uniform(0.4, 1.0),
-                    "radius": rng.randint(2, 6),
-                }
-            )
+    """Generate cinematic blend-reveal videos."""
 
     # ── public API ──────────────────────────
 
@@ -86,20 +59,10 @@ class BlendVideoGenerator:
         ideal_image: bytes,
         result_image: bytes,
     ) -> VideoResult:
-        """Generate blend-reveal video.
-
-        Args:
-            current_image: Before face (JPEG/PNG bytes)
-            ideal_image:   Ideal face  (JPEG/PNG bytes)
-            result_image:  Simulation result (JPEG/PNG bytes)
-
-        Returns:
-            VideoResult with encoded video bytes + format metadata
-        """
+        """Generate blend-reveal video (streaming, memory-safe)."""
         current = self._fit(self._decode(current_image))
         ideal = self._fit(self._decode(ideal_image))
         result = self._fit(self._decode(result_image))
-
         return self._generate_and_encode(current, ideal, result)
 
     # ── image helpers ───────────────────────
@@ -113,86 +76,67 @@ class BlendVideoGenerator:
 
     @staticmethod
     def _fit(img: np.ndarray) -> np.ndarray:
+        """Cover-fit image to full 1080x1920 frame (no borders)."""
         h, w = img.shape[:2]
-        s = FACE_IMAGE_SIZE
-        scale = max(s / w, s / h)
+        scale = max(VIDEO_WIDTH / w, VIDEO_HEIGHT / h)
         nw, nh = int(w * scale), int(h * scale)
         resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
-        x0 = (nw - s) // 2
-        y0 = (nh - s) // 2
-        return resized[y0 : y0 + s, x0 : x0 + s]
+        x0 = (nw - VIDEO_WIDTH) // 2
+        y0 = (nh - VIDEO_HEIGHT) // 2
+        return resized[y0 : y0 + VIDEO_HEIGHT, x0 : x0 + VIDEO_WIDTH]
 
     # ── effects ─────────────────────────────
 
     @staticmethod
     def _ken_burns(
-        img: np.ndarray, progress: float, zoom: float = 0.05
+        img: np.ndarray, progress: float, zoom: float = 0.04
     ) -> np.ndarray:
-        """Slow zoom-in for dynamic feel on still images."""
+        """Subtle slow zoom for cinematic feel."""
         h, w = img.shape[:2]
         z = 1.0 + zoom * progress
         nw, nh = int(w * z), int(h * z)
-        zoomed = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
+        zoomed = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
         x0 = (nw - w) // 2
         y0 = (nh - h) // 2
         return zoomed[y0 : y0 + h, x0 : x0 + w]
 
     @staticmethod
-    def _circular_mask(size: int, radius: float) -> np.ndarray:
-        """Soft-edged circular mask (float32, 0-1)."""
-        y, x = np.ogrid[:size, :size]
-        center = size / 2.0
-        dist = np.sqrt((x - center) ** 2 + (y - center) ** 2)
-        feather = 35.0
-        return np.clip((radius - dist) / feather, 0.0, 1.0).astype(np.float32)
-
-    def _render_sparkles(
-        self, size: int, blend_progress: float
+    def _gradient_wipe(
+        img_from: np.ndarray,
+        img_to: np.ndarray,
+        progress: float,
+        feather: int = 200,
     ) -> np.ndarray:
-        """Animated sparkle overlay (float32 BGR, additive)."""
-        overlay = np.zeros((size, size, 3), dtype=np.float32)
-        for sp in self._sparkles:
-            age = blend_progress - sp["birth"]
-            if age < 0 or age > sp["life"]:
-                continue
-            # fade in → hold → fade out
-            fade_in = 0.05
-            fade_out = 0.10
-            if age < fade_in:
-                b = (age / fade_in) * sp["brightness"]
-            elif age > sp["life"] - fade_out:
-                b = ((sp["life"] - age) / fade_out) * sp["brightness"]
-            else:
-                b = sp["brightness"]
-            color = (b * 220, b * 235, b * 255)  # warm white
-            cv2.circle(overlay, (sp["x"], sp["y"]), sp["radius"], color, -1)
-        return cv2.GaussianBlur(overlay, (7, 7), 0)
+        """Horizontal left-to-right wipe with soft feathered edge and warm glow."""
+        h, w = img_from.shape[:2]
+        cols = np.arange(w, dtype=np.float32)
 
-    @staticmethod
-    def _edge_glow(mask: np.ndarray) -> np.ndarray:
-        """Golden glow on the expanding reveal edge (float32 BGR)."""
-        blurred = cv2.GaussianBlur(
-            (mask * 255).astype(np.uint8), (51, 51), 0
-        ).astype(np.float32) / 255.0
-        edge = np.clip(blurred - mask, 0.0, 1.0) * 2.0
-        # warm gold: B=180, G=220, R=255
-        return np.stack(
-            [edge * 180, edge * 220, edge * 255], axis=-1
+        sweep_pos = -feather + progress * (w + 2 * feather)
+        mask_1d = np.clip((sweep_pos - cols) / feather, 0.0, 1.0)
+
+        # Broadcast to full frame
+        mask_3d = mask_1d[np.newaxis, :, np.newaxis]
+
+        blended = (
+            img_from.astype(np.float32) * (1 - mask_3d)
+            + img_to.astype(np.float32) * mask_3d
         )
 
-    @staticmethod
-    def _light_rays(size: int, intensity: float, num_rays: int = 16) -> np.ndarray:
-        """Radial starburst emanating from center (float32 BGR)."""
-        canvas = np.zeros((size, size), dtype=np.float32)
-        cx = cy = size // 2
-        length = int(size * 0.75)
-        for i in range(num_rays):
-            angle = (2 * math.pi * i) / num_rays
-            x2 = int(cx + length * math.cos(angle))
-            y2 = int(cy + length * math.sin(angle))
-            cv2.line(canvas, (cx, cy), (x2, y2), float(intensity), 6)
-        canvas = cv2.GaussianBlur(canvas, (41, 41), 0)
-        return np.stack([canvas * 200, canvas * 225, canvas * 255], axis=-1)
+        # Warm glow at the leading edge
+        edge_sigma = feather * 0.35
+        glow_1d = np.exp(-((cols - sweep_pos) ** 2) / (2 * edge_sigma**2))
+        glow_3d = glow_1d[np.newaxis, :, np.newaxis]
+        glow_strength = 50.0
+
+        # BGR: add warm tint (R > G >> B)
+        blended[:, :, 2:3] = np.clip(
+            blended[:, :, 2:3] + glow_3d * glow_strength, 0, 255
+        )
+        blended[:, :, 1:2] = np.clip(
+            blended[:, :, 1:2] + glow_3d * glow_strength * 0.35, 0, 255
+        )
+
+        return blended.astype(np.uint8)
 
     # ── frame rendering ─────────────────────
 
@@ -203,135 +147,113 @@ class BlendVideoGenerator:
         ideal: np.ndarray,
         result: np.ndarray,
     ) -> np.ndarray:
-        """Render a single frame at time *t* seconds."""
-        frame = np.full((VIDEO_HEIGHT, VIDEO_WIDTH, 3), 255, dtype=np.uint8)
-        y = FACE_IMAGE_Y
-        cx = VIDEO_WIDTH // 2
-
-        # Phase boundaries (cumulative)
-        t1 = PHASE_HOLD_CURRENT
-        t2 = t1 + PHASE_FLASH_1
-        t3 = t2 + PHASE_HOLD_IDEAL
-        t4 = t3 + PHASE_FLASH_2
-        t5 = t4 + PHASE_BLEND
-        t6 = t5 + PHASE_GLOW_SETTLE
-        t7 = t6 + PHASE_HOLD_RESULT
+        """Render a single full-bleed frame at time *t*."""
+        t1 = PHASE_CURRENT
+        t2 = t1 + PHASE_FLASH
+        t3 = t2 + PHASE_IDEAL
+        t4 = t3 + PHASE_WIPE
+        t5 = t4 + PHASE_RESULT
 
         if t < t1:
-            # ── Phase 1: Hold current ────────────────
+            # ── Current face with Ken Burns ────────
             p = t / t1
-            face = self._ken_burns(current, p)
-            frame[y : y + FACE_IMAGE_SIZE, :] = face
-            _put_centered_text(
-                frame, "Before", cx, y + FACE_IMAGE_SIZE + 50,
-                font_scale=1.3, color=TEXT_GRAY, thickness=2,
-            )
+            return self._ken_burns(current, p)
 
         elif t < t2:
-            # ── Phase 2: Flash → ideal ───────────────
-            p = (t - t1) / PHASE_FLASH_1
-            alpha = math.sin(p * math.pi)
-            face = current if p < 0.5 else ideal
-            frame[y : y + FACE_IMAGE_SIZE, :] = face
+            # ── Flash transition current → ideal ───
+            p = (t - t1) / PHASE_FLASH
+            brightness = math.sin(p * math.pi)
+            img = current if p < 0.5 else ideal
+            frame = img.copy()
             white = np.full_like(frame, 255)
-            cv2.addWeighted(frame, 1 - alpha, white, alpha, 0, frame)
+            cv2.addWeighted(
+                frame, 1 - brightness * 0.85, white, brightness * 0.85, 0, frame
+            )
+            return frame
 
         elif t < t3:
-            # ── Phase 3: Hold ideal ──────────────────
-            p = (t - t2) / PHASE_HOLD_IDEAL
-            face = self._ken_burns(ideal, p)
-            frame[y : y + FACE_IMAGE_SIZE, :] = face
-            _put_centered_text(
-                frame, "Ideal", cx, y + FACE_IMAGE_SIZE + 50,
-                font_scale=1.3, color=TEXT_GRAY, thickness=2,
-            )
+            # ── Ideal face with Ken Burns ──────────
+            p = (t - t2) / PHASE_IDEAL
+            return self._ken_burns(ideal, p)
 
         elif t < t4:
-            # ── Phase 4: Golden flash builds ─────────
-            p = (t - t3) / PHASE_FLASH_2
-            alpha = p * 0.85
-            frame[y : y + FACE_IMAGE_SIZE, :] = ideal
-            warm = np.full_like(frame, 255)
-            warm[:, :, 0] = 200  # less blue → warm
-            cv2.addWeighted(frame, 1 - alpha, warm, alpha, 0, frame)
+            # ── Gradient wipe ideal → result ───────
+            p = (t - t3) / PHASE_WIPE
+            eased = _ease_in_out(p)
+            return self._gradient_wipe(ideal, result, eased)
 
         elif t < t5:
-            # ── Phase 5: Artistic blend (circular reveal) ─
-            p = (t - t4) / PHASE_BLEND
-            eased = _ease_in_out(p)
-            max_r = FACE_IMAGE_SIZE * 0.82
-            mask = self._circular_mask(FACE_IMAGE_SIZE, eased * max_r)
-            m3 = np.stack([mask] * 3, axis=-1)
-
-            face = (
-                ideal.astype(np.float32) * (1 - m3)
-                + result.astype(np.float32) * m3
-            ).astype(np.uint8)
-            frame[y : y + FACE_IMAGE_SIZE, :] = face
-
-            # sparkle particles
-            sparkle = self._render_sparkles(FACE_IMAGE_SIZE, p)
-            region = frame[y : y + FACE_IMAGE_SIZE, :].astype(np.float32)
-            frame[y : y + FACE_IMAGE_SIZE, :] = np.clip(
-                region + sparkle, 0, 255
-            ).astype(np.uint8)
-
-            # golden edge glow
-            glow = self._edge_glow(mask)
-            region = frame[y : y + FACE_IMAGE_SIZE, :].astype(np.float32)
-            frame[y : y + FACE_IMAGE_SIZE, :] = np.clip(
-                region + glow, 0, 255
-            ).astype(np.uint8)
-
-            # light rays (strongest in the middle of transition)
-            ray_intensity = math.sin(p * math.pi) * 0.35
-            if ray_intensity > 0.02:
-                rays = self._light_rays(FACE_IMAGE_SIZE, ray_intensity)
-                region = frame[y : y + FACE_IMAGE_SIZE, :].astype(np.float32)
-                frame[y : y + FACE_IMAGE_SIZE, :] = np.clip(
-                    region + rays, 0, 255
-                ).astype(np.uint8)
-
-            # fading warm overlay
-            flash_a = max(0.0, 0.55 - p * 0.7)
-            if flash_a > 0.01:
-                warm = np.full_like(frame, 255)
-                warm[:, :, 0] = 210
-                cv2.addWeighted(frame, 1 - flash_a, warm, flash_a, 0, frame)
-
-        elif t < t6:
-            # ── Phase 6: Glow settle ─────────────────
-            p = (t - t5) / PHASE_GLOW_SETTLE
-            frame[y : y + FACE_IMAGE_SIZE, :] = result
-            alpha = (1 - p) * 0.12
-            warm = np.full_like(frame, 255)
-            cv2.addWeighted(frame, 1 - alpha, warm, alpha, 0, frame)
-
-        elif t < t7:
-            # ── Phase 7: Hold result ─────────────────
-            p = (t - t6) / PHASE_HOLD_RESULT
-            face = self._ken_burns(result, p, zoom=0.02)
-            frame[y : y + FACE_IMAGE_SIZE, :] = face
-            _put_centered_text(
-                frame, "Simulation Result", cx, y + FACE_IMAGE_SIZE + 50,
-                font_scale=1.3, color=ACCENT_BGR, thickness=2,
-            )
+            # ── Result hold with Ken Burns ─────────
+            p = (t - t4) / PHASE_RESULT
+            return self._ken_burns(result, p, zoom=0.02)
 
         else:
-            # ── Phase 8: Branding ────────────────────
-            frame[y : y + FACE_IMAGE_SIZE, :] = result
-            _put_centered_text(
-                frame, "Cao", cx, y + FACE_IMAGE_SIZE + 70,
-                font_scale=2.0, color=ACCENT_BGR, thickness=3,
+            # ── Brand overlay ──────────────────────
+            p = (t - t5) / PHASE_BRAND
+            frame = result.copy()
+
+            # Bottom gradient darken for text readability
+            grad_h = VIDEO_HEIGHT // 3
+            fade = min(p * 3.0, 1.0)
+            if fade > 0.01:
+                alpha_col = np.linspace(0, 0.55 * fade, grad_h, dtype=np.float32)
+                alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
+                y_start = VIDEO_HEIGHT - grad_h
+                region = frame[y_start:, :, :].astype(np.float32)
+                frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(np.uint8)
+
+            # Text fade-in
+            text_alpha = min(p * 2.5, 1.0)
+            if text_alpha > 0.05:
+                self._overlay_text(
+                    frame,
+                    "Cao",
+                    VIDEO_WIDTH // 2,
+                    VIDEO_HEIGHT - 150,
+                    scale=1.8,
+                    color=(255, 255, 255),
+                    thickness=3,
+                    alpha=text_alpha,
+                )
+                self._overlay_text(
+                    frame,
+                    "cao.style-elements.jp",
+                    VIDEO_WIDTH // 2,
+                    VIDEO_HEIGHT - 80,
+                    scale=0.7,
+                    color=(200, 200, 200),
+                    thickness=1,
+                    alpha=text_alpha,
+                )
+            return frame
+
+    @staticmethod
+    def _overlay_text(
+        frame: np.ndarray,
+        text: str,
+        cx: int,
+        y: int,
+        scale: float,
+        color: tuple,
+        thickness: int,
+        alpha: float = 1.0,
+    ) -> None:
+        """Draw centered text with optional alpha blending."""
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        (tw, _th), _ = cv2.getTextSize(text, font, scale, thickness)
+        x = cx - tw // 2
+        if alpha < 0.99:
+            overlay = frame.copy()
+            cv2.putText(
+                overlay, text, (x, y), font, scale, color, thickness, cv2.LINE_AA
             )
-            _put_centered_text(
-                frame, "cao.style-elements.jp", cx, y + FACE_IMAGE_SIZE + 130,
-                font_scale=0.8, color=LIGHT_GRAY, thickness=2,
+            cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        else:
+            cv2.putText(
+                frame, text, (x, y), font, scale, color, thickness, cv2.LINE_AA
             )
 
-        return frame
-
-    # ── full pipeline (streaming – no frame list) ─
+    # ── encoding (streaming) ─────────────────
 
     def _generate_and_encode(
         self,
@@ -339,15 +261,7 @@ class BlendVideoGenerator:
         ideal: np.ndarray,
         result: np.ndarray,
     ) -> VideoResult:
-        """Generate frames and write directly to video writer (streaming).
-
-        Frames are NOT accumulated in a list; each is written immediately
-        to the VideoWriter, keeping peak memory under ~50 MB regardless
-        of video length.
-        """
-        import os
-        import tempfile
-
+        """Generate frames and write directly to video file (streaming)."""
         total_frames = int(TOTAL_DURATION * FPS)
 
         for codec, ext, content_type in CODEC_CHAIN:
