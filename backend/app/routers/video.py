@@ -24,6 +24,10 @@ from app.services.video_generator import (
     VideoResult,
     get_video_generator,
 )
+from app.services.blend_video_generator import (
+    TOTAL_DURATION as BLEND_TOTAL_DURATION,
+    get_blend_video_generator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,14 @@ class VideoGenerateRequest(BaseModel):
 
     source_image: str = Field(..., description="Base64 encoded Before image")
     result_image: str = Field(..., description="Base64 encoded After image")
+
+
+class BlendVideoGenerateRequest(BaseModel):
+    """Request to generate an artistic blend-reveal video."""
+
+    current_image: str = Field(..., description="Base64 encoded current face")
+    ideal_image: str = Field(..., description="Base64 encoded ideal face")
+    result_image: str = Field(..., description="Base64 encoded simulation result")
 
 
 class VideoGenerateData(BaseModel):
@@ -185,6 +197,88 @@ async def generate_morph_video(
         data=VideoGenerateData(
             video_url=video_url,
             duration=duration,
+            format=video_format,
+        )
+    )
+
+
+@router.post("/blend", response_model=VideoGenerateResponse)
+async def generate_blend_video(
+    request: Request,
+    body: BlendVideoGenerateRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Generate an artistic blend-reveal video.
+
+    Shows current face → ideal face → artistic transition → simulation result.
+    Suitable for sharing on SNS (9:16, 1080x1920, ~6s).
+
+    Requires authentication (Bearer JWT or X-API-Key).
+    """
+    # Decode images
+    try:
+        current_bytes = _decode_base64_image(body.current_image)
+        ideal_bytes = _decode_base64_image(body.ideal_image)
+        result_bytes = _decode_base64_image(body.result_image)
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    message="Invalid base64 image data",
+                )
+            ).model_dump(),
+        )
+
+    if not current_bytes or not ideal_bytes or not result_bytes:
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=ErrorCodes.VALIDATION_ERROR,
+                    message="Empty image data after decoding",
+                )
+            ).model_dump(),
+        )
+
+    # Generate video
+    try:
+        generator = get_blend_video_generator()
+        result = generator.generate(current_bytes, ideal_bytes, result_bytes)
+        logger.info(
+            f"Blend video generated: {len(result.data)} bytes, "
+            f"format={result.content_type}"
+        )
+    except Exception as e:
+        logger.error(f"Blend video generation failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error=ErrorDetail(
+                    code=ErrorCodes.PROCESSING_ERROR,
+                    message=f"Failed to generate blend video: {str(e)}",
+                )
+            ).model_dump(),
+        )
+
+    # Upload to Supabase
+    video_id = str(uuid.uuid4())
+    video_url = await _upload_video_to_supabase(
+        result.data, video_id, result.extension, result.content_type
+    )
+
+    # Fallback to base64 data URL
+    if not video_url:
+        video_b64 = base64.b64encode(result.data).decode("utf-8")
+        video_url = f"data:{result.content_type};base64,{video_b64}"
+
+    video_format = result.extension.lstrip(".")
+
+    return VideoGenerateResponse(
+        data=VideoGenerateData(
+            video_url=video_url,
+            duration=BLEND_TOTAL_DURATION,
             format=video_format,
         )
     )
