@@ -1,6 +1,6 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 1080x1920, ~6s):
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6s):
 1. Current face – full bleed, slow Ken Burns
 2. Brief flash transition
 3. Ideal face – full bleed, slow Ken Burns
@@ -9,26 +9,37 @@ Creates a cinematic vertical video (9:16, 1080x1920, ~6s):
 6. Minimal brand overlay
 
 All images are cover-fitted to fill the entire frame (no borders).
+Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 """
 
 import logging
 import math
 import os
 import tempfile
+from typing import List, Tuple
 
 import cv2
 import numpy as np
 
 from app.services.video_generator import (
-    CODEC_CHAIN,
-    FPS,
-    VIDEO_HEIGHT,
-    VIDEO_WIDTH,
     VideoResult,
     _ease_in_out,
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Blend-specific video settings ────────────
+# Smaller than morph video (1080x1920) to stay within Heroku limits.
+BLEND_WIDTH = 720
+BLEND_HEIGHT = 1280
+BLEND_FPS = 24
+
+# Only codecs that actually work on Heroku's opencv-python-headless.
+# avc1/VP80 fail on Heroku (no h264 hw encoder, no libvpx).
+BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
+    ("mp4v", ".mp4", "video/mp4"),
+    ("MJPG", ".avi", "video/x-msvideo"),
+]
 
 # ── Timeline (seconds) ──────────────────────
 PHASE_CURRENT = 1.0
@@ -76,14 +87,14 @@ class BlendVideoGenerator:
 
     @staticmethod
     def _fit(img: np.ndarray) -> np.ndarray:
-        """Cover-fit image to full 1080x1920 frame (no borders)."""
+        """Cover-fit image to full 720x1280 frame (no borders)."""
         h, w = img.shape[:2]
-        scale = max(VIDEO_WIDTH / w, VIDEO_HEIGHT / h)
+        scale = max(BLEND_WIDTH / w, BLEND_HEIGHT / h)
         nw, nh = int(w * scale), int(h * scale)
         resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
-        x0 = (nw - VIDEO_WIDTH) // 2
-        y0 = (nh - VIDEO_HEIGHT) // 2
-        return resized[y0 : y0 + VIDEO_HEIGHT, x0 : x0 + VIDEO_WIDTH]
+        x0 = (nw - BLEND_WIDTH) // 2
+        y0 = (nh - BLEND_HEIGHT) // 2
+        return resized[y0 : y0 + BLEND_HEIGHT, x0 : x0 + BLEND_WIDTH]
 
     # ── effects ─────────────────────────────
 
@@ -193,12 +204,12 @@ class BlendVideoGenerator:
             frame = result.copy()
 
             # Bottom gradient darken for text readability
-            grad_h = VIDEO_HEIGHT // 3
+            grad_h = BLEND_HEIGHT // 3
             fade = min(p * 3.0, 1.0)
             if fade > 0.01:
                 alpha_col = np.linspace(0, 0.55 * fade, grad_h, dtype=np.float32)
                 alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
-                y_start = VIDEO_HEIGHT - grad_h
+                y_start = BLEND_HEIGHT - grad_h
                 region = frame[y_start:, :, :].astype(np.float32)
                 frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(np.uint8)
 
@@ -208,19 +219,19 @@ class BlendVideoGenerator:
                 self._overlay_text(
                     frame,
                     "Cao",
-                    VIDEO_WIDTH // 2,
-                    VIDEO_HEIGHT - 150,
-                    scale=1.8,
+                    BLEND_WIDTH // 2,
+                    BLEND_HEIGHT - 110,
+                    scale=1.4,
                     color=(255, 255, 255),
-                    thickness=3,
+                    thickness=2,
                     alpha=text_alpha,
                 )
                 self._overlay_text(
                     frame,
                     "cao.style-elements.jp",
-                    VIDEO_WIDTH // 2,
-                    VIDEO_HEIGHT - 80,
-                    scale=0.7,
+                    BLEND_WIDTH // 2,
+                    BLEND_HEIGHT - 55,
+                    scale=0.55,
                     color=(200, 200, 200),
                     thickness=1,
                     alpha=text_alpha,
@@ -262,9 +273,9 @@ class BlendVideoGenerator:
         result: np.ndarray,
     ) -> VideoResult:
         """Generate frames and write directly to video file (streaming)."""
-        total_frames = int(TOTAL_DURATION * FPS)
+        total_frames = int(TOTAL_DURATION * BLEND_FPS)
 
-        for codec, ext, content_type in CODEC_CHAIN:
+        for codec, ext, content_type in BLEND_CODEC_CHAIN:
             try:
                 with tempfile.NamedTemporaryFile(
                     suffix=ext, delete=False
@@ -273,14 +284,14 @@ class BlendVideoGenerator:
 
                 fourcc = cv2.VideoWriter_fourcc(*codec)
                 writer = cv2.VideoWriter(
-                    tmp_path, fourcc, FPS, (VIDEO_WIDTH, VIDEO_HEIGHT)
+                    tmp_path, fourcc, BLEND_FPS, (BLEND_WIDTH, BLEND_HEIGHT)
                 )
                 if not writer.isOpened():
                     os.unlink(tmp_path)
                     continue
 
                 for i in range(total_frames):
-                    t = i / FPS
+                    t = i / BLEND_FPS
                     frame = self._render_frame(t, current, ideal, result)
                     writer.write(frame)
                 writer.release()
