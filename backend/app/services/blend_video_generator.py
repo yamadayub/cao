@@ -1,19 +1,18 @@
 """Blend reveal video generator.
 
 Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6s):
-1. Current face – full bleed, slow Ken Burns
-2. Brief flash transition
+1. Current face ("今の私") – full bleed, slow Ken Burns
+2. Gradient wipe → ideal face ("理想の顔")
 3. Ideal face – full bleed, slow Ken Burns
-4. Horizontal gradient wipe → simulation result
+4. Gradient wipe → result face ("理想の私")
 5. Result hold
-6. Minimal brand overlay
+6. Brand overlay
 
 All images are cover-fitted to fill the entire frame (no borders).
 Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 """
 
 import logging
-import math
 import os
 import subprocess
 import tempfile
@@ -21,12 +20,17 @@ from typing import List, Tuple
 
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 from app.services.video_generator import (
     VideoResult,
     _ease_in_out,
     get_ffmpeg_path,
 )
+
+# Font path for Japanese captions
+_FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts")
+_FONT_PATH = os.path.join(_FONT_DIR, "NotoSansJP-subset.ttf")
 
 logger = logging.getLogger(__name__)
 
@@ -44,21 +48,26 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 ]
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_CURRENT = 1.0
-PHASE_FLASH = 0.3
-PHASE_IDEAL = 0.8
-PHASE_WIPE = 1.2
-PHASE_RESULT = 1.7
-PHASE_BRAND = 1.0
+PHASE_CURRENT = 1.0       # Hold current face
+PHASE_WIPE1 = 1.0         # Wipe current → ideal
+PHASE_IDEAL = 1.0         # Hold ideal face
+PHASE_WIPE2 = 1.0         # Wipe ideal → result
+PHASE_RESULT = 1.5        # Hold result face
+PHASE_BRAND = 1.0         # Brand overlay
 
 TOTAL_DURATION = (
     PHASE_CURRENT
-    + PHASE_FLASH
+    + PHASE_WIPE1
     + PHASE_IDEAL
-    + PHASE_WIPE
+    + PHASE_WIPE2
     + PHASE_RESULT
     + PHASE_BRAND
 )
+
+# ── Captions ─────────────────────────────────
+CAPTION_CURRENT = "\u4eca\u306e\u79c1"       # 今の私
+CAPTION_IDEAL = "\u7406\u60f3\u306e\u9854"     # 理想の顔
+CAPTION_RESULT = "\u7406\u60f3\u306e\u79c1"    # 理想の私
 
 
 class BlendVideoGenerator:
@@ -153,6 +162,79 @@ class BlendVideoGenerator:
 
     # ── frame rendering ─────────────────────
 
+    def _add_caption(
+        self, frame: np.ndarray, text: str, alpha: float = 1.0
+    ) -> np.ndarray:
+        """Add a Japanese caption with semi-transparent background at bottom."""
+        frame = frame.copy()
+
+        # Semi-transparent dark gradient at bottom for text readability
+        grad_h = 120
+        y_start = BLEND_HEIGHT - grad_h
+        alpha_col = np.linspace(0, 0.6, grad_h, dtype=np.float32)
+        alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
+        region = frame[y_start:, :, :].astype(np.float32)
+        frame[y_start:, :, :] = (region * (1 - alpha_3d * alpha)).astype(
+            np.uint8
+        )
+
+        # Caption text using PIL for Japanese support
+        if alpha > 0.05:
+            self._draw_pil_text(
+                frame,
+                text,
+                BLEND_WIDTH // 2,
+                BLEND_HEIGHT - 70,
+                font_size=40,
+                color=(255, 255, 255),
+                alpha=alpha,
+            )
+        return frame
+
+    def _draw_pil_text(
+        self,
+        frame: np.ndarray,
+        text: str,
+        cx: int,
+        cy: int,
+        font_size: int = 40,
+        color: tuple = (255, 255, 255),
+        alpha: float = 1.0,
+    ) -> None:
+        """Draw centered text on OpenCV frame using PIL (supports Japanese)."""
+        try:
+            font = ImageFont.truetype(_FONT_PATH, font_size)
+        except (OSError, IOError):
+            # Fallback: use OpenCV if font not found
+            self._overlay_text(
+                frame, text, cx, cy,
+                scale=1.0, color=color, thickness=2, alpha=alpha,
+            )
+            return
+
+        # Create transparent overlay with PIL
+        pil_img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        overlay = Image.new("RGBA", pil_img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Get text bounding box for centering
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = cx - tw // 2
+        y = cy - th // 2
+
+        a = int(255 * alpha)
+        draw.text((x, y), text, font=font, fill=(*color, a))
+
+        # Composite onto frame
+        pil_img = pil_img.convert("RGBA")
+        pil_img = Image.alpha_composite(pil_img, overlay)
+        result = cv2.cvtColor(
+            np.array(pil_img.convert("RGB")), cv2.COLOR_RGB2BGR
+        )
+        frame[:] = result
+
     def _render_frame(
         self,
         t: float,
@@ -162,46 +244,47 @@ class BlendVideoGenerator:
     ) -> np.ndarray:
         """Render a single full-bleed frame at time *t*."""
         t1 = PHASE_CURRENT
-        t2 = t1 + PHASE_FLASH
+        t2 = t1 + PHASE_WIPE1
         t3 = t2 + PHASE_IDEAL
-        t4 = t3 + PHASE_WIPE
+        t4 = t3 + PHASE_WIPE2
         t5 = t4 + PHASE_RESULT
 
         if t < t1:
-            # ── Current face with Ken Burns ────────
+            # ── Current face with Ken Burns + caption ──
             p = t / t1
-            return self._ken_burns(current, p)
+            frame = self._ken_burns(current, p)
+            return self._add_caption(frame, CAPTION_CURRENT)
 
         elif t < t2:
-            # ── Flash transition current → ideal ───
-            p = (t - t1) / PHASE_FLASH
-            brightness = math.sin(p * math.pi)
-            img = current if p < 0.5 else ideal
-            frame = img.copy()
-            white = np.full_like(frame, 255)
-            cv2.addWeighted(
-                frame, 1 - brightness * 0.85, white, brightness * 0.85, 0, frame
-            )
-            return frame
+            # ── Wipe current → ideal ─────────────────
+            p = (t - t1) / PHASE_WIPE1
+            eased = _ease_in_out(p)
+            cur_cap = self._add_caption(current, CAPTION_CURRENT)
+            idl_cap = self._add_caption(ideal, CAPTION_IDEAL)
+            return self._gradient_wipe(cur_cap, idl_cap, eased)
 
         elif t < t3:
-            # ── Ideal face with Ken Burns ──────────
+            # ── Ideal face with Ken Burns + caption ────
             p = (t - t2) / PHASE_IDEAL
-            return self._ken_burns(ideal, p)
+            frame = self._ken_burns(ideal, p)
+            return self._add_caption(frame, CAPTION_IDEAL)
 
         elif t < t4:
-            # ── Gradient wipe ideal → result ───────
-            p = (t - t3) / PHASE_WIPE
+            # ── Wipe ideal → result ──────────────────
+            p = (t - t3) / PHASE_WIPE2
             eased = _ease_in_out(p)
-            return self._gradient_wipe(ideal, result, eased)
+            idl_cap = self._add_caption(ideal, CAPTION_IDEAL)
+            res_cap = self._add_caption(result, CAPTION_RESULT)
+            return self._gradient_wipe(idl_cap, res_cap, eased)
 
         elif t < t5:
-            # ── Result hold with Ken Burns ─────────
+            # ── Result hold with Ken Burns + caption ──
             p = (t - t4) / PHASE_RESULT
-            return self._ken_burns(result, p, zoom=0.02)
+            frame = self._ken_burns(result, p, zoom=0.02)
+            return self._add_caption(frame, CAPTION_RESULT)
 
         else:
-            # ── Brand overlay ──────────────────────
+            # ── Brand overlay ────────────────────────
             p = (t - t5) / PHASE_BRAND
             frame = result.copy()
 
@@ -213,7 +296,9 @@ class BlendVideoGenerator:
                 alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
                 y_start = BLEND_HEIGHT - grad_h
                 region = frame[y_start:, :, :].astype(np.float32)
-                frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(np.uint8)
+                frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(
+                    np.uint8
+                )
 
             # Text fade-in
             text_alpha = min(p * 2.5, 1.0)
