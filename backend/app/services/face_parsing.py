@@ -128,24 +128,22 @@ class FaceParsingService:
         self._load_model()
         return self._model is not None
 
-    def parse(self, image: np.ndarray) -> np.ndarray:
+    def _parse_native(self, image: np.ndarray) -> np.ndarray:
         """
-        Parse face image and return segmentation map.
+        Parse face image and return segmentation map at native 512x512 resolution.
 
         Args:
             image: Input image in BGR format (H, W, 3)
 
         Returns:
-            Segmentation map with class indices (H, W)
+            Segmentation map with class indices at 512x512
         """
         self._load_model()
 
         if self._model is None:
-            # Return empty segmentation if model not available
-            return np.zeros(image.shape[:2], dtype=np.uint8)
+            return np.zeros(self._input_size, dtype=np.uint8)
 
         # Preprocess image
-        h, w = image.shape[:2]
         input_image = cv2.resize(image, self._input_size)
         input_image = cv2.cvtColor(input_image, cv2.COLOR_BGR2RGB)
         input_image = input_image.astype(np.float32) / 255.0
@@ -159,12 +157,10 @@ class FaceParsingService:
         input_tensor = np.transpose(input_image, (2, 0, 1))[np.newaxis, ...]
 
         if self._model_type == "onnx":
-            # ONNX inference
             input_name = self._model.get_inputs()[0].name
             outputs = self._model.run(None, {input_name: input_tensor.astype(np.float32)})
-            segmentation = outputs[0][0]  # Remove batch dim
+            segmentation = outputs[0][0]
         else:
-            # PyTorch inference
             import torch
 
             with torch.no_grad():
@@ -172,8 +168,20 @@ class FaceParsingService:
                 outputs = self._model(input_tensor)
                 segmentation = outputs[0].cpu().numpy()
 
-        # Get class predictions
-        seg_map = np.argmax(segmentation, axis=0).astype(np.uint8)
+        return np.argmax(segmentation, axis=0).astype(np.uint8)
+
+    def parse(self, image: np.ndarray) -> np.ndarray:
+        """
+        Parse face image and return segmentation map.
+
+        Args:
+            image: Input image in BGR format (H, W, 3)
+
+        Returns:
+            Segmentation map with class indices (H, W)
+        """
+        h, w = image.shape[:2]
+        seg_map = self._parse_native(image)
 
         # Resize back to original size
         seg_map = cv2.resize(seg_map, (w, h), interpolation=cv2.INTER_NEAREST)
@@ -212,30 +220,35 @@ class FaceParsingService:
             # Fallback to landmark-based mask
             return self._create_landmark_mask(image, part_name, landmarks, dilate_pixels, blur_size)
 
-        # Parse the full face
-        seg_map = self.parse(image)
+        h, w = image.shape[:2]
+
+        # Get native 512x512 segmentation map
+        seg_map_native = self._parse_native(image)
 
         # Get labels for this part
         label_indices = PART_TO_BISENET_LABELS[part_name]
 
-        # Create mask by combining all labels for this part
-        mask = np.zeros(seg_map.shape, dtype=np.uint8)
+        # Create mask at native 512x512 resolution
+        mask_native = np.zeros(seg_map_native.shape, dtype=np.uint8)
         for label_idx in label_indices:
-            mask[seg_map == label_idx] = 255
+            mask_native[seg_map_native == label_idx] = 255
 
         # Exclude hair region if requested (important for eyebrows)
         if exclude_hair:
-            hair_mask = np.zeros(seg_map.shape, dtype=np.uint8)
-            hair_mask[seg_map == 17] = 255  # 17 is hair label
+            hair_mask_native = np.zeros(seg_map_native.shape, dtype=np.uint8)
+            hair_mask_native[seg_map_native == 17] = 255
 
-            # Dilate hair mask slightly to ensure complete coverage
+            # Dilate hair mask at native resolution (scale kernel to 512x512)
             hair_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-            hair_mask = cv2.dilate(hair_mask, hair_kernel, iterations=1)
+            hair_mask_native = cv2.dilate(hair_mask_native, hair_kernel, iterations=1)
 
-            # Subtract hair from eyebrow mask
-            mask = cv2.subtract(mask, hair_mask)
+            mask_native = cv2.subtract(mask_native, hair_mask_native)
 
-        # Dilate if requested
+        # Upscale mask to original size with smooth interpolation
+        # INTER_LINEAR produces smooth edges instead of blocky INTER_NEAREST
+        mask = cv2.resize(mask_native, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        # Dilate if requested (at full resolution)
         if dilate_pixels > 0:
             kernel = cv2.getStructuringElement(
                 cv2.MORPH_ELLIPSE, (dilate_pixels * 2 + 1, dilate_pixels * 2 + 1)

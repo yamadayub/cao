@@ -119,7 +119,7 @@ def cv2_to_bytes(img: np.ndarray, format: str = "png") -> bytes:
     if format == "png":
         _, buffer = cv2.imencode(".png", img)
     else:
-        _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        _, buffer = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 95])
     return buffer.tobytes()
 
 

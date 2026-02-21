@@ -202,8 +202,8 @@ class SwapCompositor:
         self,
         original: np.ndarray,
         swapped: np.ndarray,
-        blur_size: int = 21,
-        dilate_pixels: int = 3,
+        blur_size: int = 31,
+        dilate_pixels: int = 10,
     ) -> np.ndarray:
         """Preserve original hair on swapped face result.
 
