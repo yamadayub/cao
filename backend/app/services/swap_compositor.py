@@ -203,25 +203,33 @@ class SwapCompositor:
         original: np.ndarray,
         swapped: np.ndarray,
         blur_size: int = 31,
-        dilate_pixels: int = 10,
+        dilate_pixels: int = 5,
     ) -> np.ndarray:
-        """Preserve original hair on swapped face result.
+        """Preserve original hair/background by overlaying only the swapped face.
 
-        Uses BiSeNet to detect hair region in original image and composites
-        it onto the swapped result to maintain hair quality.
+        Instead of detecting hair (error-prone), detects the FACE region and
+        only uses swapped pixels there. Everything else (hair, background,
+        ears, neck) comes directly from the original at full resolution.
 
         Args:
-            original: Original face image (BGR format) - source of hair.
-            swapped: Swapped face image (BGR format) - target to apply hair.
+            original: Original face image (BGR format) - kept for non-face.
+            swapped: Swapped face image (BGR format) - used for face region.
             blur_size: Gaussian blur size for soft edge blending.
-            dilate_pixels: Pixels to dilate hair mask for coverage.
+            dilate_pixels: Pixels to dilate face mask for seamless coverage.
 
         Returns:
-            Swapped image with original hair preserved.
+            Original image with swapped face composited in.
         """
         # Ensure images have same dimensions
         if original.shape != swapped.shape:
-            swapped = cv2.resize(swapped, (original.shape[1], original.shape[0]))
+            logger.info(
+                f"Resizing swapped {swapped.shape[:2]} → {original.shape[:2]}"
+            )
+            swapped = cv2.resize(
+                swapped,
+                (original.shape[1], original.shape[0]),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
 
         # Get face parsing service
         face_parsing = get_face_parsing_service()
@@ -231,28 +239,59 @@ class SwapCompositor:
             return swapped.copy()
 
         try:
-            # Get hair mask from original image
-            hair_mask = face_parsing.get_part_mask(
-                original,
-                "hair",
-                landmarks=None,
-                dilate_pixels=dilate_pixels,
-                blur_size=blur_size,
-            )
+            # Parse original at native 512x512 resolution
+            seg_map = face_parsing._parse_native(original)
 
-            # If no hair detected, return swapped as-is
-            if hair_mask.sum() == 0:
-                logger.info("No hair detected in original image")
+            # Face region: skin(1) + eyebrows(2,3) + eyes(4,5)
+            #              + nose(10) + mouth/lips(11,12,13)
+            face_labels = {1, 2, 3, 4, 5, 10, 11, 12, 13}
+            face_mask_native = np.zeros(seg_map.shape, dtype=np.uint8)
+            for label in face_labels:
+                face_mask_native[seg_map == label] = 255
+
+            if face_mask_native.sum() == 0:
+                logger.info("No face detected in original image")
                 return swapped.copy()
 
-            # Normalize mask to float for blending
-            mask_float = hair_mask.astype(np.float32) / 255.0
+            # Fill holes within face (e.g. nostrils misclassified)
+            close_kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (15, 15)
+            )
+            face_mask_native = cv2.morphologyEx(
+                face_mask_native, cv2.MORPH_CLOSE, close_kernel
+            )
+
+            # Upscale to original size with smooth interpolation
+            h, w = original.shape[:2]
+            face_mask = cv2.resize(
+                face_mask_native, (w, h), interpolation=cv2.INTER_LINEAR
+            )
+
+            # Dilate slightly to ensure seamless face-hair boundary
+            if dilate_pixels > 0:
+                kernel = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE,
+                    (dilate_pixels * 2 + 1, dilate_pixels * 2 + 1),
+                )
+                face_mask = cv2.dilate(face_mask, kernel)
+
+            # Blur for soft transition
+            if blur_size > 0:
+                ks = blur_size if blur_size % 2 == 1 else blur_size + 1
+                face_mask = cv2.GaussianBlur(face_mask, (ks, ks), 0)
+
+            # Blend: swapped face + original everything else
+            mask_float = face_mask.astype(np.float32) / 255.0
             mask_3ch = np.stack([mask_float] * 3, axis=-1)
 
-            # Blend: original hair where mask is white, swapped elsewhere
-            result = (original * mask_3ch + swapped * (1.0 - mask_3ch)).astype(np.uint8)
+            result = (
+                swapped * mask_3ch + original * (1.0 - mask_3ch)
+            ).astype(np.uint8)
 
-            logger.info("Hair preserved from original image")
+            logger.info(
+                f"Hair preserved: face mask covers "
+                f"{(face_mask > 127).sum() / (h * w) * 100:.1f}%% of image"
+            )
             return result
 
         except Exception as e:
