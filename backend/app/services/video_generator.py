@@ -60,6 +60,18 @@ class VideoResult:
         self.extension = extension
 
 
+def get_ffmpeg_path() -> Optional[str]:
+    """Find ffmpeg binary: system PATH first, then imageio-ffmpeg fallback."""
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except (ImportError, RuntimeError):
+        return None
+
+
 def _ease_in_out(t: float) -> float:
     """Smooth ease-in-out interpolation."""
     return t * t * (3.0 - 2.0 * t)
@@ -356,12 +368,12 @@ class MorphVideoGenerator:
         2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
         3. Last resort: OpenCV mp4v as-is.
         """
-        has_ffmpeg = shutil.which("ffmpeg") is not None
+        ffmpeg_bin = get_ffmpeg_path()
 
         # Strategy 1: Pipe raw frames to ffmpeg for direct H.264 encoding
-        if has_ffmpeg:
+        if ffmpeg_bin:
             try:
-                result = self._encode_ffmpeg_pipe(frames)
+                result = self._encode_ffmpeg_pipe(frames, ffmpeg_bin)
                 if result:
                     return result
             except Exception as e:
@@ -373,8 +385,8 @@ class MorphVideoGenerator:
                 path, data = self._try_encode(frames, codec, ext)
                 if data and len(data) > 1024:
                     # Try re-encoding with ffmpeg for browser compatibility
-                    if has_ffmpeg and path:
-                        h264_data = self._ffmpeg_reencode(path)
+                    if ffmpeg_bin and path:
+                        h264_data = self._ffmpeg_reencode(path, ffmpeg_bin)
                         try:
                             os.unlink(path)
                         except OSError:
@@ -423,7 +435,7 @@ class MorphVideoGenerator:
         )
 
     def _encode_ffmpeg_pipe(
-        self, frames: List[np.ndarray]
+        self, frames: List[np.ndarray], ffmpeg_bin: str = "ffmpeg"
     ) -> Optional[VideoResult]:
         """Pipe raw BGR frames directly to ffmpeg for H.264 encoding."""
         with tempfile.NamedTemporaryFile(
@@ -433,7 +445,7 @@ class MorphVideoGenerator:
 
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_bin, "-y",
                 "-f", "rawvideo",
                 "-vcodec", "rawvideo",
                 "-pix_fmt", "bgr24",
@@ -497,7 +509,9 @@ class MorphVideoGenerator:
             raise
 
     @staticmethod
-    def _ffmpeg_reencode(input_path: str) -> Optional[bytes]:
+    def _ffmpeg_reencode(
+        input_path: str, ffmpeg_bin: str = "ffmpeg"
+    ) -> Optional[bytes]:
         """Re-encode an existing video file to H.264 with ffmpeg."""
         with tempfile.NamedTemporaryFile(
             suffix=".mp4", delete=False
@@ -506,7 +520,7 @@ class MorphVideoGenerator:
 
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_bin, "-y",
                 "-i", input_path,
                 "-c:v", "libx264",
                 "-preset", "fast",

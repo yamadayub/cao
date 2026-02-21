@@ -15,7 +15,6 @@ Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 import logging
 import math
 import os
-import shutil
 import subprocess
 import tempfile
 from typing import List, Tuple
@@ -26,6 +25,7 @@ import numpy as np
 from app.services.video_generator import (
     VideoResult,
     _ease_in_out,
+    get_ffmpeg_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,11 +268,6 @@ class BlendVideoGenerator:
 
     # ── encoding (streaming) ─────────────────
 
-    @staticmethod
-    def _has_ffmpeg() -> bool:
-        """Check if ffmpeg is available on the system."""
-        return shutil.which("ffmpeg") is not None
-
     def _generate_and_encode(
         self,
         current: np.ndarray,
@@ -287,13 +282,13 @@ class BlendVideoGenerator:
         3. Last resort: OpenCV mp4v as-is (may not play in all browsers).
         """
         total_frames = int(TOTAL_DURATION * BLEND_FPS)
-        has_ffmpeg = self._has_ffmpeg()
+        ffmpeg_bin = get_ffmpeg_path()
 
         # ── Strategy 1: Pipe raw frames directly to ffmpeg ────
-        if has_ffmpeg:
+        if ffmpeg_bin:
             try:
                 result_video = self._encode_with_ffmpeg_pipe(
-                    current, ideal, result, total_frames
+                    current, ideal, result, total_frames, ffmpeg_bin
                 )
                 if result_video:
                     return result_video
@@ -323,8 +318,8 @@ class BlendVideoGenerator:
                 writer.release()
 
                 # Try to re-encode with ffmpeg for browser compatibility
-                if has_ffmpeg:
-                    h264_data = self._ffmpeg_reencode(tmp_path)
+                if ffmpeg_bin:
+                    h264_data = self._ffmpeg_reencode(tmp_path, ffmpeg_bin)
                     os.unlink(tmp_path)
                     if h264_data and len(h264_data) > 1024:
                         logger.info(
@@ -355,6 +350,7 @@ class BlendVideoGenerator:
         ideal: np.ndarray,
         result: np.ndarray,
         total_frames: int,
+        ffmpeg_bin: str = "ffmpeg",
     ) -> "VideoResult | None":
         """Pipe raw BGR frames to ffmpeg for direct H.264 encoding."""
         with tempfile.NamedTemporaryFile(
@@ -364,7 +360,7 @@ class BlendVideoGenerator:
 
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_bin, "-y",
                 "-f", "rawvideo",
                 "-vcodec", "rawvideo",
                 "-pix_fmt", "bgr24",
@@ -426,7 +422,9 @@ class BlendVideoGenerator:
             raise
 
     @staticmethod
-    def _ffmpeg_reencode(input_path: str) -> "bytes | None":
+    def _ffmpeg_reencode(
+        input_path: str, ffmpeg_bin: str = "ffmpeg"
+    ) -> "bytes | None":
         """Re-encode an existing video file to H.264 with ffmpeg."""
         with tempfile.NamedTemporaryFile(
             suffix=".mp4", delete=False
@@ -435,7 +433,7 @@ class BlendVideoGenerator:
 
         try:
             cmd = [
-                "ffmpeg", "-y",
+                ffmpeg_bin, "-y",
                 "-i", input_path,
                 "-c:v", "libx264",
                 "-preset", "fast",
