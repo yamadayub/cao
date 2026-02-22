@@ -1,9 +1,9 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.7s):
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6.0s):
 1. Ideal face ("こんな顔になれたら？") – 1.0s
-2. Current face ("ビフォー") – 0.7s
-3. Result face ("アフター") – 2.0s
+2. Current face ("ビフォー") – 1.0s
+3. Result face ("アフター") – 3.0s
 4. Cao logo + tagline – 1.0s
 
 Captions are placed at the top of the frame to avoid TikTok UI overlap.
@@ -53,8 +53,8 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 
 # ── Timeline (seconds) ──────────────────────
 PHASE_IDEAL = 1.0         # Show ideal face
-PHASE_CURRENT = 0.7       # Show current face
-PHASE_RESULT = 2.0        # Show result face
+PHASE_CURRENT = 1.0       # Show current face
+PHASE_RESULT = 3.0        # Show result face
 PHASE_BRAND = 1.0         # Logo + tagline
 
 TOTAL_DURATION = (
@@ -135,24 +135,25 @@ class BlendVideoGenerator:
         frame = frame.copy()
 
         # Semi-transparent dark gradient at top for text readability
-        grad_h = 140
-        alpha_col = np.linspace(0.65, 0, grad_h, dtype=np.float32)
+        grad_h = 200
+        alpha_col = np.linspace(0.7, 0, grad_h, dtype=np.float32)
         alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
         region = frame[:grad_h, :, :].astype(np.float32)
         frame[:grad_h, :, :] = (region * (1 - alpha_3d * alpha)).astype(
             np.uint8
         )
 
-        # Caption text using PIL for Japanese support
+        # Caption text using PIL for Japanese support (large, bold, with outline)
         if alpha > 0.05:
             self._draw_pil_text(
                 frame,
                 text,
                 BLEND_WIDTH // 2,
-                80,
-                font_size=42,
+                90,
+                font_size=64,
                 color=(255, 255, 255),
                 alpha=alpha,
+                outline=True,
             )
         return frame
 
@@ -165,8 +166,12 @@ class BlendVideoGenerator:
         font_size: int = 40,
         color: tuple = (255, 255, 255),
         alpha: float = 1.0,
+        outline: bool = False,
     ) -> None:
-        """Draw centered text on OpenCV frame using PIL (supports Japanese)."""
+        """Draw centered text on OpenCV frame using PIL (supports Japanese).
+
+        When outline=True, draws a dark stroke around the text for visibility.
+        """
         font = None
         for path in (_FONT_PATH, _FONT_PATH_FALLBACK):
             try:
@@ -175,7 +180,6 @@ class BlendVideoGenerator:
             except (OSError, IOError):
                 continue
         if font is None:
-            # Fallback: use OpenCV (no Japanese support)
             self._overlay_text(
                 frame, text, cx, cy,
                 scale=1.0, color=color, thickness=2, alpha=alpha,
@@ -195,7 +199,18 @@ class BlendVideoGenerator:
         y = cy - th // 2
 
         a = int(255 * alpha)
-        draw.text((x, y), text, font=font, fill=(*color, a))
+
+        # Draw outline (dark stroke) for visibility
+        if outline:
+            stroke_w = max(3, font_size // 14)
+            draw.text(
+                (x, y), text, font=font,
+                fill=(*color, a),
+                stroke_width=stroke_w,
+                stroke_fill=(0, 0, 0, a),
+            )
+        else:
+            draw.text((x, y), text, font=font, fill=(*color, a))
 
         # Composite onto frame
         pil_img = pil_img.convert("RGBA")
