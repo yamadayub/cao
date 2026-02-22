@@ -1,9 +1,9 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.2s):
-1. Ideal face ("こんな顔になれたら？") – 0.7s
-2. Current face ("今の私が・・・") – 0.5s
-3. Result face ("こんな私に！") – 2.0s
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.5s):
+1. Ideal face ("こんな顔になりたい？") – 1.0s
+2. Current face ("ビフォー") – 0.5s
+3. Result face ("アフター") – 2.0s
 4. Cao logo + tagline – 1.0s
 
 Captions are placed at the top of the frame to avoid TikTok UI overlap.
@@ -51,7 +51,7 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 ]
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_IDEAL = 0.7         # Show ideal face
+PHASE_IDEAL = 1.0         # Show ideal face
 PHASE_CURRENT = 0.5       # Show current face
 PHASE_RESULT = 2.0        # Show result face
 PHASE_BRAND = 1.0         # Logo + tagline
@@ -64,9 +64,9 @@ TOTAL_DURATION = (
 )
 
 # ── Captions ─────────────────────────────────
-CAPTION_IDEAL = "こんな顔になれたら？"
-CAPTION_CURRENT = "今の私が・・・"
-CAPTION_RESULT = "こんな私に！"
+CAPTION_IDEAL = "こんな顔になりたい？"
+CAPTION_CURRENT = "ビフォー"
+CAPTION_RESULT = "アフター"
 CAPTION_BRAND = "Caoでなりたい顔をシミュレーション"
 
 
