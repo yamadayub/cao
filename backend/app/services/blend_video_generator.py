@@ -1,8 +1,8 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.5s):
-1. Ideal face ("こんな顔になりたい？") – 1.0s
-2. Current face ("ビフォー") – 0.5s
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.7s):
+1. Ideal face ("こんな顔になれたら？") – 1.0s
+2. Current face ("ビフォー") – 0.7s
 3. Result face ("アフター") – 2.0s
 4. Cao logo + tagline – 1.0s
 
@@ -26,9 +26,10 @@ from app.services.video_generator import (
     get_ffmpeg_path,
 )
 
-# Font path for Japanese captions
+# Font path for Japanese captions (try Bold first, then old subset as fallback)
 _FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts")
-_FONT_PATH = os.path.join(_FONT_DIR, "NotoSansJP-subset.ttf")
+_FONT_PATH = os.path.join(_FONT_DIR, "NotoSansJP-Bold.ttf")
+_FONT_PATH_FALLBACK = os.path.join(_FONT_DIR, "NotoSansJP-subset.ttf")
 
 # Logo image path
 _LOGO_PATH = os.path.join(
@@ -52,7 +53,7 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 
 # ── Timeline (seconds) ──────────────────────
 PHASE_IDEAL = 1.0         # Show ideal face
-PHASE_CURRENT = 0.5       # Show current face
+PHASE_CURRENT = 0.7       # Show current face
 PHASE_RESULT = 2.0        # Show result face
 PHASE_BRAND = 1.0         # Logo + tagline
 
@@ -64,7 +65,7 @@ TOTAL_DURATION = (
 )
 
 # ── Captions ─────────────────────────────────
-CAPTION_IDEAL = "こんな顔になりたい？"
+CAPTION_IDEAL = "こんな顔になれたら？"
 CAPTION_CURRENT = "ビフォー"
 CAPTION_RESULT = "アフター"
 CAPTION_BRAND = "Caoでなりたい顔をシミュレーション"
@@ -166,10 +167,15 @@ class BlendVideoGenerator:
         alpha: float = 1.0,
     ) -> None:
         """Draw centered text on OpenCV frame using PIL (supports Japanese)."""
-        try:
-            font = ImageFont.truetype(_FONT_PATH, font_size)
-        except (OSError, IOError):
-            # Fallback: use OpenCV if font not found
+        font = None
+        for path in (_FONT_PATH, _FONT_PATH_FALLBACK):
+            try:
+                font = ImageFont.truetype(path, font_size)
+                break
+            except (OSError, IOError):
+                continue
+        if font is None:
+            # Fallback: use OpenCV (no Japanese support)
             self._overlay_text(
                 frame, text, cx, cy,
                 scale=1.0, color=color, thickness=2, alpha=alpha,
