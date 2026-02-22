@@ -153,7 +153,7 @@ export default async function LocaleLayout({ children, params }: Props) {
         className="font-sans antialiased"
         style={{ fontFamily: `var(${activeSansVar}), sans-serif` }}
       >
-        <ConditionalClerkProvider>
+        <ConditionalClerkProvider locale={locale}>
           <NextIntlClientProvider messages={messages}>
             {children}
           </NextIntlClientProvider>

@@ -124,3 +124,8 @@ a {
   background: rgba(139, 111, 122, 0.2);
   color: inherit;
 }
+
+/* Hide Clerk "Secured by Clerk" branding badge */
+.cl-internal-b3fm6y {
+  display: none !important;
+}

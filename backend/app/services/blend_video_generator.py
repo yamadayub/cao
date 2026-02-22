@@ -1,13 +1,12 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6s):
-1. Current face ("今の私") – full bleed, slow Ken Burns
-2. Gradient wipe → ideal face ("理想の顔")
-3. Ideal face – full bleed, slow Ken Burns
-4. Gradient wipe → result face ("理想の私")
-5. Result hold
-6. Brand overlay
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.2s):
+1. Ideal face ("こんな顔になれたら？") – 0.7s
+2. Current face ("今の私が・・・") – 0.5s
+3. Result face ("こんな私に！") – 2.0s
+4. Cao logo + tagline – 1.0s
 
+Captions are placed at the top of the frame to avoid TikTok UI overlap.
 All images are cover-fitted to fill the entire frame (no borders).
 Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 """
@@ -24,13 +23,17 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app.services.video_generator import (
     VideoResult,
-    _ease_in_out,
     get_ffmpeg_path,
 )
 
 # Font path for Japanese captions
 _FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "fonts")
 _FONT_PATH = os.path.join(_FONT_DIR, "NotoSansJP-subset.ttf")
+
+# Logo image path
+_LOGO_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "cao-logo.jpg"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,26 +51,23 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 ]
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_CURRENT = 1.0       # Hold current face
-PHASE_WIPE1 = 1.0         # Wipe current → ideal
-PHASE_IDEAL = 1.0         # Hold ideal face
-PHASE_WIPE2 = 1.0         # Wipe ideal → result
-PHASE_RESULT = 1.5        # Hold result face
-PHASE_BRAND = 1.0         # Brand overlay
+PHASE_IDEAL = 0.7         # Show ideal face
+PHASE_CURRENT = 0.5       # Show current face
+PHASE_RESULT = 2.0        # Show result face
+PHASE_BRAND = 1.0         # Logo + tagline
 
 TOTAL_DURATION = (
-    PHASE_CURRENT
-    + PHASE_WIPE1
-    + PHASE_IDEAL
-    + PHASE_WIPE2
+    PHASE_IDEAL
+    + PHASE_CURRENT
     + PHASE_RESULT
     + PHASE_BRAND
 )
 
 # ── Captions ─────────────────────────────────
-CAPTION_CURRENT = "\u4eca\u306e\u79c1"       # 今の私
-CAPTION_IDEAL = "\u7406\u60f3\u306e\u9854"     # 理想の顔
-CAPTION_RESULT = "\u7406\u60f3\u306e\u79c1"    # 理想の私
+CAPTION_IDEAL = "こんな顔になれたら？"
+CAPTION_CURRENT = "今の私が・・・"
+CAPTION_RESULT = "こんな私に！"
+CAPTION_BRAND = "Caoでなりたい顔をシミュレーション"
 
 
 class BlendVideoGenerator:
@@ -122,59 +122,23 @@ class BlendVideoGenerator:
         y0 = (nh - h) // 2
         return zoomed[y0 : y0 + h, x0 : x0 + w]
 
-    @staticmethod
-    def _gradient_wipe(
-        img_from: np.ndarray,
-        img_to: np.ndarray,
-        progress: float,
-        feather: int = 200,
-    ) -> np.ndarray:
-        """Horizontal left-to-right wipe with soft feathered edge and warm glow."""
-        h, w = img_from.shape[:2]
-        cols = np.arange(w, dtype=np.float32)
-
-        sweep_pos = -feather + progress * (w + 2 * feather)
-        mask_1d = np.clip((sweep_pos - cols) / feather, 0.0, 1.0)
-
-        # Broadcast to full frame
-        mask_3d = mask_1d[np.newaxis, :, np.newaxis]
-
-        blended = (
-            img_from.astype(np.float32) * (1 - mask_3d)
-            + img_to.astype(np.float32) * mask_3d
-        )
-
-        # Warm glow at the leading edge
-        edge_sigma = feather * 0.35
-        glow_1d = np.exp(-((cols - sweep_pos) ** 2) / (2 * edge_sigma**2))
-        glow_3d = glow_1d[np.newaxis, :, np.newaxis]
-        glow_strength = 50.0
-
-        # BGR: add warm tint (R > G >> B)
-        blended[:, :, 2:3] = np.clip(
-            blended[:, :, 2:3] + glow_3d * glow_strength, 0, 255
-        )
-        blended[:, :, 1:2] = np.clip(
-            blended[:, :, 1:2] + glow_3d * glow_strength * 0.35, 0, 255
-        )
-
-        return blended.astype(np.uint8)
-
     # ── frame rendering ─────────────────────
 
     def _add_caption(
         self, frame: np.ndarray, text: str, alpha: float = 1.0
     ) -> np.ndarray:
-        """Add a Japanese caption with semi-transparent background at bottom."""
+        """Add a Japanese caption with semi-transparent background at top.
+
+        Placed at the top of the frame to avoid TikTok caption/UI overlap.
+        """
         frame = frame.copy()
 
-        # Semi-transparent dark gradient at bottom for text readability
-        grad_h = 120
-        y_start = BLEND_HEIGHT - grad_h
-        alpha_col = np.linspace(0, 0.6, grad_h, dtype=np.float32)
+        # Semi-transparent dark gradient at top for text readability
+        grad_h = 140
+        alpha_col = np.linspace(0.65, 0, grad_h, dtype=np.float32)
         alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
-        region = frame[y_start:, :, :].astype(np.float32)
-        frame[y_start:, :, :] = (region * (1 - alpha_3d * alpha)).astype(
+        region = frame[:grad_h, :, :].astype(np.float32)
+        frame[:grad_h, :, :] = (region * (1 - alpha_3d * alpha)).astype(
             np.uint8
         )
 
@@ -184,8 +148,8 @@ class BlendVideoGenerator:
                 frame,
                 text,
                 BLEND_WIDTH // 2,
-                BLEND_HEIGHT - 70,
-                font_size=40,
+                80,
+                font_size=42,
                 color=(255, 255, 255),
                 alpha=alpha,
             )
@@ -235,6 +199,44 @@ class BlendVideoGenerator:
         )
         frame[:] = result
 
+    def _load_logo(self) -> np.ndarray:
+        """Load and cache the Cao logo image."""
+        if not hasattr(self, "_logo_cache"):
+            logo = cv2.imread(_LOGO_PATH, cv2.IMREAD_COLOR)
+            if logo is None:
+                logger.warning(f"Logo not found at {_LOGO_PATH}, using blank")
+                self._logo_cache = np.zeros(
+                    (BLEND_HEIGHT, BLEND_WIDTH, 3), dtype=np.uint8
+                )
+            else:
+                self._logo_cache = self._fit(logo)
+        return self._logo_cache
+
+    def _render_brand_frame(self, progress: float) -> np.ndarray:
+        """Render the brand/logo frame with tagline."""
+        frame = self._load_logo().copy()
+
+        # Darken slightly for text readability
+        fade = min(progress * 3.0, 1.0)
+        if fade > 0.01:
+            frame = (frame.astype(np.float32) * (1 - 0.3 * fade)).astype(
+                np.uint8
+            )
+
+        # Tagline text at top (same position as other captions)
+        text_alpha = min(progress * 3.0, 1.0)
+        if text_alpha > 0.05:
+            self._draw_pil_text(
+                frame,
+                CAPTION_BRAND,
+                BLEND_WIDTH // 2,
+                BLEND_HEIGHT // 2 + 100,
+                font_size=36,
+                color=(255, 255, 255),
+                alpha=text_alpha,
+            )
+        return frame
+
     def _render_frame(
         self,
         t: float,
@@ -242,88 +244,40 @@ class BlendVideoGenerator:
         ideal: np.ndarray,
         result: np.ndarray,
     ) -> np.ndarray:
-        """Render a single full-bleed frame at time *t*."""
-        t1 = PHASE_CURRENT
-        t2 = t1 + PHASE_WIPE1
-        t3 = t2 + PHASE_IDEAL
-        t4 = t3 + PHASE_WIPE2
-        t5 = t4 + PHASE_RESULT
+        """Render a single full-bleed frame at time *t*.
+
+        Timeline:
+        1. Ideal face + "こんな顔になれたら？" (0.7s)
+        2. Current face + "今の私が・・・" (0.5s)
+        3. Result face + "こんな私に！" (2.0s)
+        4. Logo + tagline (1.0s)
+        """
+        t1 = PHASE_IDEAL
+        t2 = t1 + PHASE_CURRENT
+        t3 = t2 + PHASE_RESULT
 
         if t < t1:
-            # ── Current face with Ken Burns + caption ──
+            # ── Phase 1: Ideal face ──────────────────
             p = t / t1
-            frame = self._ken_burns(current, p)
-            return self._add_caption(frame, CAPTION_CURRENT)
-
-        elif t < t2:
-            # ── Wipe current → ideal ─────────────────
-            p = (t - t1) / PHASE_WIPE1
-            eased = _ease_in_out(p)
-            cur_cap = self._add_caption(current, CAPTION_CURRENT)
-            idl_cap = self._add_caption(ideal, CAPTION_IDEAL)
-            return self._gradient_wipe(cur_cap, idl_cap, eased)
-
-        elif t < t3:
-            # ── Ideal face with Ken Burns + caption ────
-            p = (t - t2) / PHASE_IDEAL
             frame = self._ken_burns(ideal, p)
             return self._add_caption(frame, CAPTION_IDEAL)
 
-        elif t < t4:
-            # ── Wipe ideal → result ──────────────────
-            p = (t - t3) / PHASE_WIPE2
-            eased = _ease_in_out(p)
-            idl_cap = self._add_caption(ideal, CAPTION_IDEAL)
-            res_cap = self._add_caption(result, CAPTION_RESULT)
-            return self._gradient_wipe(idl_cap, res_cap, eased)
+        elif t < t2:
+            # ── Phase 2: Current face ────────────────
+            p = (t - t1) / PHASE_CURRENT
+            frame = self._ken_burns(current, p)
+            return self._add_caption(frame, CAPTION_CURRENT)
 
-        elif t < t5:
-            # ── Result hold with Ken Burns + caption ──
-            p = (t - t4) / PHASE_RESULT
-            frame = self._ken_burns(result, p, zoom=0.02)
+        elif t < t3:
+            # ── Phase 3: Result face ─────────────────
+            p = (t - t2) / PHASE_RESULT
+            frame = self._ken_burns(result, p, zoom=0.03)
             return self._add_caption(frame, CAPTION_RESULT)
 
         else:
-            # ── Brand overlay ────────────────────────
-            p = (t - t5) / PHASE_BRAND
-            frame = result.copy()
-
-            # Bottom gradient darken for text readability
-            grad_h = BLEND_HEIGHT // 3
-            fade = min(p * 3.0, 1.0)
-            if fade > 0.01:
-                alpha_col = np.linspace(0, 0.55 * fade, grad_h, dtype=np.float32)
-                alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
-                y_start = BLEND_HEIGHT - grad_h
-                region = frame[y_start:, :, :].astype(np.float32)
-                frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(
-                    np.uint8
-                )
-
-            # Text fade-in
-            text_alpha = min(p * 2.5, 1.0)
-            if text_alpha > 0.05:
-                self._overlay_text(
-                    frame,
-                    "Cao",
-                    BLEND_WIDTH // 2,
-                    BLEND_HEIGHT - 110,
-                    scale=1.4,
-                    color=(255, 255, 255),
-                    thickness=2,
-                    alpha=text_alpha,
-                )
-                self._overlay_text(
-                    frame,
-                    "cao.style-elements.jp",
-                    BLEND_WIDTH // 2,
-                    BLEND_HEIGHT - 55,
-                    scale=0.55,
-                    color=(200, 200, 200),
-                    thickness=1,
-                    alpha=text_alpha,
-                )
-            return frame
+            # ── Phase 4: Logo + brand ────────────────
+            p = min((t - t3) / PHASE_BRAND, 1.0)
+            return self._render_brand_frame(p)
 
     @staticmethod
     def _overlay_text(
