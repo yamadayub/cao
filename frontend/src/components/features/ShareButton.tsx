@@ -402,7 +402,7 @@ export function ShareButton({
         return;
       }
 
-      const result = await generateBlendVideo(beforeImage, idealImage, afterImage, token);
+      const result = await generateBlendVideo(beforeImage, idealImage, afterImage, token, 'A');
 
       // サーバーから返されたURLがdata URIの場合はBlobに変換
       let blobUrl: string;
@@ -743,7 +743,7 @@ export function ShareButton({
             </h3>
 
             {/* 動画プレビュー */}
-            <div className="relative w-full rounded-xl overflow-hidden bg-black mb-4" style={{ aspectRatio: '1/1', maxHeight: '400px' }}>
+            <div className="relative w-full rounded-xl overflow-hidden bg-black mb-4" style={{ aspectRatio: '9/16', maxHeight: '400px' }}>
               <video
                 ref={videoRef}
                 src={videoUrl}

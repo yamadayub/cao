@@ -54,10 +54,13 @@ CODEC_CHAIN: List[Tuple[str, str, str]] = [
 class VideoResult:
     """Result of video generation with format metadata."""
 
-    def __init__(self, data: bytes, content_type: str, extension: str):
+    def __init__(self, data: bytes, content_type: str, extension: str,
+                 duration: float = 0.0, metadata: dict = None):
         self.data = data
         self.content_type = content_type
         self.extension = extension
+        self.duration = duration
+        self.metadata = metadata or {}
 
 
 def get_ffmpeg_path() -> Optional[str]:

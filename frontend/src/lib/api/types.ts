@@ -544,4 +544,6 @@ export interface VideoGenerateData {
   video_url: string;
   duration: number;
   format: string;
+  loop_friendly?: boolean;
+  beat_sync_points?: number[];
 }

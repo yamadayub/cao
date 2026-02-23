@@ -1,70 +1,92 @@
-"""Blend reveal video generator.
+"""Blend reveal video generator — TikTok-optimized patterns.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~3.0s):
-1. Before face – 1.0s
-   → Wipe transition (0.4s)
-2. After face – 1.0s
-   → Cross-dissolve (0.3s)
-3. Cao logo – 0.3s
+Two patterns built around snap cuts and seamless loop bridges:
 
-No captions burned in – users add their own text via TikTok/CapCut.
+Pattern A (default, ~4.0s, loop-optimized):
+  Before hold (1.5s) → SNAP CUT (1 frame) → After hold (2.0s)
+  → Loop bridge crossfade to Before (0.5s)
+
+Pattern B (~6.0s, morph showcase):
+  Before hold (1.0s) → SNAP CUT → After hold (1.5s)
+  → Hard cut back to Before (0.5s) → Slow morph (2.5s)
+  → Loop bridge (0.5s)
+
+Both patterns include:
+- "Before"/"After" labels — bottom-left, white text on semi-transparent tag
+- Cao watermark — small logo (64px) bottom-right, 35% opacity
+- No full-screen logo, no end card
+
 All images are cover-fitted to fill the entire frame (no borders).
-Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
+Uses 720x1280 @ 30fps to fit within Heroku's 512MB / 30s limits.
 """
 
 import logging
 import os
 import subprocess
 import tempfile
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from app.services.video_generator import (
     VideoResult,
-    _ease_in_out,
     get_ffmpeg_path,
 )
 
-# Logo image path
+# Logo image path (used as watermark)
 _LOGO_PATH = os.path.join(
     os.path.dirname(__file__), "..", "..", "assets", "images", "cao-logo.jpg"
 )
 
 logger = logging.getLogger(__name__)
 
-# ── Blend-specific video settings ────────────
-# Smaller than morph video (1080x1920) to stay within Heroku limits.
+# ── Video settings ────────────────────────────
 BLEND_WIDTH = 720
 BLEND_HEIGHT = 1280
-BLEND_FPS = 24
+BLEND_FPS = 30
 
 # Only codecs that actually work on Heroku's opencv-python-headless.
-# avc1/VP80 fail on Heroku (no h264 hw encoder, no libvpx).
 BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
     ("mp4v", ".mp4", "video/mp4"),
     ("MJPG", ".avi", "video/x-msvideo"),
 ]
 
-# ── Timeline (seconds) ──────────────────────
-PHASE_BEFORE = 1.0        # Show before face
-PHASE_WIPE = 0.4          # Wipe transition
-PHASE_AFTER = 1.0         # Show after face
-PHASE_TRANS = 0.3         # Cross-dissolve transition
-PHASE_BRAND = 0.3         # Logo
+# ── Pattern A timeline (seconds) ──────────────
+PA_BEFORE_HOLD = 1.5   # Show before face
+PA_AFTER_HOLD = 2.0    # Show after face
+PA_LOOP_BRIDGE = 0.5   # Crossfade back to before for seamless loop
+PA_TOTAL = PA_BEFORE_HOLD + PA_AFTER_HOLD + PA_LOOP_BRIDGE  # 4.0s
 
-TOTAL_DURATION = (
-    PHASE_BEFORE
-    + PHASE_WIPE        # before → after (wipe)
-    + PHASE_AFTER
-    + PHASE_TRANS       # after → brand (dissolve)
-    + PHASE_BRAND
-)
+# ── Pattern B timeline (seconds) ──────────────
+PB_BEFORE_HOLD = 1.0   # Show before face
+PB_AFTER_HOLD = 1.5    # Show after face
+PB_HARD_CUT = 0.5      # Hard cut back to before
+PB_SLOW_MORPH = 2.5    # Slow morph before → after
+PB_LOOP_BRIDGE = 0.5   # Crossfade back to before for seamless loop
+PB_TOTAL = (PB_BEFORE_HOLD + PB_AFTER_HOLD + PB_HARD_CUT
+            + PB_SLOW_MORPH + PB_LOOP_BRIDGE)  # 6.0s
+
+# ── Label / watermark config ─────────────────
+LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
+LABEL_FONT_SCALE = 1.0
+LABEL_THICKNESS = 2
+LABEL_BG_ALPHA = 0.6       # Semi-transparent black background
+LABEL_MARGIN_X = 24        # Left margin
+LABEL_MARGIN_Y = 24        # Bottom margin from frame bottom
+LABEL_PADDING_X = 12       # Padding inside tag
+LABEL_PADDING_Y = 8
+
+WATERMARK_SIZE = 64         # 64x64 pixels
+WATERMARK_ALPHA = 0.35      # 35% opacity
+WATERMARK_MARGIN = 24       # Margin from edges
+
+# "After" label fade-in: 0.2s = 6 frames at 30fps
+AFTER_LABEL_FADE_FRAMES = 6
 
 
 class BlendVideoGenerator:
-    """Generate cinematic blend-reveal videos."""
+    """Generate TikTok-optimized blend-reveal videos."""
 
     # ── public API ──────────────────────────
 
@@ -73,14 +95,22 @@ class BlendVideoGenerator:
         current_image: bytes,
         ideal_image: Optional[bytes],
         result_image: bytes,
+        pattern: str = "A",
     ) -> VideoResult:
-        """Generate blend-reveal video (streaming, memory-safe).
+        """Generate blend-reveal video.
 
-        ideal_image is accepted for backward compatibility but ignored.
+        Args:
+            current_image: Before face image bytes.
+            ideal_image: Ignored (backward compatibility).
+            result_image: After face image bytes.
+            pattern: "A" (4s loop) or "B" (6s morph showcase).
+
+        Returns:
+            VideoResult with video bytes, duration, and metadata.
         """
         before = self._fit(self._decode(current_image))
         after = self._fit(self._decode(result_image))
-        return self._generate_and_encode(before, after)
+        return self._generate_and_encode(before, after, pattern)
 
     # ── image helpers ───────────────────────
 
@@ -101,25 +131,89 @@ class BlendVideoGenerator:
         x0 = (nw - BLEND_WIDTH) // 2
         y0 = (nh - BLEND_HEIGHT) // 2
         cropped = resized[y0 : y0 + BLEND_HEIGHT, x0 : x0 + BLEND_WIDTH]
-        # Guarantee exact output size
         if cropped.shape[:2] != (BLEND_HEIGHT, BLEND_WIDTH):
             cropped = cv2.resize(cropped, (BLEND_WIDTH, BLEND_HEIGHT))
         return np.ascontiguousarray(cropped)
 
-    # ── effects ─────────────────────────────
+    # ── labels ──────────────────────────────
 
     @staticmethod
-    def _ken_burns(
-        img: np.ndarray, progress: float, zoom: float = 0.04
+    def _draw_label(
+        frame: np.ndarray,
+        text: str,
+        bg_alpha: float = LABEL_BG_ALPHA,
     ) -> np.ndarray:
-        """Subtle slow zoom for cinematic feel."""
-        h, w = img.shape[:2]
-        z = 1.0 + zoom * progress
-        nw, nh = int(w * z), int(h * z)
-        zoomed = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
-        x0 = (nw - w) // 2
-        y0 = (nh - h) // 2
-        return zoomed[y0 : y0 + h, x0 : x0 + w]
+        """Draw text label at bottom-left with semi-transparent black background.
+
+        Returns a new frame (does not modify in-place).
+        """
+        frame = frame.copy()
+        (tw, th), baseline = cv2.getTextSize(
+            text, LABEL_FONT, LABEL_FONT_SCALE, LABEL_THICKNESS
+        )
+
+        # Position: bottom-left
+        x = LABEL_MARGIN_X
+        y = BLEND_HEIGHT - LABEL_MARGIN_Y - LABEL_PADDING_Y - th
+
+        # Background rectangle region
+        rx1 = x - LABEL_PADDING_X
+        ry1 = y - LABEL_PADDING_Y
+        rx2 = x + tw + LABEL_PADDING_X
+        ry2 = y + th + baseline + LABEL_PADDING_Y
+
+        # Clamp to frame bounds
+        rx1 = max(0, rx1)
+        ry1 = max(0, ry1)
+        rx2 = min(BLEND_WIDTH, rx2)
+        ry2 = min(BLEND_HEIGHT, ry2)
+
+        # Alpha-blend black rectangle
+        roi = frame[ry1:ry2, rx1:rx2].astype(np.float32)
+        black = np.zeros_like(roi, dtype=np.float32)
+        blended = roi * (1.0 - bg_alpha) + black * bg_alpha
+        frame[ry1:ry2, rx1:rx2] = blended.clip(0, 255).astype(np.uint8)
+
+        # Draw white text
+        cv2.putText(
+            frame, text, (x, y + th),
+            LABEL_FONT, LABEL_FONT_SCALE, (255, 255, 255),
+            LABEL_THICKNESS, cv2.LINE_AA,
+        )
+        return frame
+
+    # ── watermark ───────────────────────────
+
+    def _load_watermark(self) -> np.ndarray:
+        """Load and cache the Cao logo as a 64x64 watermark."""
+        if not hasattr(self, "_watermark_cache"):
+            logo = cv2.imread(_LOGO_PATH, cv2.IMREAD_COLOR)
+            if logo is None:
+                logger.warning(f"Logo not found at {_LOGO_PATH}, using blank")
+                self._watermark_cache = np.zeros(
+                    (WATERMARK_SIZE, WATERMARK_SIZE, 3), dtype=np.uint8
+                )
+            else:
+                self._watermark_cache = cv2.resize(
+                    logo, (WATERMARK_SIZE, WATERMARK_SIZE),
+                    interpolation=cv2.INTER_AREA,
+                )
+        return self._watermark_cache
+
+    def _apply_watermark(self, frame: np.ndarray) -> np.ndarray:
+        """Alpha-blend small logo at bottom-right with 35% opacity."""
+        wm = self._load_watermark()
+        h, w = wm.shape[:2]
+
+        # Position: bottom-right
+        x = BLEND_WIDTH - w - WATERMARK_MARGIN
+        y = BLEND_HEIGHT - h - WATERMARK_MARGIN
+
+        roi = frame[y : y + h, x : x + w].astype(np.float32)
+        wm_f = wm.astype(np.float32)
+        blended = roi * (1.0 - WATERMARK_ALPHA) + wm_f * WATERMARK_ALPHA
+        frame[y : y + h, x : x + w] = blended.clip(0, 255).astype(np.uint8)
+        return frame
 
     # ── transitions ─────────────────────────
 
@@ -129,120 +223,152 @@ class BlendVideoGenerator:
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Cross-dissolve (alpha blend) transition between two frames."""
-        alpha = float(_ease_in_out(progress))
-        # Use numpy blend to avoid cv2 shape-mismatch errors
+        """Linear cross-dissolve between two frames."""
+        alpha = max(0.0, min(1.0, progress))
         result = (
             img_to.astype(np.float32) * alpha
             + img_from.astype(np.float32) * (1.0 - alpha)
         )
         return result.clip(0, 255).astype(np.uint8)
 
-    @staticmethod
-    def _wipe_transition(
-        img_from: np.ndarray,
-        img_to: np.ndarray,
-        progress: float,
-    ) -> np.ndarray:
-        """Left-to-right wipe with bright divider line and glow.
+    # ── pattern rendering ───────────────────
 
-        A thick white vertical line sweeps across the frame,
-        making the before/after boundary unmistakable.
-        All operations vectorized with numpy (no per-pixel loops).
-        """
-        h, w = img_from.shape[:2]
-        t = _ease_in_out(progress)
-        boundary = max(0, min(w, int(w * t)))
-
-        # Composite: after on left, before on right
-        frame = img_from.copy()
-        if boundary > 0:
-            frame[:, :boundary] = img_to[:, :min(boundary, w)]
-
-        # Bright glow zone (40px each side) + solid white line (6px)
-        LINE_W = 6
-        GLOW_W = 40
-
-        if 0 < boundary < w:
-            frame_f = frame.astype(np.float32)
-
-            # Vectorized glow: build intensity array for the glow region
-            glow_left = max(0, boundary - GLOW_W)
-            glow_right = min(w, boundary + GLOW_W)
-            xs = np.arange(glow_left, glow_right, dtype=np.float32)
-            dist = np.abs(xs - boundary)
-            intensity = (1.0 - dist / GLOW_W)
-            intensity = intensity * intensity * 0.6  # quadratic falloff
-            # Reshape to (1, num_cols, 1) for broadcasting with (H, num_cols, 3)
-            glow_mask = intensity.reshape(1, -1, 1)
-            frame_f[:, glow_left:glow_right] += 255.0 * glow_mask
-
-            # Solid white divider line
-            line_left = max(0, boundary - LINE_W // 2)
-            line_right = min(w, boundary + LINE_W // 2)
-            if line_right > line_left:
-                frame_f[:, line_left:line_right] = 255.0
-
-            return np.ascontiguousarray(
-                frame_f.clip(0, 255).astype(np.uint8)
-            )
-
-        return np.ascontiguousarray(frame)
-
-    def _load_logo(self) -> np.ndarray:
-        """Load and cache the Cao logo image."""
-        if not hasattr(self, "_logo_cache"):
-            logo = cv2.imread(_LOGO_PATH, cv2.IMREAD_COLOR)
-            if logo is None:
-                logger.warning(f"Logo not found at {_LOGO_PATH}, using blank")
-                self._logo_cache = np.zeros(
-                    (BLEND_HEIGHT, BLEND_WIDTH, 3), dtype=np.uint8
-                )
-            else:
-                self._logo_cache = self._fit(logo)
-        return self._logo_cache
-
-    def _render_brand_frame(self, progress: float) -> np.ndarray:
-        """Render the brand/logo frame."""
-        return self._load_logo().copy()
-
-    def _render_frame(
+    def _render_frame_pattern_a(
         self,
-        t: float,
+        frame_index: int,
+        total_frames: int,
         before: np.ndarray,
         after: np.ndarray,
     ) -> np.ndarray:
-        """Render a single full-bleed frame at time *t*.
+        """Render a single frame for Pattern A.
 
-        Timeline:
-        1. Before face hold (1.0s)
-        2. Wipe: before → after (0.4s)
-        3. After face hold (1.0s)
-        4. Cross-dissolve: after → brand (0.3s)
-        5. Brand/logo hold (0.3s)
+        Timeline (frame-based at 30fps):
+        - Frames 0-44 (1.5s): Before hold + "Before" label
+        - Frame 45: SNAP CUT to After
+        - Frames 45-104 (2.0s): After hold + "After" label (fades in)
+        - Frames 105-119 (0.5s): Loop bridge crossfade After→Before
         """
-        # Build cumulative timeline boundaries
-        e1 = PHASE_BEFORE                         # end of before hold
-        e2 = e1 + PHASE_WIPE                      # end of wipe
-        e3 = e2 + PHASE_AFTER                     # end of after hold
-        e4 = e3 + PHASE_TRANS                     # end of after→brand dissolve
+        before_frames = int(PA_BEFORE_HOLD * BLEND_FPS)   # 45
+        after_frames = int(PA_AFTER_HOLD * BLEND_FPS)      # 60
+        # bridge_frames = total_frames - before_frames - after_frames  # 15
 
-        if t < e1:
-            p = t / PHASE_BEFORE
-            frame = self._ken_burns(before, p)
-        elif t < e2:
-            p = (t - e1) / PHASE_WIPE
-            frame = self._wipe_transition(before, after, p)
-        elif t < e3:
-            p = (t - e2) / PHASE_AFTER
-            frame = self._ken_burns(after, p, zoom=0.03)
-        elif t < e4:
-            p = (t - e3) / PHASE_TRANS
-            frame = self._cross_dissolve(
-                after, self._render_brand_frame(1.0), p
+        if frame_index < before_frames:
+            # Before hold
+            frame = before.copy()
+            frame = self._draw_label(frame, "Before")
+        elif frame_index < before_frames + after_frames:
+            # After hold
+            frame = after.copy()
+            # "After" label fades in over first AFTER_LABEL_FADE_FRAMES
+            frames_into_after = frame_index - before_frames
+            if frames_into_after < AFTER_LABEL_FADE_FRAMES:
+                fade_alpha = LABEL_BG_ALPHA * (frames_into_after / AFTER_LABEL_FADE_FRAMES)
+            else:
+                fade_alpha = LABEL_BG_ALPHA
+            frame = self._draw_label(frame, "After", bg_alpha=fade_alpha)
+        else:
+            # Loop bridge: crossfade After → Before
+            bridge_start = before_frames + after_frames
+            bridge_frames = total_frames - bridge_start
+            progress = (frame_index - bridge_start) / max(bridge_frames - 1, 1)
+            frame = self._cross_dissolve(after, before, progress)
+            # Fade out "After" label during bridge
+            remaining_alpha = LABEL_BG_ALPHA * (1.0 - progress)
+            if remaining_alpha > 0.05:
+                frame = self._draw_label(frame, "After", bg_alpha=remaining_alpha)
+
+        return frame
+
+    def _render_frame_pattern_b(
+        self,
+        frame_index: int,
+        total_frames: int,
+        before: np.ndarray,
+        after: np.ndarray,
+    ) -> np.ndarray:
+        """Render a single frame for Pattern B.
+
+        Timeline (frame-based at 30fps):
+        - Frames 0-29 (1.0s): Before hold + "Before" label
+        - Frame 30: SNAP CUT to After
+        - Frames 30-74 (1.5s): After hold + "After" label (fades in)
+        - Frames 75-89 (0.5s): Hard cut back to Before + "Before" label
+        - Frames 90-164 (2.5s): Slow morph Before→After
+        - Frames 165-179 (0.5s): Loop bridge crossfade After→Before
+        """
+        f_before = int(PB_BEFORE_HOLD * BLEND_FPS)     # 30
+        f_after = int(PB_AFTER_HOLD * BLEND_FPS)        # 45
+        f_hard = int(PB_HARD_CUT * BLEND_FPS)           # 15
+        f_morph = int(PB_SLOW_MORPH * BLEND_FPS)        # 75
+        # f_bridge = total_frames - f_before - f_after - f_hard - f_morph  # 15
+
+        e1 = f_before
+        e2 = e1 + f_after
+        e3 = e2 + f_hard
+        e4 = e3 + f_morph
+
+        if frame_index < e1:
+            # Before hold
+            frame = before.copy()
+            frame = self._draw_label(frame, "Before")
+        elif frame_index < e2:
+            # After hold
+            frame = after.copy()
+            frames_into_after = frame_index - e1
+            if frames_into_after < AFTER_LABEL_FADE_FRAMES:
+                fade_alpha = LABEL_BG_ALPHA * (frames_into_after / AFTER_LABEL_FADE_FRAMES)
+            else:
+                fade_alpha = LABEL_BG_ALPHA
+            frame = self._draw_label(frame, "After", bg_alpha=fade_alpha)
+        elif frame_index < e3:
+            # Hard cut back to Before
+            frame = before.copy()
+            frame = self._draw_label(frame, "Before")
+        elif frame_index < e4:
+            # Slow morph Before → After
+            progress = (frame_index - e3) / max(f_morph - 1, 1)
+            frame = self._cross_dissolve(before, after, progress)
+            # Morph label: transition from "Before" to "After"
+            if progress < 0.5:
+                frame = self._draw_label(frame, "Before", bg_alpha=LABEL_BG_ALPHA * (1.0 - progress * 2))
+            else:
+                alpha = LABEL_BG_ALPHA * ((progress - 0.5) * 2)
+                if alpha > 0.05:
+                    frame = self._draw_label(frame, "After", bg_alpha=alpha)
+        else:
+            # Loop bridge: crossfade After → Before
+            bridge_start = e4
+            bridge_frames = total_frames - bridge_start
+            progress = (frame_index - bridge_start) / max(bridge_frames - 1, 1)
+            frame = self._cross_dissolve(after, before, progress)
+            remaining_alpha = LABEL_BG_ALPHA * (1.0 - progress)
+            if remaining_alpha > 0.05:
+                frame = self._draw_label(frame, "After", bg_alpha=remaining_alpha)
+
+        return frame
+
+    # ── frame dispatch ──────────────────────
+
+    def _render_frame(
+        self,
+        frame_index: int,
+        total_frames: int,
+        before: np.ndarray,
+        after: np.ndarray,
+        pattern: str,
+    ) -> np.ndarray:
+        """Render a single frame, dispatching to the appropriate pattern."""
+        if pattern == "B":
+            frame = self._render_frame_pattern_b(
+                frame_index, total_frames, before, after
             )
         else:
-            frame = self._render_brand_frame(1.0)
+            frame = self._render_frame_pattern_a(
+                frame_index, total_frames, before, after
+            )
+
+        # Apply watermark on every frame
+        frame = self._apply_watermark(frame)
 
         # Safety: guarantee exact frame size and type for encoder
         if frame.shape != (BLEND_HEIGHT, BLEND_WIDTH, 3):
@@ -251,12 +377,26 @@ class BlendVideoGenerator:
             frame = frame.clip(0, 255).astype(np.uint8)
         return np.ascontiguousarray(frame)
 
+    # ── beat sync metadata ──────────────────
+
+    @staticmethod
+    def _get_beat_sync_points(pattern: str) -> List[float]:
+        """Return timestamps (seconds) where snap cuts occur."""
+        if pattern == "B":
+            return [
+                PB_BEFORE_HOLD,                          # Snap cut to After
+                PB_BEFORE_HOLD + PB_AFTER_HOLD,          # Hard cut back to Before
+            ]
+        else:
+            return [PA_BEFORE_HOLD]  # Single snap cut
+
     # ── encoding (streaming) ─────────────────
 
     def _generate_and_encode(
         self,
         before: np.ndarray,
         after: np.ndarray,
+        pattern: str = "A",
     ) -> VideoResult:
         """Generate frames and encode to browser-playable H.264 video.
 
@@ -265,16 +405,26 @@ class BlendVideoGenerator:
         2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
         3. Last resort: OpenCV mp4v as-is (may not play in all browsers).
         """
-        total_frames = int(TOTAL_DURATION * BLEND_FPS)
+        duration = PA_TOTAL if pattern != "B" else PB_TOTAL
+        total_frames = int(duration * BLEND_FPS)
         ffmpeg_bin = get_ffmpeg_path()
+
+        beat_sync = self._get_beat_sync_points(pattern)
+        metadata: Dict = {
+            "pattern": pattern,
+            "loop_friendly": True,
+            "beat_sync_points": beat_sync,
+        }
 
         # ── Strategy 1: Pipe raw frames directly to ffmpeg ────
         if ffmpeg_bin:
             try:
                 result_video = self._encode_with_ffmpeg_pipe(
-                    before, after, total_frames, ffmpeg_bin
+                    before, after, total_frames, pattern, ffmpeg_bin
                 )
                 if result_video:
+                    result_video.duration = duration
+                    result_video.metadata = metadata
                     return result_video
             except Exception as e:
                 logger.warning(f"ffmpeg pipe encoding failed: {e}")
@@ -296,8 +446,9 @@ class BlendVideoGenerator:
                     continue
 
                 for i in range(total_frames):
-                    t = i / BLEND_FPS
-                    frame = self._render_frame(t, before, after)
+                    frame = self._render_frame(
+                        i, total_frames, before, after, pattern
+                    )
                     writer.write(frame)
                 writer.release()
 
@@ -308,9 +459,12 @@ class BlendVideoGenerator:
                     if h264_data and len(h264_data) > 1024:
                         logger.info(
                             f"Blend video re-encoded to H.264: "
-                            f"{len(h264_data)} bytes, {TOTAL_DURATION:.1f}s"
+                            f"{len(h264_data)} bytes, {duration:.1f}s"
                         )
-                        return VideoResult(h264_data, "video/mp4", ".mp4")
+                        return VideoResult(
+                            h264_data, "video/mp4", ".mp4",
+                            duration=duration, metadata=metadata,
+                        )
 
                 # Fallback: use mp4v as-is
                 with open(tmp_path, "rb") as fh:
@@ -320,9 +474,12 @@ class BlendVideoGenerator:
                 if len(data) > 1024:
                     logger.info(
                         f"Blend video encoded ({codec}{ext}): "
-                        f"{len(data)} bytes, {TOTAL_DURATION:.1f}s"
+                        f"{len(data)} bytes, {duration:.1f}s"
                     )
-                    return VideoResult(data, content_type, ext)
+                    return VideoResult(
+                        data, content_type, ext,
+                        duration=duration, metadata=metadata,
+                    )
             except Exception as e:
                 logger.warning(f"Blend video codec {codec} failed: {e}")
 
@@ -333,6 +490,7 @@ class BlendVideoGenerator:
         before: np.ndarray,
         after: np.ndarray,
         total_frames: int,
+        pattern: str,
         ffmpeg_bin: str = "ffmpeg",
     ) -> "VideoResult | None":
         """Pipe raw BGR frames to ffmpeg for direct H.264 encoding."""
@@ -365,8 +523,9 @@ class BlendVideoGenerator:
             )
 
             for i in range(total_frames):
-                t = i / BLEND_FPS
-                frame = self._render_frame(t, before, after)
+                frame = self._render_frame(
+                    i, total_frames, before, after, pattern
+                )
                 try:
                     proc.stdin.write(frame.tobytes())
                 except BrokenPipeError:
@@ -391,9 +550,10 @@ class BlendVideoGenerator:
             os.unlink(out_path)
 
             if len(data) > 1024:
+                duration = total_frames / BLEND_FPS
                 logger.info(
                     f"Blend video encoded via ffmpeg pipe (H.264): "
-                    f"{len(data)} bytes, {TOTAL_DURATION:.1f}s"
+                    f"{len(data)} bytes, {duration:.1f}s"
                 )
                 return VideoResult(data, "video/mp4", ".mp4")
             return None

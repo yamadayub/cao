@@ -15,9 +15,6 @@ from app.config import get_settings
 from app.models.schemas import ErrorCodes, ErrorDetail, ErrorResponse, SuccessResponse
 from app.services.auth import get_current_user
 from app.services.blend_video_generator import (
-    TOTAL_DURATION as BLEND_TOTAL_DURATION,
-)
-from app.services.blend_video_generator import (
     get_blend_video_generator,
 )
 from app.services.supabase_client import get_supabase_client
@@ -56,6 +53,7 @@ class BlendVideoGenerateRequest(BaseModel):
     current_image: str = Field(..., description="Base64 encoded before face")
     ideal_image: Optional[str] = Field(None, description="Deprecated, ignored")
     result_image: str = Field(..., description="Base64 encoded after face")
+    video_pattern: str = Field(default="A", description="Video pattern: A (4s loop) or B (6s morph)")
 
 
 class VideoGenerateData(BaseModel):
@@ -64,6 +62,8 @@ class VideoGenerateData(BaseModel):
     video_url: str = Field(..., description="URL or data URI of the generated video")
     duration: float = Field(..., description="Video duration in seconds")
     format: str = Field(default="mp4", description="Video format")
+    loop_friendly: Optional[bool] = Field(default=None, description="Whether the video loops seamlessly")
+    beat_sync_points: Optional[list] = Field(default=None, description="Timestamps of snap cuts for beat sync")
 
 
 class VideoGenerateResponse(SuccessResponse[VideoGenerateData]):
@@ -245,13 +245,21 @@ async def generate_blend_video(
             ).model_dump(),
         )
 
+    # Validate pattern
+    pattern = body.video_pattern.upper()
+    if pattern not in ("A", "B"):
+        pattern = "A"
+
     # Generate video
     try:
         generator = get_blend_video_generator()
-        result = generator.generate(current_bytes, ideal_bytes, result_bytes)
+        result = generator.generate(
+            current_bytes, ideal_bytes, result_bytes, pattern=pattern
+        )
         logger.info(
             f"Blend video generated: {len(result.data)} bytes, "
-            f"format={result.content_type}"
+            f"format={result.content_type}, duration={result.duration:.1f}s, "
+            f"pattern={pattern}"
         )
     except Exception as e:
         logger.error(f"Blend video generation failed: {e}")
@@ -281,7 +289,9 @@ async def generate_blend_video(
     return VideoGenerateResponse(
         data=VideoGenerateData(
             video_url=video_url,
-            duration=BLEND_TOTAL_DURATION,
+            duration=result.duration,
             format=video_format,
+            loop_friendly=result.metadata.get("loop_friendly"),
+            beat_sync_points=result.metadata.get("beat_sync_points"),
         )
     )
