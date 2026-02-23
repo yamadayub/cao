@@ -1,13 +1,13 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~7.1s):
-1. Ideal face – 1.0s
-   → Cross-dissolve (0.3s)
-2. Current face – 1.0s
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.1s):
+1. Current face (before) – 1.0s
    → Flash reveal (0.5s)
-3. Result face – 3.0s
+2. Result face (after) – 1.0s
    → Cross-dissolve (0.3s)
-4. Cao logo – 1.0s
+3. Ideal face (goal) – 0.7s
+   → Cross-dissolve (0.3s)
+4. Cao logo – 0.3s
 
 No captions burned in – users add their own text via TikTok/CapCut.
 All images are cover-fitted to fill the entire frame (no borders).
@@ -50,20 +50,20 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 ]
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_IDEAL = 1.0         # Show ideal face
+PHASE_CURRENT = 1.0       # Show current face (before)
+PHASE_REVEAL = 0.5        # Flash reveal transition
+PHASE_RESULT = 1.0        # Show result face (after)
 PHASE_TRANS = 0.3         # Cross-dissolve transition
-PHASE_REVEAL = 0.5        # Flash reveal (longer for drama)
-PHASE_CURRENT = 1.0       # Show current face
-PHASE_RESULT = 3.0        # Show result face
-PHASE_BRAND = 1.0         # Logo + tagline
+PHASE_IDEAL = 0.7         # Show ideal face (goal)
+PHASE_BRAND = 0.3         # Logo
 
 TOTAL_DURATION = (
-    PHASE_IDEAL
-    + PHASE_TRANS       # ideal → current (dissolve)
-    + PHASE_CURRENT
-    + PHASE_REVEAL      # current → result (flash reveal)
+    PHASE_CURRENT
+    + PHASE_REVEAL      # current → result (flash)
     + PHASE_RESULT
-    + PHASE_TRANS       # result → brand (dissolve)
+    + PHASE_TRANS       # result → ideal (dissolve)
+    + PHASE_IDEAL
+    + PHASE_TRANS       # ideal → brand (dissolve)
     + PHASE_BRAND
 )
 
@@ -209,51 +209,51 @@ class BlendVideoGenerator:
         """Render a single full-bleed frame at time *t*.
 
         Timeline (with transitions):
-        1. Ideal face hold (1.0s)
-        2. Cross-dissolve: ideal → current (0.3s)
-        3. Current face hold (1.0s)
-        4. Flash reveal: current → result (0.5s)
-        5. Result face hold (3.0s)
-        6. Cross-dissolve: result → brand (0.3s)
-        7. Brand/logo hold (1.0s)
+        1. Current face hold (1.0s)
+        2. Flash reveal: current → result (0.5s)
+        3. Result face hold (1.0s)
+        4. Cross-dissolve: result → ideal (0.3s)
+        5. Ideal face hold (0.7s)
+        6. Cross-dissolve: ideal → brand (0.3s)
+        7. Brand/logo hold (0.3s)
         """
         # Build cumulative timeline boundaries
-        e1 = PHASE_IDEAL                          # end of ideal hold
-        e2 = e1 + PHASE_TRANS                     # end of ideal→current dissolve
-        e3 = e2 + PHASE_CURRENT                   # end of current hold
-        e4 = e3 + PHASE_REVEAL                    # end of current→result flash
-        e5 = e4 + PHASE_RESULT                    # end of result hold
-        e6 = e5 + PHASE_TRANS                     # end of result→brand dissolve
+        e1 = PHASE_CURRENT                        # end of current hold
+        e2 = e1 + PHASE_REVEAL                    # end of current→result flash
+        e3 = e2 + PHASE_RESULT                    # end of result hold
+        e4 = e3 + PHASE_TRANS                     # end of result→ideal dissolve
+        e5 = e4 + PHASE_IDEAL                     # end of ideal hold
+        e6 = e5 + PHASE_TRANS                     # end of ideal→brand dissolve
 
         if t < e1:
-            # ── Ideal face hold ──────────────────────
-            p = t / PHASE_IDEAL
-            return self._ken_burns(ideal, p)
-
-        elif t < e2:
-            # ── Cross-dissolve: ideal → current ──────
-            p = (t - e1) / PHASE_TRANS
-            return self._cross_dissolve(ideal, current, p)
-
-        elif t < e3:
             # ── Current face hold ────────────────────
-            p = (t - e2) / PHASE_CURRENT
+            p = t / PHASE_CURRENT
             return self._ken_burns(current, p)
 
-        elif t < e4:
+        elif t < e2:
             # ── Flash reveal: current → result ───────
-            p = (t - e3) / PHASE_REVEAL
+            p = (t - e1) / PHASE_REVEAL
             return self._flash_reveal(current, result, p)
 
-        elif t < e5:
+        elif t < e3:
             # ── Result face hold ─────────────────────
-            p = (t - e4) / PHASE_RESULT
+            p = (t - e2) / PHASE_RESULT
             return self._ken_burns(result, p, zoom=0.03)
 
+        elif t < e4:
+            # ── Cross-dissolve: result → ideal ───────
+            p = (t - e3) / PHASE_TRANS
+            return self._cross_dissolve(result, ideal, p)
+
+        elif t < e5:
+            # ── Ideal face hold ──────────────────────
+            p = (t - e4) / PHASE_IDEAL
+            return self._ken_burns(ideal, p)
+
         elif t < e6:
-            # ── Cross-dissolve: result → brand ───────
+            # ── Cross-dissolve: ideal → brand ────────
             p = (t - e5) / PHASE_TRANS
-            return self._cross_dissolve(result, self._render_brand_frame(1.0), p)
+            return self._cross_dissolve(ideal, self._render_brand_frame(1.0), p)
 
         else:
             # ── Brand/logo hold ──────────────────────
