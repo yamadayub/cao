@@ -1,12 +1,15 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6.0s):
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6.9s):
 1. Ideal face ("こんな顔になれたら？") – 1.0s
+   → Slider transition (0.3s)
 2. Current face ("ビフォー") – 1.0s
+   → Slider transition (0.3s)
 3. Result face ("アフター") – 3.0s
+   → Slider transition (0.3s)
 4. Cao logo + tagline – 1.0s
 
-Captions are placed at the top of the frame to avoid TikTok UI overlap.
+Captions are placed in the upper area of the frame to avoid TikTok UI overlap.
 All images are cover-fitted to fill the entire frame (no borders).
 Uses 720x1280 @ 24fps to fit within Heroku's 512MB / 30s limits.
 """
@@ -23,6 +26,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from app.services.video_generator import (
     VideoResult,
+    _ease_in_out,
     get_ffmpeg_path,
 )
 
@@ -53,14 +57,18 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 
 # ── Timeline (seconds) ──────────────────────
 PHASE_IDEAL = 1.0         # Show ideal face
+PHASE_TRANS = 0.3         # Slider transition between phases
 PHASE_CURRENT = 1.0       # Show current face
 PHASE_RESULT = 3.0        # Show result face
 PHASE_BRAND = 1.0         # Logo + tagline
 
 TOTAL_DURATION = (
     PHASE_IDEAL
+    + PHASE_TRANS       # ideal → current
     + PHASE_CURRENT
+    + PHASE_TRANS       # current → result
     + PHASE_RESULT
+    + PHASE_TRANS       # result → brand
     + PHASE_BRAND
 )
 
@@ -135,8 +143,8 @@ class BlendVideoGenerator:
         frame = frame.copy()
 
         # Semi-transparent dark gradient at top for text readability
-        grad_h = 200
-        alpha_col = np.linspace(0.7, 0, grad_h, dtype=np.float32)
+        grad_h = 280
+        alpha_col = np.linspace(0.75, 0, grad_h, dtype=np.float32)
         alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
         region = frame[:grad_h, :, :].astype(np.float32)
         frame[:grad_h, :, :] = (region * (1 - alpha_3d * alpha)).astype(
@@ -149,7 +157,7 @@ class BlendVideoGenerator:
                 frame,
                 text,
                 BLEND_WIDTH // 2,
-                90,
+                160,
                 font_size=64,
                 color=(255, 255, 255),
                 alpha=alpha,
@@ -220,6 +228,51 @@ class BlendVideoGenerator:
         )
         frame[:] = result
 
+    @staticmethod
+    def _slider_transition(
+        img_from: np.ndarray,
+        img_to: np.ndarray,
+        progress: float,
+    ) -> np.ndarray:
+        """Slider wipe transition with a white divider line.
+
+        A vertical white line sweeps left-to-right, revealing *img_to*
+        behind *img_from*, similar to a before/after slider.
+        """
+        h, w = img_from.shape[:2]
+        eased = _ease_in_out(progress)
+        split = int(eased * w)
+        split = max(0, min(split, w))
+
+        frame = img_from.copy()
+        if split > 0:
+            frame[:, :split] = img_to[:, :split]
+
+        # Draw slider line + handle
+        if 0 < split < w:
+            line_w = 4
+            x0 = max(split - line_w // 2, 0)
+            x1 = min(split + line_w // 2, w)
+            frame[:, x0:x1] = (255, 255, 255)
+
+            # Small triangular handle at center of line
+            cy = h // 2
+            handle_sz = 18
+            pts_l = np.array([
+                [split - handle_sz, cy],
+                [split - 2, cy - handle_sz],
+                [split - 2, cy + handle_sz],
+            ], dtype=np.int32)
+            pts_r = np.array([
+                [split + handle_sz, cy],
+                [split + 2, cy - handle_sz],
+                [split + 2, cy + handle_sz],
+            ], dtype=np.int32)
+            cv2.fillPoly(frame, [pts_l], (255, 255, 255))
+            cv2.fillPoly(frame, [pts_r], (255, 255, 255))
+
+        return frame
+
     def _load_logo(self) -> np.ndarray:
         """Load and cache the Cao logo image."""
         if not hasattr(self, "_logo_cache"):
@@ -237,24 +290,28 @@ class BlendVideoGenerator:
         """Render the brand/logo frame with tagline."""
         frame = self._load_logo().copy()
 
-        # Darken slightly for text readability
+        # Darken bottom area for tagline readability
         fade = min(progress * 3.0, 1.0)
         if fade > 0.01:
-            frame = (frame.astype(np.float32) * (1 - 0.3 * fade)).astype(
-                np.uint8
-            )
+            grad_h = BLEND_HEIGHT // 3
+            y_start = BLEND_HEIGHT - grad_h
+            alpha_col = np.linspace(0, 0.6 * fade, grad_h, dtype=np.float32)
+            alpha_3d = alpha_col[:, np.newaxis, np.newaxis]
+            region = frame[y_start:, :, :].astype(np.float32)
+            frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(np.uint8)
 
-        # Tagline text at top (same position as other captions)
+        # Tagline below logo center (large, with outline)
         text_alpha = min(progress * 3.0, 1.0)
         if text_alpha > 0.05:
             self._draw_pil_text(
                 frame,
                 CAPTION_BRAND,
                 BLEND_WIDTH // 2,
-                BLEND_HEIGHT // 2 + 100,
-                font_size=36,
+                BLEND_HEIGHT * 3 // 4,
+                font_size=48,
                 color=(255, 255, 255),
                 alpha=text_alpha,
+                outline=True,
             )
         return frame
 
@@ -267,38 +324,65 @@ class BlendVideoGenerator:
     ) -> np.ndarray:
         """Render a single full-bleed frame at time *t*.
 
-        Timeline:
-        1. Ideal face + "こんな顔になれたら？" (0.7s)
-        2. Current face + "今の私が・・・" (0.5s)
-        3. Result face + "こんな私に！" (2.0s)
-        4. Logo + tagline (1.0s)
+        Timeline (with slider transitions):
+        1. Ideal face hold (1.0s)
+        2. Slider: ideal → current (0.3s)
+        3. Current face hold (1.0s)
+        4. Slider: current → result (0.3s)
+        5. Result face hold (3.0s)
+        6. Slider: result → brand (0.3s)
+        7. Brand/logo hold (1.0s)
         """
-        t1 = PHASE_IDEAL
-        t2 = t1 + PHASE_CURRENT
-        t3 = t2 + PHASE_RESULT
+        # Build cumulative timeline boundaries
+        e1 = PHASE_IDEAL                          # end of ideal hold
+        e2 = e1 + PHASE_TRANS                     # end of ideal→current slider
+        e3 = e2 + PHASE_CURRENT                   # end of current hold
+        e4 = e3 + PHASE_TRANS                     # end of current→result slider
+        e5 = e4 + PHASE_RESULT                    # end of result hold
+        e6 = e5 + PHASE_TRANS                     # end of result→brand slider
 
-        if t < t1:
-            # ── Phase 1: Ideal face ──────────────────
-            p = t / t1
+        if t < e1:
+            # ── Ideal face hold ──────────────────────
+            p = t / PHASE_IDEAL
             frame = self._ken_burns(ideal, p)
             return self._add_caption(frame, CAPTION_IDEAL)
 
-        elif t < t2:
-            # ── Phase 2: Current face ────────────────
-            p = (t - t1) / PHASE_CURRENT
+        elif t < e2:
+            # ── Slider: ideal → current ──────────────
+            p = (t - e1) / PHASE_TRANS
+            img_from = self._add_caption(ideal.copy(), CAPTION_IDEAL)
+            img_to = self._add_caption(current.copy(), CAPTION_CURRENT)
+            return self._slider_transition(img_from, img_to, p)
+
+        elif t < e3:
+            # ── Current face hold ────────────────────
+            p = (t - e2) / PHASE_CURRENT
             frame = self._ken_burns(current, p)
             return self._add_caption(frame, CAPTION_CURRENT)
 
-        elif t < t3:
-            # ── Phase 3: Result face ─────────────────
-            p = (t - t2) / PHASE_RESULT
+        elif t < e4:
+            # ── Slider: current → result ─────────────
+            p = (t - e3) / PHASE_TRANS
+            img_from = self._add_caption(current.copy(), CAPTION_CURRENT)
+            img_to = self._add_caption(result.copy(), CAPTION_RESULT)
+            return self._slider_transition(img_from, img_to, p)
+
+        elif t < e5:
+            # ── Result face hold ─────────────────────
+            p = (t - e4) / PHASE_RESULT
             frame = self._ken_burns(result, p, zoom=0.03)
             return self._add_caption(frame, CAPTION_RESULT)
 
+        elif t < e6:
+            # ── Slider: result → brand ───────────────
+            p = (t - e5) / PHASE_TRANS
+            img_from = self._add_caption(result.copy(), CAPTION_RESULT)
+            img_to = self._render_brand_frame(1.0)
+            return self._slider_transition(img_from, img_to, p)
+
         else:
-            # ── Phase 4: Logo + brand ────────────────
-            p = min((t - t3) / PHASE_BRAND, 1.0)
-            return self._render_brand_frame(p)
+            # ── Brand/logo hold ──────────────────────
+            return self._render_brand_frame(1.0)
 
     @staticmethod
     def _overlay_text(
