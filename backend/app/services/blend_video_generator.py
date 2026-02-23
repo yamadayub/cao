@@ -1,10 +1,10 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6.9s):
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~7.1s):
 1. Ideal face ("こんな顔になれたら？") – 1.0s
    → Cross-dissolve (0.3s)
 2. Current face ("ビフォー") – 1.0s
-   → Shape reveal (0.3s)
+   → Flash reveal (0.5s)
 3. Result face ("アフター") – 3.0s
    → Cross-dissolve (0.3s)
 4. Cao logo + tagline – 1.0s
@@ -57,18 +57,19 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 
 # ── Timeline (seconds) ──────────────────────
 PHASE_IDEAL = 1.0         # Show ideal face
-PHASE_TRANS = 0.3         # Slider transition between phases
+PHASE_TRANS = 0.3         # Cross-dissolve transition
+PHASE_REVEAL = 0.5        # Flash reveal (longer for drama)
 PHASE_CURRENT = 1.0       # Show current face
 PHASE_RESULT = 3.0        # Show result face
 PHASE_BRAND = 1.0         # Logo + tagline
 
 TOTAL_DURATION = (
     PHASE_IDEAL
-    + PHASE_TRANS       # ideal → current
+    + PHASE_TRANS       # ideal → current (dissolve)
     + PHASE_CURRENT
-    + PHASE_TRANS       # current → result
+    + PHASE_REVEAL      # current → result (flash reveal)
     + PHASE_RESULT
-    + PHASE_TRANS       # result → brand
+    + PHASE_TRANS       # result → brand (dissolve)
     + PHASE_BRAND
 )
 
@@ -280,31 +281,52 @@ class BlendVideoGenerator:
         )
 
     @staticmethod
-    def _shape_transition(
+    def _flash_reveal(
         img_from: np.ndarray,
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Circle-iris shape reveal transition.
+        """Dramatic flash-burst reveal transition.
 
-        A circle expands from the center, revealing *img_to* inside.
+        Timeline within the transition:
+        0.0–0.35: img_from brightens rapidly toward white
+        0.35–0.50: peak white flash
+        0.50–1.0: white fades out revealing img_to with zoom punch
         """
         h, w = img_from.shape[:2]
-        eased = _ease_in_out(progress)
-        # Max radius = diagonal / 2 so the circle fully covers the frame
-        max_r = int(np.sqrt(w * w + h * h) / 2) + 1
-        r = int(eased * max_r)
 
-        # Build circle mask
-        mask = np.zeros((h, w), dtype=np.uint8)
-        cv2.circle(mask, (w // 2, h // 2), r, 255, -1)
-        mask_3d = mask[:, :, np.newaxis].astype(np.float32) / 255.0
+        if progress < 0.35:
+            # Brighten img_from toward white
+            t = progress / 0.35  # 0→1
+            t2 = t * t  # accelerate
+            frame = img_from.astype(np.float32)
+            white = np.full_like(frame, 255.0)
+            frame = frame * (1.0 - t2) + white * t2
+            return frame.clip(0, 255).astype(np.uint8)
 
-        frame = (
-            img_to.astype(np.float32) * mask_3d
-            + img_from.astype(np.float32) * (1.0 - mask_3d)
-        ).astype(np.uint8)
-        return frame
+        elif progress < 0.50:
+            # Peak white flash
+            return np.full((h, w, 3), 255, dtype=np.uint8)
+
+        else:
+            # Fade from white revealing img_to with zoom punch
+            t = (progress - 0.50) / 0.50  # 0→1
+            t_ease = t * t * (3.0 - 2.0 * t)  # smoothstep
+
+            # Zoom punch: start slightly zoomed in, settle to normal
+            zoom = 1.0 + 0.08 * (1.0 - t_ease)
+            nw, nh = int(w * zoom), int(h * zoom)
+            zoomed = cv2.resize(img_to, (nw, nh), interpolation=cv2.INTER_LINEAR)
+            x0 = (nw - w) // 2
+            y0 = (nh - h) // 2
+            revealed = zoomed[y0 : y0 + h, x0 : x0 + w]
+
+            # Blend from white to revealed
+            white_alpha = 1.0 - t_ease
+            frame = revealed.astype(np.float32)
+            white = np.full_like(frame, 255.0)
+            frame = frame * (1.0 - white_alpha) + white * white_alpha
+            return frame.clip(0, 255).astype(np.uint8)
 
     def _load_logo(self) -> np.ndarray:
         """Load and cache the Cao logo image."""
@@ -362,18 +384,18 @@ class BlendVideoGenerator:
         1. Ideal face hold (1.0s)
         2. Cross-dissolve: ideal → current (0.3s)
         3. Current face hold (1.0s)
-        4. Shape reveal: current → result (0.3s)
+        4. Flash reveal: current → result (0.5s)
         5. Result face hold (3.0s)
         6. Cross-dissolve: result → brand (0.3s)
         7. Brand/logo hold (1.0s)
         """
         # Build cumulative timeline boundaries
         e1 = PHASE_IDEAL                          # end of ideal hold
-        e2 = e1 + PHASE_TRANS                     # end of ideal→current slider
+        e2 = e1 + PHASE_TRANS                     # end of ideal→current dissolve
         e3 = e2 + PHASE_CURRENT                   # end of current hold
-        e4 = e3 + PHASE_TRANS                     # end of current→result slider
+        e4 = e3 + PHASE_REVEAL                    # end of current→result flash
         e5 = e4 + PHASE_RESULT                    # end of result hold
-        e6 = e5 + PHASE_TRANS                     # end of result→brand slider
+        e6 = e5 + PHASE_TRANS                     # end of result→brand dissolve
 
         if t < e1:
             # ── Ideal face hold ──────────────────────
@@ -395,11 +417,11 @@ class BlendVideoGenerator:
             return self._add_caption(frame, CAPTION_CURRENT)
 
         elif t < e4:
-            # ── Shape reveal: current → result ───────
-            p = (t - e3) / PHASE_TRANS
-            img_from = self._add_caption(current.copy(), CAPTION_CURRENT)
+            # ── Flash reveal: current → result ───────
+            p = (t - e3) / PHASE_REVEAL
+            img_from = current.copy()
             img_to = self._add_caption(result.copy(), CAPTION_RESULT)
-            return self._shape_transition(img_from, img_to, p)
+            return self._flash_reveal(img_from, img_to, p)
 
         elif t < e5:
             # ── Result face hold ─────────────────────
