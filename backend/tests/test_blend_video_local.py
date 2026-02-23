@@ -1,8 +1,9 @@
-"""Local test for blend video generator — TikTok-optimized patterns."""
+"""Local test for blend video generator — Morph-centered, TikTok-optimized."""
+import json
 import sys
 sys.path.insert(0, "/Users/yosuke/dev/cao/backend")
 
-from app.services.blend_video_generator import BlendVideoGenerator
+from app.services.blend_video_generator import BlendVideoGenerator, CONFIG, TOTAL_DURATION
 
 def main():
     gen = BlendVideoGenerator()
@@ -22,35 +23,58 @@ def main():
     after_img = gen._fit(gen._decode(result))
     print(f"Fitted after shape: {after_img.shape}, dtype: {after_img.dtype}")
 
-    # ── Pattern A ──────────────────────────
-    print("\n=== Pattern A (4.0s loop-optimized) ===")
-    print("Generating video...")
-    result_a = gen.generate(current, None, result, pattern="A")
-    print(f"Video: {len(result_a.data)} bytes, type={result_a.content_type}, ext={result_a.extension}")
-    print(f"Duration: {result_a.duration}s")
-    print(f"Metadata: {result_a.metadata}")
+    # Print config
+    print(f"\n=== Configuration ===")
+    print(f"Timeline: Before {CONFIG['before_hold_sec']}s → Morph {CONFIG['morph_sec']}s "
+          f"→ After {CONFIG['after_hold_sec']}s → Bridge {CONFIG['loop_bridge_sec']}s")
+    print(f"Total duration: {TOTAL_DURATION}s")
+    print(f"FPS: {CONFIG['fps']}, CRF: {CONFIG['crf']}")
+    print(f"Flash: enabled={CONFIG['flash_enabled']}, opacity={CONFIG['flash_opacity']}")
+    print(f"Loop bridge blend max: {CONFIG['loop_bridge_blend_max']}")
 
-    out_a = "tests/test_images/blend_A" + result_a.extension
-    with open(out_a, "wb") as f:
-        f.write(result_a.data)
-    print(f"Saved to {out_a}")
+    # Generate video
+    print(f"\n=== Generating morph-centered video ===")
+    video_result = gen.generate(current, None, result)
+    print(f"Video: {len(video_result.data)} bytes, type={video_result.content_type}, ext={video_result.extension}")
+    print(f"Duration: {video_result.duration}s")
+    print(f"Metadata: {json.dumps(video_result.metadata, indent=2)}")
 
-    # ── Pattern B ──────────────────────────
-    print("\n=== Pattern B (6.0s morph showcase) ===")
-    print("Generating video...")
-    result_b = gen.generate(current, None, result, pattern="B")
-    print(f"Video: {len(result_b.data)} bytes, type={result_b.content_type}, ext={result_b.extension}")
-    print(f"Duration: {result_b.duration}s")
-    print(f"Metadata: {result_b.metadata}")
+    # Calculate bitrate
+    bitrate_kbps = (len(video_result.data) * 8) / (video_result.duration * 1000)
+    print(f"Bitrate: {bitrate_kbps:.0f} kbps")
 
-    out_b = "tests/test_images/blend_B" + result_b.extension
-    with open(out_b, "wb") as f:
-        f.write(result_b.data)
-    print(f"Saved to {out_b}")
+    # Save output
+    out_path = "tests/test_images/blend_morph" + video_result.extension
+    with open(out_path, "wb") as f:
+        f.write(video_result.data)
+    print(f"Saved to {out_path}")
 
-    print("\nDone! Inspect the output videos:")
-    print(f"  {out_a} — verify snap cut at 1.5s, loop bridge, labels, watermark")
-    print(f"  {out_b} — verify snap cut, hard cut, slow morph, loop bridge")
+    # Verify with ffprobe if available
+    import shutil
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        import subprocess
+        print(f"\n=== ffprobe analysis ===")
+        cmd = [ffprobe, "-v", "error", "-show_format", "-show_streams", out_path]
+        result_probe = subprocess.run(cmd, capture_output=True, text=True)
+        # Extract key info
+        for line in result_probe.stdout.split("\n"):
+            for key in ["bit_rate", "duration", "codec_name", "width", "height", "r_frame_rate"]:
+                if line.startswith(f"{key}="):
+                    print(f"  {line}")
+
+    print(f"\nDone! Inspect the output video:")
+    print(f"  {out_path}")
+    print(f"\nChecklist:")
+    print(f"  [ ] Before static 0.5s at start")
+    print(f"  [ ] Morph starts at 0.5s, runs 2.0s with ease-in-out")
+    print(f"  [ ] Flash visible at ~2.4-2.5s")
+    print(f"  [ ] After static from 2.5s to 4.0s")
+    print(f"  [ ] Loop bridge 4.0s-4.5s (After→Before crossfade)")
+    print(f"  [ ] Seamless loop when played on repeat")
+    print(f"  [ ] Labels: 'Before' visible then fades, 'After' fades in after morph")
+    print(f"  [ ] Watermark at bottom-right")
+    print(f"  [ ] Bitrate >= 800kbps (got {bitrate_kbps:.0f}kbps)")
 
 if __name__ == "__main__":
     main()

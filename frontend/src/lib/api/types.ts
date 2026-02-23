@@ -538,6 +538,15 @@ export type GetSnsShareResponse = SuccessResponse<GetSnsShareData>;
 // =============================================================================
 
 /**
+ * ビートシンクポイント
+ */
+export interface BeatSyncPoint {
+  time_sec: number;
+  type: string;
+  description?: string;
+}
+
+/**
  * 動画生成レスポンスデータ
  */
 export interface VideoGenerateData {
@@ -545,5 +554,5 @@ export interface VideoGenerateData {
   duration: number;
   format: string;
   loop_friendly?: boolean;
-  beat_sync_points?: number[];
+  beat_sync_points?: BeatSyncPoint[];
 }

@@ -1,20 +1,17 @@
-"""Blend reveal video generator — TikTok-optimized patterns.
+"""Blend reveal video generator — Morph-centered, TikTok-optimized.
 
-Two patterns built around snap cuts and seamless loop bridges:
+Timeline (~4.5s, loop-optimized):
+  Before hold (0.5s) → Slow morph with ease-in-out (2.0s)
+  → Flash accent at morph completion → After hold (1.5s)
+  → Loop bridge crossfade back to Before (0.5s)
 
-Pattern A (default, ~4.0s, loop-optimized):
-  Before hold (1.5s) → SNAP CUT (1 frame) → After hold (2.0s)
-  → Loop bridge crossfade to Before (0.5s)
-
-Pattern B (~6.0s, morph showcase):
-  Before hold (1.0s) → SNAP CUT → After hold (1.5s)
-  → Hard cut back to Before (0.5s) → Slow morph (2.5s)
-  → Loop bridge (0.5s)
-
-Both patterns include:
-- "Before"/"After" labels — bottom-left, white text on semi-transparent tag
-- Cao watermark — small logo (64px) bottom-right, 35% opacity
-- No full-screen logo, no end card
+Features:
+- Morph (cross-dissolve with cubic ease-in-out) as the main visual hook
+- White flash at morph completion for beat sync
+- "Before"/"After" labels with fade transitions (PIL + Noto Sans JP Bold)
+- Cao watermark (64px, 35% opacity, bottom-right)
+- Seamless loop bridge (80% blend back to Before at final frame)
+- High quality encoding (CRF 18, ~800-1200kbps)
 
 All images are cover-fitted to fill the entire frame (no borders).
 Uses 720x1280 @ 30fps to fit within Heroku's 512MB / 30s limits.
@@ -34,59 +31,88 @@ from app.services.video_generator import (
     get_ffmpeg_path,
 )
 
-# Logo image path (used as watermark)
-_LOGO_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "assets", "images", "cao-logo.jpg"
-)
+# Try PIL for label rendering
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
 
 logger = logging.getLogger(__name__)
 
-# ── Video settings ────────────────────────────
-BLEND_WIDTH = 720
-BLEND_HEIGHT = 1280
-BLEND_FPS = 30
+# ── Paths ─────────────────────────────────────
+_LOGO_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "images", "cao-logo.jpg"
+)
+_FONT_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "assets", "fonts", "NotoSansJP-subset.ttf"
+)
 
-# Only codecs that actually work on Heroku's opencv-python-headless.
+# ── Configuration (all parameters in one place) ─
+CONFIG = {
+    # Timing
+    "before_hold_sec": 0.5,
+    "morph_sec": 2.0,
+    "after_hold_sec": 1.5,
+    "loop_bridge_sec": 0.5,
+
+    # Morph settings
+    "morph_easing": "ease_in_out",       # "linear" or "ease_in_out"
+    "flash_enabled": True,
+    "flash_opacity": 0.3,
+    "flash_duration_sec": 0.1,
+
+    # Loop bridge settings
+    "loop_bridge_blend_max": 0.8,        # Final frame: 80% Before, 20% After
+
+    # Display settings
+    "show_labels": True,
+    "show_watermark": True,
+    "watermark_opacity": 0.35,
+
+    # Output settings
+    "output_resolution": (720, 1280),
+    "fps": 30,
+    "crf": 18,                           # High quality (18=high, 23=default)
+}
+
+# ── Derived constants ─────────────────────────
+BLEND_WIDTH, BLEND_HEIGHT = CONFIG["output_resolution"]
+BLEND_FPS = CONFIG["fps"]
+TOTAL_DURATION = (
+    CONFIG["before_hold_sec"]
+    + CONFIG["morph_sec"]
+    + CONFIG["after_hold_sec"]
+    + CONFIG["loop_bridge_sec"]
+)  # 4.5s
+
+# Only codecs that work on Heroku's opencv-python-headless.
 BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
     ("mp4v", ".mp4", "video/mp4"),
     ("MJPG", ".avi", "video/x-msvideo"),
 ]
 
-# ── Pattern A timeline (seconds) ──────────────
-PA_BEFORE_HOLD = 1.5   # Show before face
-PA_AFTER_HOLD = 2.0    # Show after face
-PA_LOOP_BRIDGE = 0.5   # Crossfade back to before for seamless loop
-PA_TOTAL = PA_BEFORE_HOLD + PA_AFTER_HOLD + PA_LOOP_BRIDGE  # 4.0s
+# ── Label position ────────────────────────────
+LABEL_X = 40                 # Left margin from frame edge
+LABEL_Y_FROM_BOTTOM = 120   # From bottom of frame
+LABEL_FONT_SIZE = 36
+LABEL_PAD_X = 16
+LABEL_PAD_Y = 10
+LABEL_BG_ALPHA = 128         # 0-255 for PIL (≈0.5 opacity)
 
-# ── Pattern B timeline (seconds) ──────────────
-PB_BEFORE_HOLD = 1.0   # Show before face
-PB_AFTER_HOLD = 1.5    # Show after face
-PB_HARD_CUT = 0.5      # Hard cut back to before
-PB_SLOW_MORPH = 2.5    # Slow morph before → after
-PB_LOOP_BRIDGE = 0.5   # Crossfade back to before for seamless loop
-PB_TOTAL = (PB_BEFORE_HOLD + PB_AFTER_HOLD + PB_HARD_CUT
-            + PB_SLOW_MORPH + PB_LOOP_BRIDGE)  # 6.0s
-
-# ── Label / watermark config ─────────────────
-LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
-LABEL_FONT_SCALE = 1.0
-LABEL_THICKNESS = 2
-LABEL_BG_ALPHA = 0.6       # Semi-transparent black background
-LABEL_MARGIN_X = 24        # Left margin
-LABEL_MARGIN_Y = 24        # Bottom margin from frame bottom
-LABEL_PADDING_X = 12       # Padding inside tag
-LABEL_PADDING_Y = 8
-
-WATERMARK_SIZE = 64         # 64x64 pixels
-WATERMARK_ALPHA = 0.35      # 35% opacity
-WATERMARK_MARGIN = 24       # Margin from edges
-
-# "After" label fade-in: 0.2s = 6 frames at 30fps
-AFTER_LABEL_FADE_FRAMES = 6
+# ── Watermark ─────────────────────────────────
+WATERMARK_SIZE = 64
+WATERMARK_MARGIN = 24
 
 
 class BlendVideoGenerator:
-    """Generate TikTok-optimized blend-reveal videos."""
+    """Generate morph-centered blend-reveal videos for TikTok."""
+
+    def __init__(self):
+        self._before_label = None   # Pre-rendered BGRA numpy array
+        self._after_label = None
+        self._watermark_cache = None
+        self._font = None
 
     # ── public API ──────────────────────────
 
@@ -97,20 +123,21 @@ class BlendVideoGenerator:
         result_image: bytes,
         pattern: str = "A",
     ) -> VideoResult:
-        """Generate blend-reveal video.
+        """Generate morph-centered blend-reveal video.
 
         Args:
             current_image: Before face image bytes.
             ideal_image: Ignored (backward compatibility).
             result_image: After face image bytes.
-            pattern: "A" (4s loop) or "B" (6s morph showcase).
+            pattern: Ignored (single morph pattern). Kept for backward compat.
 
         Returns:
             VideoResult with video bytes, duration, and metadata.
         """
         before = self._fit(self._decode(current_image))
         after = self._fit(self._decode(result_image))
-        return self._generate_and_encode(before, after, pattern)
+        self._prepare_overlays()
+        return self._generate_and_encode(before, after)
 
     # ── image helpers ───────────────────────
 
@@ -135,58 +162,187 @@ class BlendVideoGenerator:
             cropped = cv2.resize(cropped, (BLEND_WIDTH, BLEND_HEIGHT))
         return np.ascontiguousarray(cropped)
 
-    # ── labels ──────────────────────────────
+    # ── easing ──────────────────────────────
 
     @staticmethod
-    def _draw_label(
-        frame: np.ndarray,
-        text: str,
-        bg_alpha: float = LABEL_BG_ALPHA,
-    ) -> np.ndarray:
-        """Draw text label at bottom-left with semi-transparent black background.
+    def _ease_in_out_cubic(t: float) -> float:
+        """Cubic ease-in-out: slow start → fast middle → slow end."""
+        if t < 0.5:
+            return 4.0 * t * t * t
+        else:
+            return 1.0 - pow(-2.0 * t + 2.0, 3) / 2.0
 
-        Returns a new frame (does not modify in-place).
+    # ── cross dissolve ──────────────────────
+
+    @staticmethod
+    def _cross_dissolve(
+        img_from: np.ndarray,
+        img_to: np.ndarray,
+        alpha: float,
+    ) -> np.ndarray:
+        """Linear cross-dissolve between two frames."""
+        alpha = max(0.0, min(1.0, alpha))
+        result = (
+            img_to.astype(np.float32) * alpha
+            + img_from.astype(np.float32) * (1.0 - alpha)
+        )
+        return result.clip(0, 255).astype(np.uint8)
+
+    # ── overlay preparation ─────────────────
+
+    def _prepare_overlays(self):
+        """Pre-render labels and load watermark (called once per generate)."""
+        if CONFIG["show_labels"]:
+            self._load_font()
+            self._before_label = self._prerender_label("Before")
+            self._after_label = self._prerender_label("After")
+        if CONFIG["show_watermark"]:
+            self._load_watermark()
+
+    def _load_font(self):
+        """Load Noto Sans JP Bold font for label rendering."""
+        if not _HAS_PIL:
+            self._font = None
+            return
+
+        # Try Noto Sans JP subset (includes Latin glyphs for Before/After)
+        if os.path.exists(_FONT_PATH):
+            try:
+                self._font = ImageFont.truetype(_FONT_PATH, LABEL_FONT_SIZE)
+                return
+            except Exception:
+                pass
+
+        # Try system DejaVu Sans Bold as fallback
+        for fallback in [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        ]:
+            if os.path.exists(fallback):
+                try:
+                    self._font = ImageFont.truetype(fallback, LABEL_FONT_SIZE)
+                    return
+                except Exception:
+                    pass
+
+        self._font = None  # Will use cv2 fallback
+
+    def _prerender_label(self, text: str) -> np.ndarray:
+        """Pre-render a label as a BGRA numpy array.
+
+        Uses PIL for anti-aliased text when available, cv2 fallback otherwise.
         """
-        frame = frame.copy()
-        (tw, th), baseline = cv2.getTextSize(
-            text, LABEL_FONT, LABEL_FONT_SCALE, LABEL_THICKNESS
+        if _HAS_PIL and self._font is not None:
+            return self._prerender_label_pil(text)
+        return self._prerender_label_cv2(text)
+
+    def _prerender_label_pil(self, text: str) -> np.ndarray:
+        """Pre-render label using PIL for anti-aliased text."""
+        font = self._font
+
+        # Measure text
+        temp_img = Image.new("RGBA", (1, 1))
+        temp_draw = ImageDraw.Draw(temp_img)
+        bbox = temp_draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        w = tw + LABEL_PAD_X * 2
+        h = th + LABEL_PAD_Y * 2
+
+        # Semi-transparent black background with white text
+        img = Image.new("RGBA", (w, h), (0, 0, 0, LABEL_BG_ALPHA))
+        draw = ImageDraw.Draw(img)
+        draw.text(
+            (LABEL_PAD_X - bbox[0], LABEL_PAD_Y - bbox[1]),
+            text,
+            fill=(255, 255, 255, 255),
+            font=font,
         )
 
-        # Position: bottom-left
-        x = LABEL_MARGIN_X
-        y = BLEND_HEIGHT - LABEL_MARGIN_Y - LABEL_PADDING_Y - th
+        # Convert RGBA (PIL) → BGRA (OpenCV)
+        rgba = np.array(img)
+        bgra = np.empty_like(rgba)
+        bgra[:, :, 0] = rgba[:, :, 2]  # B
+        bgra[:, :, 1] = rgba[:, :, 1]  # G
+        bgra[:, :, 2] = rgba[:, :, 0]  # R
+        bgra[:, :, 3] = rgba[:, :, 3]  # A
+        return bgra
 
-        # Background rectangle region
-        rx1 = x - LABEL_PADDING_X
-        ry1 = y - LABEL_PADDING_Y
-        rx2 = x + tw + LABEL_PADDING_X
-        ry2 = y + th + baseline + LABEL_PADDING_Y
+    def _prerender_label_cv2(self, text: str) -> np.ndarray:
+        """Fallback: pre-render label using cv2 Hershey font."""
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 1.2
+        thickness = 2
+        (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
+
+        w = tw + LABEL_PAD_X * 2
+        h = th + baseline + LABEL_PAD_Y * 2
+
+        # Draw white text on a temp image to get the text mask
+        text_img = np.zeros((h, w, 3), dtype=np.uint8)
+        cv2.putText(
+            text_img, text, (LABEL_PAD_X, LABEL_PAD_Y + th),
+            font, scale, (255, 255, 255), thickness, cv2.LINE_AA,
+        )
+
+        # Build BGRA: black bg with semi-transparent alpha + opaque text
+        bgra = np.zeros((h, w, 4), dtype=np.uint8)
+        bgra[:, :, 3] = LABEL_BG_ALPHA  # Background alpha
+        bgra[:, :, :3] = text_img
+        text_mask = text_img[:, :, 0] > 0
+        bgra[text_mask, 3] = 255  # Full alpha for text pixels
+
+        return bgra
+
+    # ── label compositing ───────────────────
+
+    @staticmethod
+    def _composite_label(
+        frame: np.ndarray,
+        label_bgra: np.ndarray,
+        x: int,
+        y: int,
+        opacity: float,
+    ) -> np.ndarray:
+        """Alpha-composite a pre-rendered BGRA label onto a BGR frame."""
+        if label_bgra is None or opacity <= 0.01:
+            return frame
+
+        lh, lw = label_bgra.shape[:2]
 
         # Clamp to frame bounds
-        rx1 = max(0, rx1)
-        ry1 = max(0, ry1)
-        rx2 = min(BLEND_WIDTH, rx2)
-        ry2 = min(BLEND_HEIGHT, ry2)
+        x1 = max(0, x)
+        y1 = max(0, y)
+        x2 = min(x + lw, BLEND_WIDTH)
+        y2 = min(y + lh, BLEND_HEIGHT)
 
-        # Alpha-blend black rectangle
-        roi = frame[ry1:ry2, rx1:rx2].astype(np.float32)
-        black = np.zeros_like(roi, dtype=np.float32)
-        blended = roi * (1.0 - bg_alpha) + black * bg_alpha
-        frame[ry1:ry2, rx1:rx2] = blended.clip(0, 255).astype(np.uint8)
+        if x2 <= x1 or y2 <= y1:
+            return frame
 
-        # Draw white text
-        cv2.putText(
-            frame, text, (x, y + th),
-            LABEL_FONT, LABEL_FONT_SCALE, (255, 255, 255),
-            LABEL_THICKNESS, cv2.LINE_AA,
-        )
+        # Crop label region
+        lx1 = x1 - x
+        ly1 = y1 - y
+        lx2 = lx1 + (x2 - x1)
+        ly2 = ly1 + (y2 - y1)
+
+        label_roi = label_bgra[ly1:ly2, lx1:lx2]
+        frame_roi = frame[y1:y2, x1:x2].astype(np.float32)
+
+        # Alpha channel scaled by opacity
+        alpha = label_roi[:, :, 3:4].astype(np.float32) / 255.0 * opacity
+        label_bgr = label_roi[:, :, :3].astype(np.float32)
+
+        blended = frame_roi * (1.0 - alpha) + label_bgr * alpha
+        frame[y1:y2, x1:x2] = blended.clip(0, 255).astype(np.uint8)
+
         return frame
 
     # ── watermark ───────────────────────────
 
     def _load_watermark(self) -> np.ndarray:
         """Load and cache the Cao logo as a 64x64 watermark."""
-        if not hasattr(self, "_watermark_cache"):
+        if self._watermark_cache is None:
             logo = cv2.imread(_LOGO_PATH, cv2.IMREAD_COLOR)
             if logo is None:
                 logger.warning(f"Logo not found at {_LOGO_PATH}, using blank")
@@ -201,153 +357,21 @@ class BlendVideoGenerator:
         return self._watermark_cache
 
     def _apply_watermark(self, frame: np.ndarray) -> np.ndarray:
-        """Alpha-blend small logo at bottom-right with 35% opacity."""
+        """Alpha-blend small logo at bottom-right."""
         wm = self._load_watermark()
         h, w = wm.shape[:2]
+        wm_alpha = CONFIG["watermark_opacity"]
 
-        # Position: bottom-right
         x = BLEND_WIDTH - w - WATERMARK_MARGIN
         y = BLEND_HEIGHT - h - WATERMARK_MARGIN
 
         roi = frame[y : y + h, x : x + w].astype(np.float32)
         wm_f = wm.astype(np.float32)
-        blended = roi * (1.0 - WATERMARK_ALPHA) + wm_f * WATERMARK_ALPHA
+        blended = roi * (1.0 - wm_alpha) + wm_f * wm_alpha
         frame[y : y + h, x : x + w] = blended.clip(0, 255).astype(np.uint8)
         return frame
 
-    # ── transitions ─────────────────────────
-
-    @staticmethod
-    def _cross_dissolve(
-        img_from: np.ndarray,
-        img_to: np.ndarray,
-        progress: float,
-    ) -> np.ndarray:
-        """Linear cross-dissolve between two frames."""
-        alpha = max(0.0, min(1.0, progress))
-        result = (
-            img_to.astype(np.float32) * alpha
-            + img_from.astype(np.float32) * (1.0 - alpha)
-        )
-        return result.clip(0, 255).astype(np.uint8)
-
-    # ── pattern rendering ───────────────────
-
-    def _render_frame_pattern_a(
-        self,
-        frame_index: int,
-        total_frames: int,
-        before: np.ndarray,
-        after: np.ndarray,
-    ) -> np.ndarray:
-        """Render a single frame for Pattern A.
-
-        Timeline (frame-based at 30fps):
-        - Frames 0-44 (1.5s): Before hold + "Before" label
-        - Frame 45: SNAP CUT to After
-        - Frames 45-104 (2.0s): After hold + "After" label (fades in)
-        - Frames 105-119 (0.5s): Loop bridge crossfade After→Before
-        """
-        before_frames = int(PA_BEFORE_HOLD * BLEND_FPS)   # 45
-        after_frames = int(PA_AFTER_HOLD * BLEND_FPS)      # 60
-        # bridge_frames = total_frames - before_frames - after_frames  # 15
-
-        if frame_index < before_frames:
-            # Before hold
-            frame = before.copy()
-            frame = self._draw_label(frame, "Before")
-        elif frame_index < before_frames + after_frames:
-            # After hold
-            frame = after.copy()
-            # "After" label fades in over first AFTER_LABEL_FADE_FRAMES
-            frames_into_after = frame_index - before_frames
-            if frames_into_after < AFTER_LABEL_FADE_FRAMES:
-                fade_alpha = LABEL_BG_ALPHA * (frames_into_after / AFTER_LABEL_FADE_FRAMES)
-            else:
-                fade_alpha = LABEL_BG_ALPHA
-            frame = self._draw_label(frame, "After", bg_alpha=fade_alpha)
-        else:
-            # Loop bridge: crossfade After → Before
-            bridge_start = before_frames + after_frames
-            bridge_frames = total_frames - bridge_start
-            progress = (frame_index - bridge_start) / max(bridge_frames - 1, 1)
-            frame = self._cross_dissolve(after, before, progress)
-            # Fade out "After" label during bridge
-            remaining_alpha = LABEL_BG_ALPHA * (1.0 - progress)
-            if remaining_alpha > 0.05:
-                frame = self._draw_label(frame, "After", bg_alpha=remaining_alpha)
-
-        return frame
-
-    def _render_frame_pattern_b(
-        self,
-        frame_index: int,
-        total_frames: int,
-        before: np.ndarray,
-        after: np.ndarray,
-    ) -> np.ndarray:
-        """Render a single frame for Pattern B.
-
-        Timeline (frame-based at 30fps):
-        - Frames 0-29 (1.0s): Before hold + "Before" label
-        - Frame 30: SNAP CUT to After
-        - Frames 30-74 (1.5s): After hold + "After" label (fades in)
-        - Frames 75-89 (0.5s): Hard cut back to Before + "Before" label
-        - Frames 90-164 (2.5s): Slow morph Before→After
-        - Frames 165-179 (0.5s): Loop bridge crossfade After→Before
-        """
-        f_before = int(PB_BEFORE_HOLD * BLEND_FPS)     # 30
-        f_after = int(PB_AFTER_HOLD * BLEND_FPS)        # 45
-        f_hard = int(PB_HARD_CUT * BLEND_FPS)           # 15
-        f_morph = int(PB_SLOW_MORPH * BLEND_FPS)        # 75
-        # f_bridge = total_frames - f_before - f_after - f_hard - f_morph  # 15
-
-        e1 = f_before
-        e2 = e1 + f_after
-        e3 = e2 + f_hard
-        e4 = e3 + f_morph
-
-        if frame_index < e1:
-            # Before hold
-            frame = before.copy()
-            frame = self._draw_label(frame, "Before")
-        elif frame_index < e2:
-            # After hold
-            frame = after.copy()
-            frames_into_after = frame_index - e1
-            if frames_into_after < AFTER_LABEL_FADE_FRAMES:
-                fade_alpha = LABEL_BG_ALPHA * (frames_into_after / AFTER_LABEL_FADE_FRAMES)
-            else:
-                fade_alpha = LABEL_BG_ALPHA
-            frame = self._draw_label(frame, "After", bg_alpha=fade_alpha)
-        elif frame_index < e3:
-            # Hard cut back to Before
-            frame = before.copy()
-            frame = self._draw_label(frame, "Before")
-        elif frame_index < e4:
-            # Slow morph Before → After
-            progress = (frame_index - e3) / max(f_morph - 1, 1)
-            frame = self._cross_dissolve(before, after, progress)
-            # Morph label: transition from "Before" to "After"
-            if progress < 0.5:
-                frame = self._draw_label(frame, "Before", bg_alpha=LABEL_BG_ALPHA * (1.0 - progress * 2))
-            else:
-                alpha = LABEL_BG_ALPHA * ((progress - 0.5) * 2)
-                if alpha > 0.05:
-                    frame = self._draw_label(frame, "After", bg_alpha=alpha)
-        else:
-            # Loop bridge: crossfade After → Before
-            bridge_start = e4
-            bridge_frames = total_frames - bridge_start
-            progress = (frame_index - bridge_start) / max(bridge_frames - 1, 1)
-            frame = self._cross_dissolve(after, before, progress)
-            remaining_alpha = LABEL_BG_ALPHA * (1.0 - progress)
-            if remaining_alpha > 0.05:
-                frame = self._draw_label(frame, "After", bg_alpha=remaining_alpha)
-
-        return frame
-
-    # ── frame dispatch ──────────────────────
+    # ── frame rendering ─────────────────────
 
     def _render_frame(
         self,
@@ -355,72 +379,216 @@ class BlendVideoGenerator:
         total_frames: int,
         before: np.ndarray,
         after: np.ndarray,
-        pattern: str,
     ) -> np.ndarray:
-        """Render a single frame, dispatching to the appropriate pattern."""
-        if pattern == "B":
-            frame = self._render_frame_pattern_b(
-                frame_index, total_frames, before, after
-            )
+        """Render a single frame of the morph-centered timeline.
+
+        Timeline (frame-based at 30fps, total 135 frames = 4.5s):
+        - Frames 0-14 (0.5s): Before hold
+        - Frames 15-74 (2.0s): Slow morph Before→After (ease-in-out cubic)
+        - Frames 75-119 (1.5s): After hold
+        - Frames 120-134 (0.5s): Loop bridge crossfade After→Before (80%)
+        """
+        cfg = CONFIG
+        fps = cfg["fps"]
+
+        # Phase boundaries (in frames)
+        f_before = int(cfg["before_hold_sec"] * fps)   # 15
+        f_morph = int(cfg["morph_sec"] * fps)           # 60
+        f_after = int(cfg["after_hold_sec"] * fps)      # 45
+        f_bridge = total_frames - f_before - f_morph - f_after  # 15
+
+        e1 = f_before                    # 15: morph starts
+        e2 = e1 + f_morph               # 75: after hold starts
+        e3 = e2 + f_after               # 120: loop bridge starts
+
+        # ── Base frame ──
+        if frame_index < e1:
+            # Before hold
+            frame = before.copy()
+        elif frame_index < e2:
+            # Morph: Before → After with ease-in-out
+            t = (frame_index - e1) / max(f_morph - 1, 1)
+            if cfg["morph_easing"] == "ease_in_out":
+                eased = self._ease_in_out_cubic(t)
+            else:
+                eased = t
+            frame = self._cross_dissolve(before, after, eased)
+        elif frame_index < e3:
+            # After hold
+            frame = after.copy()
         else:
-            frame = self._render_frame_pattern_a(
-                frame_index, total_frames, before, after
-            )
+            # Loop bridge: After → Before (up to 80%)
+            t = (frame_index - e3) / max(f_bridge - 1, 1)
+            blend = t * cfg["loop_bridge_blend_max"]
+            frame = self._cross_dissolve(after, before, blend)
 
-        # Apply watermark on every frame
-        frame = self._apply_watermark(frame)
+        # ── Flash effect at morph completion ──
+        if cfg["flash_enabled"]:
+            frame = self._apply_flash(frame, frame_index, e2, fps)
 
-        # Safety: guarantee exact frame size and type for encoder
+        # ── Labels ──
+        if cfg["show_labels"]:
+            frame = self._apply_labels(frame, frame_index, e1, e2, e3, total_frames, fps)
+
+        # ── Watermark ──
+        if cfg["show_watermark"]:
+            frame = self._apply_watermark(frame)
+
+        # Safety: guarantee exact frame size and type
         if frame.shape != (BLEND_HEIGHT, BLEND_WIDTH, 3):
             frame = cv2.resize(frame, (BLEND_WIDTH, BLEND_HEIGHT))
         if frame.dtype != np.uint8:
             frame = frame.clip(0, 255).astype(np.uint8)
         return np.ascontiguousarray(frame)
 
+    # ── flash effect ────────────────────────
+
+    @staticmethod
+    def _apply_flash(
+        frame: np.ndarray,
+        frame_index: int,
+        morph_end_frame: int,
+        fps: int,
+    ) -> np.ndarray:
+        """Apply white flash at morph completion.
+
+        Flash peaks 1-2 frames before morph end (morph_end_frame),
+        with 0.1s triangle envelope (fade in → peak → fade out).
+        """
+        cfg = CONFIG
+        flash_frames = max(1, round(cfg["flash_duration_sec"] * fps))  # 3
+        # Peak 2 frames before after-hold starts
+        flash_center = morph_end_frame - 2
+        flash_half = flash_frames / 2.0
+
+        dist = abs(frame_index - flash_center)
+        if dist > flash_half:
+            return frame
+
+        # Triangle envelope: peak at center, zero at edges
+        flash_opacity = cfg["flash_opacity"] * (1.0 - dist / flash_half)
+        if flash_opacity < 0.01:
+            return frame
+
+        # Blend toward white: frame + (white - frame) * opacity
+        frame_f = frame.astype(np.float32)
+        frame_f += (255.0 - frame_f) * flash_opacity
+        return frame_f.clip(0, 255).astype(np.uint8)
+
+    # ── label application ───────────────────
+
+    def _apply_labels(
+        self,
+        frame: np.ndarray,
+        fi: int,
+        e1: int,
+        e2: int,
+        e3: int,
+        total_frames: int,
+        fps: int,
+    ) -> np.ndarray:
+        """Apply Before/After labels with fade transitions.
+
+        Before label: visible 0.0s-0.8s, fade out 0.8s-1.1s (0.3s)
+        After label: fade in at 2.5s (0.2s), visible until 4.0s, fade out 4.0s-4.3s (0.3s)
+        """
+        # Label Y: bottom-left, anchored from bottom
+        if self._before_label is not None:
+            label_h = self._before_label.shape[0]
+        elif self._after_label is not None:
+            label_h = self._after_label.shape[0]
+        else:
+            return frame
+        label_y = BLEND_HEIGHT - LABEL_Y_FROM_BOTTOM - label_h
+
+        # ── Before label ──
+        before_visible_end = int(0.8 * fps)    # frame 24
+        before_fade_end = int(1.1 * fps)       # frame 33
+
+        if fi < before_visible_end:
+            before_opacity = 1.0
+        elif fi < before_fade_end:
+            before_opacity = 1.0 - (fi - before_visible_end) / (before_fade_end - before_visible_end)
+        else:
+            before_opacity = 0.0
+
+        if before_opacity > 0.01:
+            frame = self._composite_label(
+                frame, self._before_label, LABEL_X, label_y, before_opacity
+            )
+
+        # ── After label ──
+        after_fade_in_start = e2                             # frame 75 (2.5s)
+        after_fade_in_end = e2 + int(0.2 * fps)             # frame 81
+        after_visible_end = e3                                # frame 120 (4.0s)
+        after_fade_out_end = min(e3 + int(0.3 * fps), total_frames)  # frame 129
+
+        if fi < after_fade_in_start:
+            after_opacity = 0.0
+        elif fi < after_fade_in_end:
+            after_opacity = (fi - after_fade_in_start) / max(after_fade_in_end - after_fade_in_start, 1)
+        elif fi < after_visible_end:
+            after_opacity = 1.0
+        elif fi < after_fade_out_end:
+            after_opacity = 1.0 - (fi - after_visible_end) / max(after_fade_out_end - after_visible_end, 1)
+        else:
+            after_opacity = 0.0
+
+        if after_opacity > 0.01:
+            frame = self._composite_label(
+                frame, self._after_label, LABEL_X, label_y, after_opacity
+            )
+
+        return frame
+
     # ── beat sync metadata ──────────────────
 
     @staticmethod
-    def _get_beat_sync_points(pattern: str) -> List[float]:
-        """Return timestamps (seconds) where snap cuts occur."""
-        if pattern == "B":
-            return [
-                PB_BEFORE_HOLD,                          # Snap cut to After
-                PB_BEFORE_HOLD + PB_AFTER_HOLD,          # Hard cut back to Before
-            ]
-        else:
-            return [PA_BEFORE_HOLD]  # Single snap cut
+    def _get_beat_sync_points() -> List[Dict]:
+        """Return beat sync points for BGM alignment."""
+        cfg = CONFIG
+        morph_complete_time = cfg["before_hold_sec"] + cfg["morph_sec"]
+        return [
+            {
+                "time_sec": morph_complete_time,
+                "type": "morph_complete",
+                "description": "Morph complete (flash peak). Align BGM beat drop here.",
+            }
+        ]
 
-    # ── encoding (streaming) ─────────────────
+    # ── encoding ────────────────────────────
 
     def _generate_and_encode(
         self,
         before: np.ndarray,
         after: np.ndarray,
-        pattern: str = "A",
     ) -> VideoResult:
         """Generate frames and encode to browser-playable H.264 video.
 
         Strategy:
         1. Try ffmpeg pipe (raw BGR → H.264 mp4) — browser-native playback.
         2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
-        3. Last resort: OpenCV mp4v as-is (may not play in all browsers).
+        3. Last resort: OpenCV mp4v as-is.
         """
-        duration = PA_TOTAL if pattern != "B" else PB_TOTAL
+        cfg = CONFIG
+        duration = TOTAL_DURATION
         total_frames = int(duration * BLEND_FPS)
+        crf = str(cfg["crf"])
         ffmpeg_bin = get_ffmpeg_path()
 
-        beat_sync = self._get_beat_sync_points(pattern)
+        beat_sync = self._get_beat_sync_points()
         metadata: Dict = {
-            "pattern": pattern,
             "loop_friendly": True,
             "beat_sync_points": beat_sync,
+            "resolution": [BLEND_WIDTH, BLEND_HEIGHT],
+            "fps": BLEND_FPS,
         }
 
         # ── Strategy 1: Pipe raw frames directly to ffmpeg ────
         if ffmpeg_bin:
             try:
                 result_video = self._encode_with_ffmpeg_pipe(
-                    before, after, total_frames, pattern, ffmpeg_bin
+                    before, after, total_frames, crf, ffmpeg_bin
                 )
                 if result_video:
                     result_video.duration = duration
@@ -446,19 +614,17 @@ class BlendVideoGenerator:
                     continue
 
                 for i in range(total_frames):
-                    frame = self._render_frame(
-                        i, total_frames, before, after, pattern
-                    )
+                    frame = self._render_frame(i, total_frames, before, after)
                     writer.write(frame)
                 writer.release()
 
                 # Try to re-encode with ffmpeg for browser compatibility
                 if ffmpeg_bin:
-                    h264_data = self._ffmpeg_reencode(tmp_path, ffmpeg_bin)
+                    h264_data = self._ffmpeg_reencode(tmp_path, crf, ffmpeg_bin)
                     os.unlink(tmp_path)
                     if h264_data and len(h264_data) > 1024:
                         logger.info(
-                            f"Blend video re-encoded to H.264: "
+                            f"Blend video re-encoded to H.264 (crf={crf}): "
                             f"{len(h264_data)} bytes, {duration:.1f}s"
                         )
                         return VideoResult(
@@ -490,7 +656,7 @@ class BlendVideoGenerator:
         before: np.ndarray,
         after: np.ndarray,
         total_frames: int,
-        pattern: str,
+        crf: str,
         ffmpeg_bin: str = "ffmpeg",
     ) -> "VideoResult | None":
         """Pipe raw BGR frames to ffmpeg for direct H.264 encoding."""
@@ -510,7 +676,7 @@ class BlendVideoGenerator:
                 "-i", "pipe:0",
                 "-c:v", "libx264",
                 "-preset", "fast",
-                "-crf", "23",
+                "-crf", crf,
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 out_path,
@@ -523,9 +689,7 @@ class BlendVideoGenerator:
             )
 
             for i in range(total_frames):
-                frame = self._render_frame(
-                    i, total_frames, before, after, pattern
-                )
+                frame = self._render_frame(i, total_frames, before, after)
                 try:
                     proc.stdin.write(frame.tobytes())
                 except BrokenPipeError:
@@ -552,7 +716,7 @@ class BlendVideoGenerator:
             if len(data) > 1024:
                 duration = total_frames / BLEND_FPS
                 logger.info(
-                    f"Blend video encoded via ffmpeg pipe (H.264): "
+                    f"Blend video encoded via ffmpeg pipe (H.264, crf={crf}): "
                     f"{len(data)} bytes, {duration:.1f}s"
                 )
                 return VideoResult(data, "video/mp4", ".mp4")
@@ -566,7 +730,9 @@ class BlendVideoGenerator:
 
     @staticmethod
     def _ffmpeg_reencode(
-        input_path: str, ffmpeg_bin: str = "ffmpeg"
+        input_path: str,
+        crf: str = "18",
+        ffmpeg_bin: str = "ffmpeg",
     ) -> "bytes | None":
         """Re-encode an existing video file to H.264 with ffmpeg."""
         with tempfile.NamedTemporaryFile(
@@ -580,7 +746,7 @@ class BlendVideoGenerator:
                 "-i", input_path,
                 "-c:v", "libx264",
                 "-preset", "fast",
-                "-crf", "23",
+                "-crf", crf,
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 out_path,

@@ -209,10 +209,10 @@ async def generate_blend_video(
     body: BlendVideoGenerateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Generate a before/after blend video with wipe transition.
+    """Generate a morph-centered blend-reveal video.
 
-    Shows before face → wipe → after face → logo.
-    Suitable for sharing on SNS (9:16, 720x1280, ~3s).
+    Before hold → slow morph → After hold → loop bridge.
+    Suitable for TikTok/SNS sharing (9:16, 720x1280, ~4.5s).
 
     Requires authentication (Bearer JWT or X-API-Key).
     """
@@ -245,21 +245,13 @@ async def generate_blend_video(
             ).model_dump(),
         )
 
-    # Validate pattern
-    pattern = body.video_pattern.upper()
-    if pattern not in ("A", "B"):
-        pattern = "A"
-
     # Generate video
     try:
         generator = get_blend_video_generator()
-        result = generator.generate(
-            current_bytes, ideal_bytes, result_bytes, pattern=pattern
-        )
+        result = generator.generate(current_bytes, ideal_bytes, result_bytes)
         logger.info(
             f"Blend video generated: {len(result.data)} bytes, "
-            f"format={result.content_type}, duration={result.duration:.1f}s, "
-            f"pattern={pattern}"
+            f"format={result.content_type}, duration={result.duration:.1f}s"
         )
     except Exception as e:
         logger.error(f"Blend video generation failed: {e}")
