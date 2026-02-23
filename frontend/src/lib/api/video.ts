@@ -35,13 +35,13 @@ export async function generateMorphVideo(
 }
 
 /**
- * ブレンドリビール動画を生成
+ * ブレンド動画を生成（Before/After ワイプ遷移）
  *
- * 3枚の画像（現在・理想・結果）からアーティスティックなブレンド動画を生成
+ * 2枚の画像（Before・After）からワイプ遷移のビフォーアフター動画を生成
  *
- * @param currentImage - 現在の顔画像（Base64エンコード）
- * @param idealImage - 理想の顔画像（Base64エンコード）
- * @param resultImage - シミュレーション結果画像（Base64エンコード）
+ * @param currentImage - Before顔画像（Base64エンコード）
+ * @param idealImage - 未使用（後方互換のため残存）
+ * @param resultImage - After顔画像（Base64エンコード）
  * @param authToken - 認証トークン
  * @returns 動画データ（URL, duration, format）
  * @throws ApiError - APIエラー
@@ -56,7 +56,6 @@ export async function generateBlendVideo(
     '/api/v1/video/blend',
     {
       current_image: currentImage,
-      ideal_image: idealImage,
       result_image: resultImage,
     },
     {

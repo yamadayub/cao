@@ -51,11 +51,11 @@ class VideoGenerateRequest(BaseModel):
 
 
 class BlendVideoGenerateRequest(BaseModel):
-    """Request to generate an artistic blend-reveal video."""
+    """Request to generate a before/after blend video."""
 
-    current_image: str = Field(..., description="Base64 encoded current face")
-    ideal_image: str = Field(..., description="Base64 encoded ideal face")
-    result_image: str = Field(..., description="Base64 encoded simulation result")
+    current_image: str = Field(..., description="Base64 encoded before face")
+    ideal_image: Optional[str] = Field(None, description="Deprecated, ignored")
+    result_image: str = Field(..., description="Base64 encoded after face")
 
 
 class VideoGenerateData(BaseModel):
@@ -209,17 +209,19 @@ async def generate_blend_video(
     body: BlendVideoGenerateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Generate an artistic blend-reveal video.
+    """Generate a before/after blend video with wipe transition.
 
-    Shows current face → ideal face → artistic transition → simulation result.
-    Suitable for sharing on SNS (9:16, 1080x1920, ~6s).
+    Shows before face → wipe → after face → logo.
+    Suitable for sharing on SNS (9:16, 720x1280, ~3s).
 
     Requires authentication (Bearer JWT or X-API-Key).
     """
     # Decode images
     try:
         current_bytes = _decode_base64_image(body.current_image)
-        ideal_bytes = _decode_base64_image(body.ideal_image)
+        ideal_bytes = (
+            _decode_base64_image(body.ideal_image) if body.ideal_image else None
+        )
         result_bytes = _decode_base64_image(body.result_image)
     except Exception:
         return JSONResponse(
@@ -232,7 +234,7 @@ async def generate_blend_video(
             ).model_dump(),
         )
 
-    if not current_bytes or not ideal_bytes or not result_bytes:
+    if not current_bytes or not result_bytes:
         return JSONResponse(
             status_code=400,
             content=ErrorResponse(

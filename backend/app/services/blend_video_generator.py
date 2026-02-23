@@ -1,13 +1,11 @@
 """Blend reveal video generator.
 
-Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~4.1s):
-1. Current face (before) – 1.0s
-   → Flash reveal (0.5s)
-2. Result face (after) – 1.0s
+Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~3.0s):
+1. Before face – 1.0s
+   → Wipe transition (0.4s)
+2. After face – 1.0s
    → Cross-dissolve (0.3s)
-3. Ideal face (goal) – 0.7s
-   → Cross-dissolve (0.3s)
-4. Cao logo – 0.3s
+3. Cao logo – 0.3s
 
 No captions burned in – users add their own text via TikTok/CapCut.
 All images are cover-fitted to fill the entire frame (no borders).
@@ -18,7 +16,7 @@ import logging
 import os
 import subprocess
 import tempfile
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -50,20 +48,17 @@ BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
 ]
 
 # ── Timeline (seconds) ──────────────────────
-PHASE_CURRENT = 1.0       # Show current face (before)
-PHASE_REVEAL = 0.5        # Flash reveal transition
-PHASE_RESULT = 1.0        # Show result face (after)
+PHASE_BEFORE = 1.0        # Show before face
+PHASE_WIPE = 0.4          # Wipe transition
+PHASE_AFTER = 1.0         # Show after face
 PHASE_TRANS = 0.3         # Cross-dissolve transition
-PHASE_IDEAL = 0.7         # Show ideal face (goal)
 PHASE_BRAND = 0.3         # Logo
 
 TOTAL_DURATION = (
-    PHASE_CURRENT
-    + PHASE_REVEAL      # current → result (flash)
-    + PHASE_RESULT
-    + PHASE_TRANS       # result → ideal (dissolve)
-    + PHASE_IDEAL
-    + PHASE_TRANS       # ideal → brand (dissolve)
+    PHASE_BEFORE
+    + PHASE_WIPE        # before → after (wipe)
+    + PHASE_AFTER
+    + PHASE_TRANS       # after → brand (dissolve)
     + PHASE_BRAND
 )
 
@@ -76,14 +71,16 @@ class BlendVideoGenerator:
     def generate(
         self,
         current_image: bytes,
-        ideal_image: bytes,
+        ideal_image: Optional[bytes],
         result_image: bytes,
     ) -> VideoResult:
-        """Generate blend-reveal video (streaming, memory-safe)."""
-        current = self._fit(self._decode(current_image))
-        ideal = self._fit(self._decode(ideal_image))
-        result = self._fit(self._decode(result_image))
-        return self._generate_and_encode(current, ideal, result)
+        """Generate blend-reveal video (streaming, memory-safe).
+
+        ideal_image is accepted for backward compatibility but ignored.
+        """
+        before = self._fit(self._decode(current_image))
+        after = self._fit(self._decode(result_image))
+        return self._generate_and_encode(before, after)
 
     # ── image helpers ───────────────────────
 
@@ -135,52 +132,33 @@ class BlendVideoGenerator:
         )
 
     @staticmethod
-    def _flash_reveal(
+    def _wipe_transition(
         img_from: np.ndarray,
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Dramatic flash-burst reveal transition.
-
-        Timeline within the transition:
-        0.0–0.35: img_from brightens rapidly toward white
-        0.35–0.50: peak white flash
-        0.50–1.0: white fades out revealing img_to with zoom punch
-        """
+        """Left-to-right wipe transition with soft edge."""
         h, w = img_from.shape[:2]
+        t = _ease_in_out(progress)
+        boundary = int(w * t)
 
-        if progress < 0.35:
-            # Brighten img_from toward white
-            t = progress / 0.35  # 0→1
-            t2 = t * t  # accelerate
-            frame = img_from.astype(np.float32)
-            white = np.full_like(frame, 255.0)
-            frame = frame * (1.0 - t2) + white * t2
-            return frame.clip(0, 255).astype(np.uint8)
+        frame = img_from.copy()
+        if boundary > 0:
+            frame[:, :boundary] = img_to[:, :boundary]
 
-        elif progress < 0.50:
-            # Peak white flash
-            return np.full((h, w, 3), 255, dtype=np.uint8)
+        # Soft edge (8px gradient at the boundary)
+        edge_width = 8
+        left = max(0, boundary - edge_width)
+        right = min(w, boundary + edge_width)
+        if right > left and boundary > 0 and boundary < w:
+            for x in range(left, right):
+                alpha = (x - left) / (right - left)
+                frame[:, x] = cv2.addWeighted(
+                    img_to[:, x:x+1], alpha,
+                    img_from[:, x:x+1], 1.0 - alpha, 0
+                ).squeeze()
 
-        else:
-            # Fade from white revealing img_to with zoom punch
-            t = (progress - 0.50) / 0.50  # 0→1
-            t_ease = t * t * (3.0 - 2.0 * t)  # smoothstep
-
-            # Zoom punch: start slightly zoomed in, settle to normal
-            zoom = 1.0 + 0.08 * (1.0 - t_ease)
-            nw, nh = int(w * zoom), int(h * zoom)
-            zoomed = cv2.resize(img_to, (nw, nh), interpolation=cv2.INTER_LINEAR)
-            x0 = (nw - w) // 2
-            y0 = (nh - h) // 2
-            revealed = zoomed[y0 : y0 + h, x0 : x0 + w]
-
-            # Blend from white to revealed
-            white_alpha = 1.0 - t_ease
-            frame = revealed.astype(np.float32)
-            white = np.full_like(frame, 255.0)
-            frame = frame * (1.0 - white_alpha) + white * white_alpha
-            return frame.clip(0, 255).astype(np.uint8)
+        return frame
 
     def _load_logo(self) -> np.ndarray:
         """Load and cache the Cao logo image."""
@@ -202,58 +180,43 @@ class BlendVideoGenerator:
     def _render_frame(
         self,
         t: float,
-        current: np.ndarray,
-        ideal: np.ndarray,
-        result: np.ndarray,
+        before: np.ndarray,
+        after: np.ndarray,
     ) -> np.ndarray:
         """Render a single full-bleed frame at time *t*.
 
-        Timeline (with transitions):
-        1. Current face hold (1.0s)
-        2. Flash reveal: current → result (0.5s)
-        3. Result face hold (1.0s)
-        4. Cross-dissolve: result → ideal (0.3s)
-        5. Ideal face hold (0.7s)
-        6. Cross-dissolve: ideal → brand (0.3s)
-        7. Brand/logo hold (0.3s)
+        Timeline:
+        1. Before face hold (1.0s)
+        2. Wipe: before → after (0.4s)
+        3. After face hold (1.0s)
+        4. Cross-dissolve: after → brand (0.3s)
+        5. Brand/logo hold (0.3s)
         """
         # Build cumulative timeline boundaries
-        e1 = PHASE_CURRENT                        # end of current hold
-        e2 = e1 + PHASE_REVEAL                    # end of current→result flash
-        e3 = e2 + PHASE_RESULT                    # end of result hold
-        e4 = e3 + PHASE_TRANS                     # end of result→ideal dissolve
-        e5 = e4 + PHASE_IDEAL                     # end of ideal hold
-        e6 = e5 + PHASE_TRANS                     # end of ideal→brand dissolve
+        e1 = PHASE_BEFORE                         # end of before hold
+        e2 = e1 + PHASE_WIPE                      # end of wipe
+        e3 = e2 + PHASE_AFTER                     # end of after hold
+        e4 = e3 + PHASE_TRANS                     # end of after→brand dissolve
 
         if t < e1:
-            # ── Current face hold ────────────────────
-            p = t / PHASE_CURRENT
-            return self._ken_burns(current, p)
+            # ── Before face hold ─────────────────────
+            p = t / PHASE_BEFORE
+            return self._ken_burns(before, p)
 
         elif t < e2:
-            # ── Flash reveal: current → result ───────
-            p = (t - e1) / PHASE_REVEAL
-            return self._flash_reveal(current, result, p)
+            # ── Wipe: before → after ─────────────────
+            p = (t - e1) / PHASE_WIPE
+            return self._wipe_transition(before, after, p)
 
         elif t < e3:
-            # ── Result face hold ─────────────────────
-            p = (t - e2) / PHASE_RESULT
-            return self._ken_burns(result, p, zoom=0.03)
+            # ── After face hold ──────────────────────
+            p = (t - e2) / PHASE_AFTER
+            return self._ken_burns(after, p, zoom=0.03)
 
         elif t < e4:
-            # ── Cross-dissolve: result → ideal ───────
+            # ── Cross-dissolve: after → brand ────────
             p = (t - e3) / PHASE_TRANS
-            return self._cross_dissolve(result, ideal, p)
-
-        elif t < e5:
-            # ── Ideal face hold ──────────────────────
-            p = (t - e4) / PHASE_IDEAL
-            return self._ken_burns(ideal, p)
-
-        elif t < e6:
-            # ── Cross-dissolve: ideal → brand ────────
-            p = (t - e5) / PHASE_TRANS
-            return self._cross_dissolve(ideal, self._render_brand_frame(1.0), p)
+            return self._cross_dissolve(after, self._render_brand_frame(1.0), p)
 
         else:
             # ── Brand/logo hold ──────────────────────
@@ -263,9 +226,8 @@ class BlendVideoGenerator:
 
     def _generate_and_encode(
         self,
-        current: np.ndarray,
-        ideal: np.ndarray,
-        result: np.ndarray,
+        before: np.ndarray,
+        after: np.ndarray,
     ) -> VideoResult:
         """Generate frames and encode to browser-playable H.264 video.
 
@@ -281,7 +243,7 @@ class BlendVideoGenerator:
         if ffmpeg_bin:
             try:
                 result_video = self._encode_with_ffmpeg_pipe(
-                    current, ideal, result, total_frames, ffmpeg_bin
+                    before, after, total_frames, ffmpeg_bin
                 )
                 if result_video:
                     return result_video
@@ -306,7 +268,7 @@ class BlendVideoGenerator:
 
                 for i in range(total_frames):
                     t = i / BLEND_FPS
-                    frame = self._render_frame(t, current, ideal, result)
+                    frame = self._render_frame(t, before, after)
                     writer.write(frame)
                 writer.release()
 
@@ -339,9 +301,8 @@ class BlendVideoGenerator:
 
     def _encode_with_ffmpeg_pipe(
         self,
-        current: np.ndarray,
-        ideal: np.ndarray,
-        result: np.ndarray,
+        before: np.ndarray,
+        after: np.ndarray,
         total_frames: int,
         ffmpeg_bin: str = "ffmpeg",
     ) -> "VideoResult | None":
@@ -376,7 +337,7 @@ class BlendVideoGenerator:
 
             for i in range(total_frames):
                 t = i / BLEND_FPS
-                frame = self._render_frame(t, current, ideal, result)
+                frame = self._render_frame(t, before, after)
                 try:
                     proc.stdin.write(frame.tobytes())
                 except BrokenPipeError:
