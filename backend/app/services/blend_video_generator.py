@@ -2,11 +2,11 @@
 
 Creates a cinematic vertical video (9:16, 720x1280, 24fps, ~6.9s):
 1. Ideal face ("こんな顔になれたら？") – 1.0s
-   → Slider transition (0.3s)
+   → Cross-dissolve (0.3s)
 2. Current face ("ビフォー") – 1.0s
-   → Slider transition (0.3s)
+   → Shape reveal (0.3s)
 3. Result face ("アフター") – 3.0s
-   → Slider transition (0.3s)
+   → Cross-dissolve (0.3s)
 4. Cao logo + tagline – 1.0s
 
 Captions are placed in the upper area of the frame to avoid TikTok UI overlap.
@@ -175,10 +175,12 @@ class BlendVideoGenerator:
         color: tuple = (255, 255, 255),
         alpha: float = 1.0,
         outline: bool = False,
+        max_width: int = 0,
     ) -> None:
         """Draw centered text on OpenCV frame using PIL (supports Japanese).
 
         When outline=True, draws a dark stroke around the text for visibility.
+        When max_width>0, wraps text to fit within that pixel width.
         """
         font = None
         for path in (_FONT_PATH, _FONT_PATH_FALLBACK):
@@ -199,26 +201,41 @@ class BlendVideoGenerator:
         overlay = Image.new("RGBA", pil_img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
 
-        # Get text bounding box for centering
-        bbox = draw.textbbox((0, 0), text, font=font)
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x = cx - tw // 2
-        y = cy - th // 2
+        # Wrap text if max_width is set and text overflows
+        lines = [text]
+        if max_width > 0:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            if bbox[2] - bbox[0] > max_width:
+                lines = self._wrap_text(draw, text, font, max_width)
 
         a = int(255 * alpha)
+        stroke_w = max(3, font_size // 14) if outline else 0
 
-        # Draw outline (dark stroke) for visibility
-        if outline:
-            stroke_w = max(3, font_size // 14)
-            draw.text(
-                (x, y), text, font=font,
-                fill=(*color, a),
-                stroke_width=stroke_w,
-                stroke_fill=(0, 0, 0, a),
-            )
-        else:
-            draw.text((x, y), text, font=font, fill=(*color, a))
+        # Measure total block height
+        line_heights = []
+        line_widths = []
+        for line in lines:
+            bb = draw.textbbox((0, 0), line, font=font)
+            line_widths.append(bb[2] - bb[0])
+            line_heights.append(bb[3] - bb[1])
+        line_spacing = int(font_size * 0.3)
+        total_h = sum(line_heights) + line_spacing * (len(lines) - 1)
+
+        # Draw each line centered
+        cur_y = cy - total_h // 2
+        for i, line in enumerate(lines):
+            lw = line_widths[i]
+            x = cx - lw // 2
+            if outline:
+                draw.text(
+                    (x, cur_y), line, font=font,
+                    fill=(*color, a),
+                    stroke_width=stroke_w,
+                    stroke_fill=(0, 0, 0, a),
+                )
+            else:
+                draw.text((x, cur_y), line, font=font, fill=(*color, a))
+            cur_y += line_heights[i] + line_spacing
 
         # Composite onto frame
         pil_img = pil_img.convert("RGBA")
@@ -229,48 +246,64 @@ class BlendVideoGenerator:
         frame[:] = result
 
     @staticmethod
-    def _slider_transition(
+    def _wrap_text(
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        font: ImageFont.FreeTypeFont,
+        max_width: int,
+    ) -> list:
+        """Wrap text into multiple lines to fit within max_width pixels."""
+        lines = []
+        current = ""
+        for ch in text:
+            test = current + ch
+            bb = draw.textbbox((0, 0), test, font=font)
+            if bb[2] - bb[0] > max_width and current:
+                lines.append(current)
+                current = ch
+            else:
+                current = test
+        if current:
+            lines.append(current)
+        return lines
+
+    @staticmethod
+    def _cross_dissolve(
         img_from: np.ndarray,
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Slider wipe transition with a white divider line.
+        """Cross-dissolve (alpha blend) transition between two frames."""
+        alpha = _ease_in_out(progress)
+        return cv2.addWeighted(
+            img_to, alpha, img_from, 1.0 - alpha, 0
+        )
 
-        A vertical white line sweeps left-to-right, revealing *img_to*
-        behind *img_from*, similar to a before/after slider.
+    @staticmethod
+    def _shape_transition(
+        img_from: np.ndarray,
+        img_to: np.ndarray,
+        progress: float,
+    ) -> np.ndarray:
+        """Circle-iris shape reveal transition.
+
+        A circle expands from the center, revealing *img_to* inside.
         """
         h, w = img_from.shape[:2]
         eased = _ease_in_out(progress)
-        split = int(eased * w)
-        split = max(0, min(split, w))
+        # Max radius = diagonal / 2 so the circle fully covers the frame
+        max_r = int(np.sqrt(w * w + h * h) / 2) + 1
+        r = int(eased * max_r)
 
-        frame = img_from.copy()
-        if split > 0:
-            frame[:, :split] = img_to[:, :split]
+        # Build circle mask
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.circle(mask, (w // 2, h // 2), r, 255, -1)
+        mask_3d = mask[:, :, np.newaxis].astype(np.float32) / 255.0
 
-        # Draw slider line + handle
-        if 0 < split < w:
-            line_w = 4
-            x0 = max(split - line_w // 2, 0)
-            x1 = min(split + line_w // 2, w)
-            frame[:, x0:x1] = (255, 255, 255)
-
-            # Small triangular handle at center of line
-            cy = h // 2
-            handle_sz = 18
-            pts_l = np.array([
-                [split - handle_sz, cy],
-                [split - 2, cy - handle_sz],
-                [split - 2, cy + handle_sz],
-            ], dtype=np.int32)
-            pts_r = np.array([
-                [split + handle_sz, cy],
-                [split + 2, cy - handle_sz],
-                [split + 2, cy + handle_sz],
-            ], dtype=np.int32)
-            cv2.fillPoly(frame, [pts_l], (255, 255, 255))
-            cv2.fillPoly(frame, [pts_r], (255, 255, 255))
-
+        frame = (
+            img_to.astype(np.float32) * mask_3d
+            + img_from.astype(np.float32) * (1.0 - mask_3d)
+        ).astype(np.uint8)
         return frame
 
     def _load_logo(self) -> np.ndarray:
@@ -300,7 +333,7 @@ class BlendVideoGenerator:
             region = frame[y_start:, :, :].astype(np.float32)
             frame[y_start:, :, :] = (region * (1 - alpha_3d)).astype(np.uint8)
 
-        # Tagline below logo center (large, with outline)
+        # Tagline below logo center (large, with outline, wrapped)
         text_alpha = min(progress * 3.0, 1.0)
         if text_alpha > 0.05:
             self._draw_pil_text(
@@ -312,6 +345,7 @@ class BlendVideoGenerator:
                 color=(255, 255, 255),
                 alpha=text_alpha,
                 outline=True,
+                max_width=BLEND_WIDTH - 80,
             )
         return frame
 
@@ -324,13 +358,13 @@ class BlendVideoGenerator:
     ) -> np.ndarray:
         """Render a single full-bleed frame at time *t*.
 
-        Timeline (with slider transitions):
+        Timeline (with transitions):
         1. Ideal face hold (1.0s)
-        2. Slider: ideal → current (0.3s)
+        2. Cross-dissolve: ideal → current (0.3s)
         3. Current face hold (1.0s)
-        4. Slider: current → result (0.3s)
+        4. Shape reveal: current → result (0.3s)
         5. Result face hold (3.0s)
-        6. Slider: result → brand (0.3s)
+        6. Cross-dissolve: result → brand (0.3s)
         7. Brand/logo hold (1.0s)
         """
         # Build cumulative timeline boundaries
@@ -348,11 +382,11 @@ class BlendVideoGenerator:
             return self._add_caption(frame, CAPTION_IDEAL)
 
         elif t < e2:
-            # ── Slider: ideal → current ──────────────
+            # ── Cross-dissolve: ideal → current ──────
             p = (t - e1) / PHASE_TRANS
             img_from = self._add_caption(ideal.copy(), CAPTION_IDEAL)
             img_to = self._add_caption(current.copy(), CAPTION_CURRENT)
-            return self._slider_transition(img_from, img_to, p)
+            return self._cross_dissolve(img_from, img_to, p)
 
         elif t < e3:
             # ── Current face hold ────────────────────
@@ -361,11 +395,11 @@ class BlendVideoGenerator:
             return self._add_caption(frame, CAPTION_CURRENT)
 
         elif t < e4:
-            # ── Slider: current → result ─────────────
+            # ── Shape reveal: current → result ───────
             p = (t - e3) / PHASE_TRANS
             img_from = self._add_caption(current.copy(), CAPTION_CURRENT)
             img_to = self._add_caption(result.copy(), CAPTION_RESULT)
-            return self._slider_transition(img_from, img_to, p)
+            return self._shape_transition(img_from, img_to, p)
 
         elif t < e5:
             # ── Result face hold ─────────────────────
@@ -374,11 +408,11 @@ class BlendVideoGenerator:
             return self._add_caption(frame, CAPTION_RESULT)
 
         elif t < e6:
-            # ── Slider: result → brand ───────────────
+            # ── Cross-dissolve: result → brand ───────
             p = (t - e5) / PHASE_TRANS
             img_from = self._add_caption(result.copy(), CAPTION_RESULT)
             img_to = self._render_brand_frame(1.0)
-            return self._slider_transition(img_from, img_to, p)
+            return self._cross_dissolve(img_from, img_to, p)
 
         else:
             # ── Brand/logo hold ──────────────────────
