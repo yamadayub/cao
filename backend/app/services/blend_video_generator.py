@@ -96,11 +96,15 @@ class BlendVideoGenerator:
         """Cover-fit image to full 720x1280 frame (no borders)."""
         h, w = img.shape[:2]
         scale = max(BLEND_WIDTH / w, BLEND_HEIGHT / h)
-        nw, nh = int(w * scale), int(h * scale)
+        nw, nh = max(int(w * scale), BLEND_WIDTH), max(int(h * scale), BLEND_HEIGHT)
         resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LANCZOS4)
         x0 = (nw - BLEND_WIDTH) // 2
         y0 = (nh - BLEND_HEIGHT) // 2
-        return resized[y0 : y0 + BLEND_HEIGHT, x0 : x0 + BLEND_WIDTH]
+        cropped = resized[y0 : y0 + BLEND_HEIGHT, x0 : x0 + BLEND_WIDTH]
+        # Guarantee exact output size
+        if cropped.shape[:2] != (BLEND_HEIGHT, BLEND_WIDTH):
+            cropped = cv2.resize(cropped, (BLEND_WIDTH, BLEND_HEIGHT))
+        return np.ascontiguousarray(cropped)
 
     # ── effects ─────────────────────────────
 
@@ -126,10 +130,13 @@ class BlendVideoGenerator:
         progress: float,
     ) -> np.ndarray:
         """Cross-dissolve (alpha blend) transition between two frames."""
-        alpha = _ease_in_out(progress)
-        return cv2.addWeighted(
-            img_to, alpha, img_from, 1.0 - alpha, 0
+        alpha = float(_ease_in_out(progress))
+        # Use numpy blend to avoid cv2 shape-mismatch errors
+        result = (
+            img_to.astype(np.float32) * alpha
+            + img_from.astype(np.float32) * (1.0 - alpha)
         )
+        return result.clip(0, 255).astype(np.uint8)
 
     @staticmethod
     def _wipe_transition(
@@ -141,15 +148,16 @@ class BlendVideoGenerator:
 
         A thick white vertical line sweeps across the frame,
         making the before/after boundary unmistakable.
+        All operations vectorized with numpy (no per-pixel loops).
         """
         h, w = img_from.shape[:2]
         t = _ease_in_out(progress)
-        boundary = int(w * t)
+        boundary = max(0, min(w, int(w * t)))
 
         # Composite: after on left, before on right
         frame = img_from.copy()
         if boundary > 0:
-            frame[:, :boundary] = img_to[:, :boundary]
+            frame[:, :boundary] = img_to[:, :min(boundary, w)]
 
         # Bright glow zone (40px each side) + solid white line (6px)
         LINE_W = 6
@@ -158,23 +166,28 @@ class BlendVideoGenerator:
         if 0 < boundary < w:
             frame_f = frame.astype(np.float32)
 
-            # Glow: additive white falloff on both sides of the line
+            # Vectorized glow: build intensity array for the glow region
             glow_left = max(0, boundary - GLOW_W)
             glow_right = min(w, boundary + GLOW_W)
-            for x in range(glow_left, glow_right):
-                dist = abs(x - boundary)
-                intensity = 1.0 - (dist / GLOW_W)
-                intensity = intensity * intensity * 0.6  # quadratic falloff
-                frame_f[:, x] = frame_f[:, x] + 255.0 * intensity
+            xs = np.arange(glow_left, glow_right, dtype=np.float32)
+            dist = np.abs(xs - boundary)
+            intensity = (1.0 - dist / GLOW_W)
+            intensity = intensity * intensity * 0.6  # quadratic falloff
+            # Reshape to (1, num_cols, 1) for broadcasting with (H, num_cols, 3)
+            glow_mask = intensity.reshape(1, -1, 1)
+            frame_f[:, glow_left:glow_right] += 255.0 * glow_mask
 
             # Solid white divider line
             line_left = max(0, boundary - LINE_W // 2)
             line_right = min(w, boundary + LINE_W // 2)
-            frame_f[:, line_left:line_right] = 255.0
+            if line_right > line_left:
+                frame_f[:, line_left:line_right] = 255.0
 
-            return frame_f.clip(0, 255).astype(np.uint8)
+            return np.ascontiguousarray(
+                frame_f.clip(0, 255).astype(np.uint8)
+            )
 
-        return frame
+        return np.ascontiguousarray(frame)
 
     def _load_logo(self) -> np.ndarray:
         """Load and cache the Cao logo image."""
@@ -215,28 +228,28 @@ class BlendVideoGenerator:
         e4 = e3 + PHASE_TRANS                     # end of after→brand dissolve
 
         if t < e1:
-            # ── Before face hold ─────────────────────
             p = t / PHASE_BEFORE
-            return self._ken_burns(before, p)
-
+            frame = self._ken_burns(before, p)
         elif t < e2:
-            # ── Wipe: before → after ─────────────────
             p = (t - e1) / PHASE_WIPE
-            return self._wipe_transition(before, after, p)
-
+            frame = self._wipe_transition(before, after, p)
         elif t < e3:
-            # ── After face hold ──────────────────────
             p = (t - e2) / PHASE_AFTER
-            return self._ken_burns(after, p, zoom=0.03)
-
+            frame = self._ken_burns(after, p, zoom=0.03)
         elif t < e4:
-            # ── Cross-dissolve: after → brand ────────
             p = (t - e3) / PHASE_TRANS
-            return self._cross_dissolve(after, self._render_brand_frame(1.0), p)
-
+            frame = self._cross_dissolve(
+                after, self._render_brand_frame(1.0), p
+            )
         else:
-            # ── Brand/logo hold ──────────────────────
-            return self._render_brand_frame(1.0)
+            frame = self._render_brand_frame(1.0)
+
+        # Safety: guarantee exact frame size and type for encoder
+        if frame.shape != (BLEND_HEIGHT, BLEND_WIDTH, 3):
+            frame = cv2.resize(frame, (BLEND_WIDTH, BLEND_HEIGHT))
+        if frame.dtype != np.uint8:
+            frame = frame.clip(0, 255).astype(np.uint8)
+        return np.ascontiguousarray(frame)
 
     # ── encoding (streaming) ─────────────────
 
