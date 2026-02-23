@@ -137,26 +137,42 @@ class BlendVideoGenerator:
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Left-to-right wipe transition with soft edge."""
+        """Left-to-right wipe with bright divider line and glow.
+
+        A thick white vertical line sweeps across the frame,
+        making the before/after boundary unmistakable.
+        """
         h, w = img_from.shape[:2]
         t = _ease_in_out(progress)
         boundary = int(w * t)
 
+        # Composite: after on left, before on right
         frame = img_from.copy()
         if boundary > 0:
             frame[:, :boundary] = img_to[:, :boundary]
 
-        # Soft edge (8px gradient at the boundary)
-        edge_width = 8
-        left = max(0, boundary - edge_width)
-        right = min(w, boundary + edge_width)
-        if right > left and boundary > 0 and boundary < w:
-            for x in range(left, right):
-                alpha = (x - left) / (right - left)
-                frame[:, x] = cv2.addWeighted(
-                    img_to[:, x:x+1], alpha,
-                    img_from[:, x:x+1], 1.0 - alpha, 0
-                ).squeeze()
+        # Bright glow zone (40px each side) + solid white line (6px)
+        LINE_W = 6
+        GLOW_W = 40
+
+        if 0 < boundary < w:
+            frame_f = frame.astype(np.float32)
+
+            # Glow: additive white falloff on both sides of the line
+            glow_left = max(0, boundary - GLOW_W)
+            glow_right = min(w, boundary + GLOW_W)
+            for x in range(glow_left, glow_right):
+                dist = abs(x - boundary)
+                intensity = 1.0 - (dist / GLOW_W)
+                intensity = intensity * intensity * 0.6  # quadratic falloff
+                frame_f[:, x] = frame_f[:, x] + 255.0 * intensity
+
+            # Solid white divider line
+            line_left = max(0, boundary - LINE_W // 2)
+            line_right = min(w, boundary + LINE_W // 2)
+            frame_f[:, line_left:line_right] = 255.0
+
+            return frame_f.clip(0, 255).astype(np.uint8)
 
         return frame
 
