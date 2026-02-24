@@ -555,4 +555,5 @@ export interface VideoGenerateData {
   format: string;
   loop_friendly?: boolean;
   beat_sync_points?: BeatSyncPoint[];
+  quality_warning?: string;
 }

@@ -35,16 +35,16 @@ export async function generateMorphVideo(
 }
 
 /**
- * ブレンド動画を生成（TikTok最適化パターン）
+ * ブレンド動画を生成（TikTok最適化・ギャップ最大化）
  *
- * 2枚の画像（Before・After）からスナップカット＋ループブリッジの動画を生成
+ * 2枚の画像（Before・After）からトランジション＋ループブリッジの動画を生成
  *
  * @param currentImage - Before顔画像（Base64エンコード）
  * @param idealImage - 未使用（後方互換のため残存）
  * @param resultImage - After顔画像（Base64エンコード）
  * @param authToken - 認証トークン
- * @param videoPattern - 動画パターン: "A" (4sループ) or "B" (6sモーフ)
- * @returns 動画データ（URL, duration, format, loop_friendly, beat_sync_points）
+ * @param transitionStyle - トランジション: "blur" (default), "crossfade", "snap"
+ * @returns 動画データ（URL, duration, format, loop_friendly, quality_warning）
  * @throws ApiError - APIエラー
  */
 export async function generateBlendVideo(
@@ -52,14 +52,14 @@ export async function generateBlendVideo(
   idealImage: string,
   resultImage: string,
   authToken: string,
-  videoPattern: string = 'A'
+  transitionStyle: string = 'blur'
 ): Promise<VideoGenerateData> {
   return apiPost<VideoGenerateData>(
     '/api/v1/video/blend',
     {
       current_image: currentImage,
       result_image: resultImage,
-      video_pattern: videoPattern,
+      transition_style: transitionStyle,
     },
     {
       authToken,

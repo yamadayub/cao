@@ -53,7 +53,7 @@ class BlendVideoGenerateRequest(BaseModel):
     current_image: str = Field(..., description="Base64 encoded before face")
     ideal_image: Optional[str] = Field(None, description="Deprecated, ignored")
     result_image: str = Field(..., description="Base64 encoded after face")
-    video_pattern: str = Field(default="A", description="Video pattern: A (4s loop) or B (6s morph)")
+    transition_style: str = Field(default="blur", description="Transition style: blur, crossfade, or snap")
 
 
 class VideoGenerateData(BaseModel):
@@ -64,6 +64,7 @@ class VideoGenerateData(BaseModel):
     format: str = Field(default="mp4", description="Video format")
     loop_friendly: Optional[bool] = Field(default=None, description="Whether the video loops seamlessly")
     beat_sync_points: Optional[list] = Field(default=None, description="Timestamps of snap cuts for beat sync")
+    quality_warning: Optional[str] = Field(default=None, description="Warning if Before/After diff is too small")
 
 
 class VideoGenerateResponse(SuccessResponse[VideoGenerateData]):
@@ -209,10 +210,10 @@ async def generate_blend_video(
     body: BlendVideoGenerateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Generate a morph-centered blend-reveal video.
+    """Generate a gap-maximized blend-reveal video.
 
-    Before hold → slow morph → After hold → loop bridge.
-    Suitable for TikTok/SNS sharing (9:16, 720x1280, ~4.5s).
+    Before hold → transition → After hold → loop bridge.
+    Suitable for TikTok/SNS sharing (9:16, 720x1280, ~5.0s).
 
     Requires authentication (Bearer JWT or X-API-Key).
     """
@@ -245,10 +246,18 @@ async def generate_blend_video(
             ).model_dump(),
         )
 
+    # Validate transition style
+    transition_style = body.transition_style
+    if transition_style not in ("blur", "crossfade", "snap"):
+        transition_style = "blur"
+
     # Generate video
     try:
         generator = get_blend_video_generator()
-        result = generator.generate(current_bytes, ideal_bytes, result_bytes)
+        result = generator.generate(
+            current_bytes, ideal_bytes, result_bytes,
+            transition_style=transition_style,
+        )
         logger.info(
             f"Blend video generated: {len(result.data)} bytes, "
             f"format={result.content_type}, duration={result.duration:.1f}s"
@@ -278,12 +287,16 @@ async def generate_blend_video(
 
     video_format = result.extension.lstrip(".")
 
+    # Extract quality warning from metadata
+    quality_check = result.metadata.get("quality_check", {})
+    quality_warning = quality_check.get("warning")
+
     return VideoGenerateResponse(
         data=VideoGenerateData(
             video_url=video_url,
             duration=result.duration,
             format=video_format,
             loop_friendly=result.metadata.get("loop_friendly"),
-            beat_sync_points=result.metadata.get("beat_sync_points"),
+            quality_warning=quality_warning,
         )
     )
