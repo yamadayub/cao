@@ -64,12 +64,13 @@ CONFIG = {
     "transition_style": "flash",       # "flash", "blur", "snap"
     "blur_kernel_max": 51,             # Max Gaussian blur kernel for blur transition
 
-    # Motion settings
+    # Motion settings — all scales >= 1.0 to avoid black borders
+    # "Zoom out" = going from zoomed-in back to 1.0 (perceived pull-back)
     "motion_style": "zoom",                # "zoom" only for now
     "before_zoom_end_scale": 1.08,         # Before: zoom in to this scale (8%)
-    "after_bounce_start_scale": 1.06,      # After: bounce starts at this scale (6% pop)
-    "after_bounce_overshoot": 0.99,        # After: spring undershoot
-    "after_zoom_out_end_scale": 0.96,      # After: zoom out to this scale (4% pull back)
+    "after_bounce_start_scale": 1.12,      # After: bounce pop-in scale (12%)
+    "after_bounce_settle_scale": 1.05,     # After: bounce settles here
+    "after_zoom_out_end_scale": 1.00,      # After: zoom out ends at natural (1.0)
 
     # Enhancement (gap maximization) — dialed back to natural levels
     "enhance_enabled": True,
@@ -323,22 +324,20 @@ class BlendVideoGenerator:
         return 1.0 - (1.0 - t) * (1.0 - t)
 
     @staticmethod
-    def _bounce_easing(t: float) -> float:
+    def _bounce_scale(t: float, start: float, settle: float) -> float:
         """Spring-bounce easing for after reveal.
 
-        Damped sine wave: starts at amplitude, oscillates to settle at 0.
-        Returns offset from target (1.0), so:
-          t=0.0: returns after_bounce_start_scale offset (e.g. +0.06)
-          t≈0.4: undershoots to after_bounce_overshoot (e.g. -0.01)
-          t=1.0: settles at 0.0 (target scale 1.0)
+        Damped cosine spring oscillating from start toward settle.
+          t=0.0 → start  (e.g. 1.12, the pop-in)
+          t≈0.35 → undershoot past settle (e.g. ~1.034)
+          t=1.0 → ~settle (e.g. ~1.05)
 
-        The actual scale = 1.0 + _bounce_easing(t) * amplitude
+        All returned values stay above 1.0 to avoid black borders.
         """
-        # Damped cosine: cos(freq * t) * exp(-decay * t)
-        # Tuned so: t=0 → 1.0, t≈0.5 → ~0, t≈0.7 → slight negative, t=1.0 → ~0.0
-        frequency = 3.2  # oscillation rate
-        decay = 5.0      # aggressive damping — settles to ~0 by t=1.0
-        return math.cos(frequency * t) * math.exp(-decay * t)
+        amplitude = start - settle  # e.g. 0.07
+        frequency = 8.0   # ~1.3 full oscillations in [0, 1]
+        decay = 4.0       # strong damping — settles by t=1.0
+        return settle + amplitude * math.cos(frequency * t) * math.exp(-decay * t)
 
     # ── transition helpers ──────────────────
 
@@ -497,22 +496,27 @@ class BlendVideoGenerator:
             bt = (frame_index - e_b) / max(f_bounce - 1, 1)
 
             if motion_style == "zoom":
-                # Spring-bounce: 1.06 → 0.99 → 1.01 → 1.00
-                amplitude = cfg["after_bounce_start_scale"] - 1.0  # 0.06
-                spring_offset = self._bounce_easing(bt) * amplitude
-                scale = 1.0 + spring_offset
-                frame = self._apply_zoom(after, scale)
+                # Spring: 1.12 → oscillate → settle ~1.05
+                scale = self._bounce_scale(
+                    bt,
+                    cfg["after_bounce_start_scale"],
+                    cfg["after_bounce_settle_scale"],
+                )
+                frame = self._apply_zoom(after, max(scale, 1.001))
             else:
                 frame = after.copy()
 
-        # ── Phase D: After zoom-out ──
+        # ── Phase D: After zoom-out (perceived pull-back: 1.05 → 1.0) ──
         else:
             f_after = total_frames - e_c
             zt = (frame_index - e_c) / max(f_after - 1, 1)
+            eased_zt = self._ease_out(zt)
 
             if motion_style == "zoom":
-                scale = 1.0 + (cfg["after_zoom_out_end_scale"] - 1.0) * zt
-                frame = self._apply_zoom(after, scale)
+                settle = cfg["after_bounce_settle_scale"]
+                end = cfg["after_zoom_out_end_scale"]
+                scale = settle + (end - settle) * eased_zt
+                frame = self._apply_zoom(after, max(scale, 1.001))
             else:
                 frame = after.copy()
 

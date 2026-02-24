@@ -32,8 +32,8 @@ def main():
     print(f"Transition style: {CONFIG['transition_style']}")
     print(f"Motion style: {CONFIG['motion_style']}")
     print(f"Before zoom: 1.0 → {CONFIG['before_zoom_end_scale']}")
-    print(f"After bounce: {CONFIG['after_bounce_start_scale']} → {CONFIG['after_bounce_overshoot']} → 1.0")
-    print(f"After zoom-out: 1.0 → {CONFIG['after_zoom_out_end_scale']}")
+    print(f"After bounce: {CONFIG['after_bounce_start_scale']} → ~{CONFIG['after_bounce_settle_scale']}")
+    print(f"After zoom-out: {CONFIG['after_bounce_settle_scale']} → {CONFIG['after_zoom_out_end_scale']}")
     print(f"Enhancement before: {CONFIG['enhance_before']}")
     print(f"Enhancement after: {CONFIG['enhance_after']}")
 
@@ -59,12 +59,13 @@ def main():
     zoomed_out = gen._apply_zoom(after_img, 0.96)
     print(f"Zoom 0.96x shape: {zoomed_out.shape} (no black borders)")
 
-    # Test bounce easing
-    print(f"\n=== Bounce Easing Test ===")
-    for t in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]:
-        val = gen._bounce_easing(t)
-        scale = 1.0 + val * (CONFIG['after_bounce_start_scale'] - 1.0)
-        print(f"  t={t:.1f}: easing={val:.4f}, scale={scale:.4f}")
+    # Test bounce spring
+    print(f"\n=== Bounce Spring Test ===")
+    start = CONFIG['after_bounce_start_scale']
+    settle = CONFIG['after_bounce_settle_scale']
+    for t in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0]:
+        scale = gen._bounce_scale(t, start, settle)
+        print(f"  t={t:.1f}: scale={scale:.4f}")
 
     # Generate video with flash transition (default)
     print(f"\n=== Generating v8 flash transition + zoom motion video ===")
@@ -101,8 +102,8 @@ def main():
     print(f"\nChecklist (v8):")
     print(f"  [ ] Before zoom-in 0.0–2.0s (scale 1.0 → 1.08, ease-in)")
     print(f"  [ ] White flash 2.0–2.5s with white 'hold' (~0.1s pure white)")
-    print(f"  [ ] After bounce 2.5–3.0s (scale 1.06 → 0.99 → 1.0 spring)")
-    print(f"  [ ] After zoom-out 3.0–5.5s (scale 1.0 → 0.96, no black borders)")
+    print(f"  [ ] After bounce 2.5–3.0s (scale 1.12 → spring → ~1.05)")
+    print(f"  [ ] After zoom-out 3.0–5.5s (scale 1.05 → 1.0, perceived pull-back)")
     print(f"  [ ] Final frame is After image (NOT Before)")
     print(f"  [ ] Enhancement: Before darker/desaturated, After brighter/saturated (natural)")
     print(f"  [ ] Watermark bottom-right, 60px, 30% opacity")
