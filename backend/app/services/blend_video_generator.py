@@ -1,17 +1,18 @@
-"""Blend reveal video generator — Gap-maximized photo slideshow for TikTok.
+"""Blend reveal video generator — Gap-maximized TikTok slideshow with motion.
 
-Timeline (~5.0s, loop-optimized):
-  Before hold (2.0s) → Transition (0.3s) → After hold (2.2s)
-  → Loop bridge crossfade back to Before (0.5s)
+Timeline (~5.3s, no loop bridge — ends on After):
+  Before hold with zoom-in (2.5s) → Flash transition (0.3s)
+  → After with bounce + zoom-out (2.5s)
 
 Features:
 - Gap maximization via PIL ImageEnhance (Before darker/desaturated, After brighter/saturated)
 - Quality gate: measures face diff, warns if too small
-- Transition styles: blur (default), crossfade, snap
+- Image motion: Before slow zoom-in, After bounce + slow zoom-out
+- Transition styles: flash (default), blur, snap
 - Cao watermark (60px, 30% opacity, bottom-right)
-- Seamless loop bridge (80% blend back to Before at final frame)
+- NO loop bridge — video ends on After frame (TikTok jump cut on loop)
 - High quality encoding (CRF 18, ~800-1200kbps)
-- NO text labels, NO morph, NO flash — clean frames as TikTok raw material
+- NO text labels, NO morph — clean frames as TikTok raw material
 
 All images are cover-fitted to fill the entire frame (no borders).
 Uses 720x1280 @ 30fps to fit within Heroku's 512MB / 30s limits.
@@ -48,16 +49,23 @@ _LOGO_PATH = os.path.join(
 # ── Configuration (all parameters in one place) ─
 CONFIG = {
     # Timing
-    "before_hold_sec": 2.0,
+    "before_hold_sec": 2.5,
     "transition_sec": 0.3,
-    "after_hold_sec": 2.2,
-    "loop_bridge_sec": 0.5,
+    "after_hold_sec": 2.5,
 
     # Transition settings
-    "transition_style": "blur",  # "blur", "crossfade", "snap"
-    "blur_kernel_max": 51,       # Max Gaussian blur kernel size at peak
+    "transition_style": "flash",       # "flash", "blur", "snap"
+    "blur_kernel_max": 51,             # Max Gaussian blur kernel for blur transition
+
+    # Motion settings
+    "motion_style": "zoom",            # "zoom" only for now
+    "before_zoom_scale": 1.08,         # Before: zoom in to this scale
+    "after_bounce_scale": 1.05,        # After: bounce starts at this scale
+    "after_zoom_out_scale": 0.97,      # After: zoom out to this scale
+    "after_bounce_sec": 0.3,           # After: bounce duration
 
     # Enhancement (gap maximization)
+    "enhance_enabled": True,
     "enhance_before": {
         "brightness": 0.90,
         "color": 0.85,
@@ -70,14 +78,12 @@ CONFIG = {
     },
 
     # Quality gate thresholds
+    "quality_gate_enabled": True,
     "quality_gate": {
         "sufficient": 15,   # face_diff >= 15 → OK
         "low": 5,           # face_diff >= 5  → low warning
         # face_diff < 5     → very_low warning
     },
-
-    # Loop bridge settings
-    "loop_bridge_blend_max": 0.8,  # Final frame: 80% Before, 20% After
 
     # Display settings
     "show_watermark": True,
@@ -96,8 +102,7 @@ TOTAL_DURATION = (
     CONFIG["before_hold_sec"]
     + CONFIG["transition_sec"]
     + CONFIG["after_hold_sec"]
-    + CONFIG["loop_bridge_sec"]
-)  # 5.0s
+)  # 5.3s
 
 # Only codecs that work on Heroku's opencv-python-headless.
 BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
@@ -111,7 +116,7 @@ WATERMARK_MARGIN = 24
 
 
 class BlendVideoGenerator:
-    """Generate gap-maximized photo slideshow videos for TikTok."""
+    """Generate gap-maximized TikTok slideshow videos with motion."""
 
     def __init__(self):
         self._watermark_cache = None
@@ -123,7 +128,8 @@ class BlendVideoGenerator:
         current_image: bytes,
         ideal_image: Optional[bytes],
         result_image: bytes,
-        transition_style: str = "blur",
+        transition_style: str = "flash",
+        motion_style: str = "zoom",
     ) -> VideoResult:
         """Generate gap-maximized blend-reveal video.
 
@@ -131,7 +137,8 @@ class BlendVideoGenerator:
             current_image: Before face image bytes.
             ideal_image: Ignored (backward compatibility).
             result_image: After face image bytes.
-            transition_style: "blur" (default), "crossfade", or "snap".
+            transition_style: "flash" (default), "blur", or "snap".
+            motion_style: "zoom" (default). Future: "slide", "ken_burns".
 
         Returns:
             VideoResult with video bytes, duration, and metadata.
@@ -140,17 +147,26 @@ class BlendVideoGenerator:
         after_raw = self._fit(self._decode(result_image))
 
         # Gap maximization: enhance before/after
-        before = self._enhance_before(before_raw)
-        after = self._enhance_after(after_raw)
+        if CONFIG["enhance_enabled"]:
+            before = self._enhance_before(before_raw)
+            after = self._enhance_after(after_raw)
+        else:
+            before = before_raw
+            after = after_raw
 
         # Quality gate
-        quality = self._quality_gate(before_raw, after_raw)
+        if CONFIG["quality_gate_enabled"]:
+            quality = self._quality_gate(before_raw, after_raw)
+        else:
+            quality = {"face_diff": 0, "verdict": "skipped"}
 
         # Load watermark
         if CONFIG["show_watermark"]:
             self._load_watermark()
 
-        return self._generate_and_encode(before, after, transition_style, quality)
+        return self._generate_and_encode(
+            before, after, transition_style, motion_style, quality
+        )
 
     # ── image helpers ───────────────────────
 
@@ -187,7 +203,6 @@ class BlendVideoGenerator:
         rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         pil_img = Image.fromarray(rgb)
 
-        # Apply enhancements
         if "brightness" in params:
             pil_img = ImageEnhance.Brightness(pil_img).enhance(params["brightness"])
         if "color" in params:
@@ -195,7 +210,6 @@ class BlendVideoGenerator:
         if "contrast" in params:
             pil_img = ImageEnhance.Contrast(pil_img).enhance(params["contrast"])
 
-        # PIL → RGB → BGR
         enhanced = np.array(pil_img)
         return cv2.cvtColor(enhanced, cv2.COLOR_RGB2BGR)
 
@@ -213,12 +227,7 @@ class BlendVideoGenerator:
 
     @staticmethod
     def _quality_gate(before: np.ndarray, after: np.ndarray) -> dict:
-        """Measure face diff and return quality verdict.
-
-        Returns:
-            dict with keys: face_diff, verdict, warning (optional)
-        """
-        # Mean absolute pixel difference
+        """Measure face diff and return quality verdict."""
         diff = np.mean(np.abs(
             before.astype(np.float32) - after.astype(np.float32)
         ))
@@ -230,13 +239,13 @@ class BlendVideoGenerator:
             return {
                 "face_diff": round(float(diff), 1),
                 "verdict": "low",
-                "warning": "Before/After差分が小さいため、動画の効果が弱い可能性があります",
+                "warning": "変化が小さいため、SNSでのインパクトが弱い可能性があります",
             }
         else:
             return {
                 "face_diff": round(float(diff), 1),
                 "verdict": "very_low",
-                "warning": "Before/After差分が非常に小さいです。異なる画像を使用してください",
+                "warning": "別の理想の顔を選び直すことをおすすめします",
             }
 
     # ── cross dissolve ──────────────────────
@@ -255,7 +264,73 @@ class BlendVideoGenerator:
         )
         return result.clip(0, 255).astype(np.uint8)
 
-    # ── blur transition ─────────────────────
+    # ── zoom / crop helper ──────────────────
+
+    @staticmethod
+    def _apply_zoom(img: np.ndarray, scale: float) -> np.ndarray:
+        """Zoom into the center of the image by the given scale factor.
+
+        scale > 1.0: zoom in (crop center)
+        scale < 1.0: zoom out (pad with black, then crop)
+        scale == 1.0: no change
+        """
+        if abs(scale - 1.0) < 0.001:
+            return img
+
+        h, w = img.shape[:2]
+        new_h = int(h / scale)
+        new_w = int(w / scale)
+
+        # Clamp to image bounds
+        new_h = max(1, min(h, new_h))
+        new_w = max(1, min(w, new_w))
+
+        # Center crop
+        y0 = (h - new_h) // 2
+        x0 = (w - new_w) // 2
+        cropped = img[y0 : y0 + new_h, x0 : x0 + new_w]
+
+        # Resize back to original dimensions
+        return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LANCZOS4)
+
+    # ── easing functions ────────────────────
+
+    @staticmethod
+    def _ease_in(t: float) -> float:
+        """Ease-in (quadratic): slow start → accelerate."""
+        return t * t
+
+    @staticmethod
+    def _ease_out(t: float) -> float:
+        """Ease-out (quadratic): fast start → decelerate."""
+        return 1.0 - (1.0 - t) * (1.0 - t)
+
+    # ── transition helpers ──────────────────
+
+    @staticmethod
+    def _flash_transition(
+        img_from: np.ndarray,
+        img_to: np.ndarray,
+        progress: float,
+    ) -> np.ndarray:
+        """White flash → reveal transition.
+
+        0.0-0.5: img_from fades to white (flash builds)
+        0.5-1.0: white fades to img_to (after reveals)
+        """
+        if progress <= 0.5:
+            # Flash builds: from → white
+            flash_t = progress / 0.5  # 0→1
+            frame_f = img_from.astype(np.float32)
+            frame_f += (255.0 - frame_f) * flash_t
+            return frame_f.clip(0, 255).astype(np.uint8)
+        else:
+            # After reveals: white → to
+            reveal_t = (progress - 0.5) / 0.5  # 0→1
+            frame_f = img_to.astype(np.float32)
+            white_amount = 1.0 - reveal_t
+            frame_f += (255.0 - frame_f) * white_amount
+            return frame_f.clip(0, 255).astype(np.uint8)
 
     @staticmethod
     def _blur_transition(
@@ -263,21 +338,14 @@ class BlendVideoGenerator:
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """Crossfade with Gaussian blur peaking at midpoint.
-
-        progress: 0.0 (fully from) → 1.0 (fully to)
-        Blur peaks at progress=0.5, zero at edges.
-        """
-        # Blur intensity: peaks at midpoint (triangle envelope)
-        blur_amount = 1.0 - abs(2.0 * progress - 1.0)  # 0→1→0
+        """Crossfade with Gaussian blur peaking at midpoint."""
+        blur_amount = 1.0 - abs(2.0 * progress - 1.0)
         kernel_max = CONFIG["blur_kernel_max"]
         kernel_size = int(blur_amount * kernel_max)
-        # Ensure odd kernel size
         if kernel_size % 2 == 0:
             kernel_size += 1
         kernel_size = max(1, kernel_size)
 
-        # Crossfade
         alpha = max(0.0, min(1.0, progress))
         blended = (
             img_to.astype(np.float32) * alpha
@@ -285,7 +353,6 @@ class BlendVideoGenerator:
         )
         blended = blended.clip(0, 255).astype(np.uint8)
 
-        # Apply blur if significant
         if kernel_size >= 3:
             blended = cv2.GaussianBlur(blended, (kernel_size, kernel_size), 0)
 
@@ -333,51 +400,75 @@ class BlendVideoGenerator:
         before: np.ndarray,
         after: np.ndarray,
         transition_style: str,
+        motion_style: str,
     ) -> np.ndarray:
-        """Render a single frame of the photo slideshow timeline.
+        """Render a single frame with motion and transition.
 
-        Timeline (frame-based at 30fps, total 150 frames = 5.0s):
-        - Frames 0-59 (2.0s): Before hold
-        - Frames 60-68 (0.3s): Transition (blur/crossfade/snap)
-        - Frames 69-134 (2.2s): After hold
-        - Frames 135-149 (0.5s): Loop bridge crossfade After→Before (80%)
+        Timeline (at 30fps, total 159 frames = 5.3s):
+        - Frames 0-74 (2.5s): Before with slow zoom-in
+        - Frames 75-83 (0.3s): Transition (flash/blur/snap)
+        - Frames 84-158 (2.5s): After with bounce + zoom-out
         """
         cfg = CONFIG
         fps = cfg["fps"]
 
         # Phase boundaries (in frames)
-        f_before = int(cfg["before_hold_sec"] * fps)       # 60
+        f_before = int(cfg["before_hold_sec"] * fps)       # 75
         f_transition = int(cfg["transition_sec"] * fps)     # 9
-        f_after = int(cfg["after_hold_sec"] * fps)          # 66
-        f_bridge = total_frames - f_before - f_transition - f_after  # 15
+        f_after = total_frames - f_before - f_transition    # 75
 
-        e1 = f_before                        # 60: transition starts
-        e2 = e1 + f_transition              # 69: after hold starts
-        e3 = e2 + f_after                   # 135: loop bridge starts
+        e1 = f_before                        # 75: transition starts
+        e2 = e1 + f_transition              # 84: after starts
 
-        # ── Base frame ──
+        # ── Before phase: zoom in ──
         if frame_index < e1:
-            # Before hold
-            frame = before.copy()
-        elif frame_index < e2:
-            # Transition: Before → After
-            t = (frame_index - e1) / max(f_transition - 1, 1)
-            if transition_style == "snap":
-                # Instant cut at midpoint
-                frame = before.copy() if t < 0.5 else after.copy()
-            elif transition_style == "crossfade":
-                frame = self._cross_dissolve(before, after, t)
+            t = frame_index / max(f_before - 1, 1)
+            eased_t = self._ease_in(t)  # slow start → accelerate
+
+            if motion_style == "zoom":
+                scale = 1.0 + (cfg["before_zoom_scale"] - 1.0) * eased_t
+                frame = self._apply_zoom(before, scale)
             else:
-                # Default: blur transition
-                frame = self._blur_transition(before, after, t)
-        elif frame_index < e3:
-            # After hold
-            frame = after.copy()
+                frame = before.copy()
+
+        # ── Transition phase ──
+        elif frame_index < e2:
+            t = (frame_index - e1) / max(f_transition - 1, 1)
+
+            # Apply zoom to source frames for continuity
+            before_zoomed = self._apply_zoom(before, cfg["before_zoom_scale"]) \
+                if motion_style == "zoom" else before
+            after_bounced = self._apply_zoom(after, cfg["after_bounce_scale"]) \
+                if motion_style == "zoom" else after
+
+            if transition_style == "snap":
+                frame = before_zoomed.copy() if t < 0.5 else after_bounced.copy()
+            elif transition_style == "blur":
+                frame = self._blur_transition(before_zoomed, after_bounced, t)
+            else:
+                # Default: flash transition
+                frame = self._flash_transition(before_zoomed, after_bounced, t)
+
+        # ── After phase: bounce + zoom-out ──
         else:
-            # Loop bridge: After → Before (up to 80%)
-            t = (frame_index - e3) / max(f_bridge - 1, 1)
-            blend = t * cfg["loop_bridge_blend_max"]
-            frame = self._cross_dissolve(after, before, blend)
+            t = (frame_index - e2) / max(f_after - 1, 1)
+            bounce_frames = int(cfg["after_bounce_sec"] * fps)  # 9
+            frames_into_after = frame_index - e2
+
+            if motion_style == "zoom":
+                if frames_into_after < bounce_frames:
+                    # Bounce: scale from after_bounce_scale → 1.0
+                    bt = frames_into_after / max(bounce_frames - 1, 1)
+                    eased_bt = self._ease_out(bt)
+                    scale = cfg["after_bounce_scale"] + (1.0 - cfg["after_bounce_scale"]) * eased_bt
+                else:
+                    # Zoom out: scale from 1.0 → after_zoom_out_scale
+                    remaining = f_after - bounce_frames
+                    zt = (frames_into_after - bounce_frames) / max(remaining - 1, 1)
+                    scale = 1.0 + (cfg["after_zoom_out_scale"] - 1.0) * zt
+                frame = self._apply_zoom(after, scale)
+            else:
+                frame = after.copy()
 
         # ── Watermark ──
         if cfg["show_watermark"]:
@@ -397,29 +488,25 @@ class BlendVideoGenerator:
         before: np.ndarray,
         after: np.ndarray,
         transition_style: str,
+        motion_style: str,
         quality: dict,
     ) -> VideoResult:
-        """Generate frames and encode to browser-playable H.264 video.
-
-        Strategy:
-        1. Try ffmpeg pipe (raw BGR → H.264 mp4) — browser-native playback.
-        2. Fallback: OpenCV mp4v then ffmpeg re-encode to H.264.
-        3. Last resort: OpenCV mp4v as-is.
-        """
+        """Generate frames and encode to browser-playable H.264 video."""
         cfg = CONFIG
         duration = TOTAL_DURATION
         total_frames = int(duration * BLEND_FPS)
         crf = str(cfg["crf"])
         ffmpeg_bin = get_ffmpeg_path()
 
-        # Metadata
-        transition_start = cfg["before_hold_sec"]
-        after_reveal = transition_start + cfg["transition_sec"]
+        # Metadata for beat sync
+        flash_start = cfg["before_hold_sec"]
+        after_reveal = flash_start + cfg["transition_sec"]
         metadata: Dict = {
-            "loop_friendly": True,
-            "transition_start": transition_start,
+            "loop_friendly": False,
+            "flash_start": flash_start,
             "after_reveal": after_reveal,
             "transition_style": transition_style,
+            "motion_style": motion_style,
             "quality_check": quality,
             "resolution": [BLEND_WIDTH, BLEND_HEIGHT],
             "fps": BLEND_FPS,
@@ -429,7 +516,8 @@ class BlendVideoGenerator:
         if ffmpeg_bin:
             try:
                 result_video = self._encode_with_ffmpeg_pipe(
-                    before, after, total_frames, transition_style, crf, ffmpeg_bin
+                    before, after, total_frames,
+                    transition_style, motion_style, crf, ffmpeg_bin,
                 )
                 if result_video:
                     result_video.duration = duration
@@ -456,12 +544,12 @@ class BlendVideoGenerator:
 
                 for i in range(total_frames):
                     frame = self._render_frame(
-                        i, total_frames, before, after, transition_style
+                        i, total_frames, before, after,
+                        transition_style, motion_style,
                     )
                     writer.write(frame)
                 writer.release()
 
-                # Try to re-encode with ffmpeg for browser compatibility
                 if ffmpeg_bin:
                     h264_data = self._ffmpeg_reencode(tmp_path, crf, ffmpeg_bin)
                     os.unlink(tmp_path)
@@ -475,7 +563,6 @@ class BlendVideoGenerator:
                             duration=duration, metadata=metadata,
                         )
 
-                # Fallback: use mp4v as-is
                 with open(tmp_path, "rb") as fh:
                     data = fh.read()
                 os.unlink(tmp_path)
@@ -500,6 +587,7 @@ class BlendVideoGenerator:
         after: np.ndarray,
         total_frames: int,
         transition_style: str,
+        motion_style: str,
         crf: str,
         ffmpeg_bin: str = "ffmpeg",
     ) -> "VideoResult | None":
@@ -534,7 +622,8 @@ class BlendVideoGenerator:
 
             for i in range(total_frames):
                 frame = self._render_frame(
-                    i, total_frames, before, after, transition_style
+                    i, total_frames, before, after,
+                    transition_style, motion_style,
                 )
                 try:
                     proc.stdin.write(frame.tobytes())

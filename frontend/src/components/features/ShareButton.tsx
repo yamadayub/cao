@@ -402,7 +402,7 @@ export function ShareButton({
         return;
       }
 
-      const result = await generateBlendVideo(beforeImage, idealImage, afterImage, token, 'blur');
+      const result = await generateBlendVideo(beforeImage, idealImage, afterImage, token, 'flash');
 
       // サーバーから返されたURLがdata URIの場合はBlobに変換
       let blobUrl: string;

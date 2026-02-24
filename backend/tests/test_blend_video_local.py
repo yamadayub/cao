@@ -1,4 +1,4 @@
-"""Local test for blend video generator — Gap-maximized, TikTok-optimized."""
+"""Local test for blend video generator — v7 Gap-maximized with motion."""
 import json
 import sys
 sys.path.insert(0, "/Users/yosuke/dev/cao/backend")
@@ -26,13 +26,15 @@ def main():
     # Print config
     print(f"\n=== Configuration ===")
     print(f"Timeline: Before {CONFIG['before_hold_sec']}s → Transition {CONFIG['transition_sec']}s "
-          f"→ After {CONFIG['after_hold_sec']}s → Bridge {CONFIG['loop_bridge_sec']}s")
-    print(f"Total duration: {TOTAL_DURATION}s")
+          f"→ After {CONFIG['after_hold_sec']}s")
+    print(f"Total duration: {TOTAL_DURATION}s (no loop bridge)")
     print(f"FPS: {CONFIG['fps']}, CRF: {CONFIG['crf']}")
     print(f"Transition style: {CONFIG['transition_style']}")
+    print(f"Motion style: {CONFIG['motion_style']}")
+    print(f"Before zoom: 1.0 → {CONFIG['before_zoom_scale']}")
+    print(f"After bounce: {CONFIG['after_bounce_scale']} → 1.0 → {CONFIG['after_zoom_out_scale']}")
     print(f"Enhancement before: {CONFIG['enhance_before']}")
     print(f"Enhancement after: {CONFIG['enhance_after']}")
-    print(f"Quality gate thresholds: {CONFIG['quality_gate']}")
 
     # Test quality gate
     print(f"\n=== Quality Gate ===")
@@ -49,9 +51,16 @@ def main():
     print(f"Enhanced before mean: {enhanced_before.mean():.1f} (original: {before_img.mean():.1f})")
     print(f"Enhanced after mean: {enhanced_after.mean():.1f} (original: {after_img.mean():.1f})")
 
-    # Generate video with blur transition (default)
-    print(f"\n=== Generating blur transition video ===")
-    video_result = gen.generate(current, None, result, transition_style="blur")
+    # Test zoom
+    print(f"\n=== Zoom Test ===")
+    zoomed = gen._apply_zoom(before_img, 1.08)
+    print(f"Zoom 1.08x shape: {zoomed.shape}")
+    zoomed_out = gen._apply_zoom(after_img, 0.97)
+    print(f"Zoom 0.97x shape: {zoomed_out.shape}")
+
+    # Generate video with flash transition (default)
+    print(f"\n=== Generating flash transition + zoom motion video ===")
+    video_result = gen.generate(current, None, result, transition_style="flash", motion_style="zoom")
     print(f"Video: {len(video_result.data)} bytes, type={video_result.content_type}, ext={video_result.extension}")
     print(f"Duration: {video_result.duration}s")
     print(f"Metadata: {json.dumps(video_result.metadata, indent=2)}")
@@ -61,7 +70,7 @@ def main():
     print(f"Bitrate: {bitrate_kbps:.0f} kbps")
 
     # Save output
-    out_path = "tests/test_images/blend_blur" + video_result.extension
+    out_path = "tests/test_images/blend_flash_zoom" + video_result.extension
     with open(out_path, "wb") as f:
         f.write(video_result.data)
     print(f"Saved to {out_path}")
@@ -82,11 +91,12 @@ def main():
     print(f"\nDone! Inspect the output video:")
     print(f"  {out_path}")
     print(f"\nChecklist:")
-    print(f"  [ ] Before static 2.0s at start (enhanced: darker/desaturated)")
-    print(f"  [ ] Blur transition at 2.0s, runs 0.3s")
-    print(f"  [ ] After static from 2.3s to 4.5s (enhanced: brighter/saturated)")
-    print(f"  [ ] Loop bridge 4.5s-5.0s (After→Before crossfade)")
-    print(f"  [ ] Seamless loop when played on repeat")
+    print(f"  [ ] Before with slow zoom-in 0s-2.5s (scale 1.0→1.08)")
+    print(f"  [ ] White flash transition at 2.5s (0.3s)")
+    print(f"  [ ] After appears with bounce at 2.8s (scale 1.05→1.0)")
+    print(f"  [ ] After slow zoom-out 3.1s-5.3s (scale 1.0→0.97)")
+    print(f"  [ ] Video ENDS on After frame (no loop bridge)")
+    print(f"  [ ] Gap maximization: Before darker/desaturated, After brighter/saturated")
     print(f"  [ ] NO text labels")
     print(f"  [ ] Watermark at bottom-right (60px, 30% opacity)")
     print(f"  [ ] Bitrate >= 800kbps (got {bitrate_kbps:.0f}kbps)")

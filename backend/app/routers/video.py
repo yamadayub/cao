@@ -53,7 +53,8 @@ class BlendVideoGenerateRequest(BaseModel):
     current_image: str = Field(..., description="Base64 encoded before face")
     ideal_image: Optional[str] = Field(None, description="Deprecated, ignored")
     result_image: str = Field(..., description="Base64 encoded after face")
-    transition_style: str = Field(default="blur", description="Transition style: blur, crossfade, or snap")
+    transition_style: str = Field(default="flash", description="Transition style: flash, blur, or snap")
+    motion_style: str = Field(default="zoom", description="Motion style: zoom")
 
 
 class VideoGenerateData(BaseModel):
@@ -210,10 +211,10 @@ async def generate_blend_video(
     body: BlendVideoGenerateRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Generate a gap-maximized blend-reveal video.
+    """Generate a gap-maximized blend-reveal video with motion.
 
-    Before hold → transition → After hold → loop bridge.
-    Suitable for TikTok/SNS sharing (9:16, 720x1280, ~5.0s).
+    Before (zoom-in) → flash transition → After (bounce + zoom-out).
+    Suitable for TikTok/SNS sharing (9:16, 720x1280, ~5.3s).
 
     Requires authentication (Bearer JWT or X-API-Key).
     """
@@ -246,10 +247,13 @@ async def generate_blend_video(
             ).model_dump(),
         )
 
-    # Validate transition style
+    # Validate styles
     transition_style = body.transition_style
-    if transition_style not in ("blur", "crossfade", "snap"):
-        transition_style = "blur"
+    if transition_style not in ("flash", "blur", "snap"):
+        transition_style = "flash"
+    motion_style = body.motion_style
+    if motion_style not in ("zoom",):
+        motion_style = "zoom"
 
     # Generate video
     try:
@@ -257,6 +261,7 @@ async def generate_blend_video(
         result = generator.generate(
             current_bytes, ideal_bytes, result_bytes,
             transition_style=transition_style,
+            motion_style=motion_style,
         )
         logger.info(
             f"Blend video generated: {len(result.data)} bytes, "
