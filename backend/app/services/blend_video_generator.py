@@ -64,17 +64,17 @@ CONFIG = {
     "after_zoom_out_scale": 0.97,      # After: zoom out to this scale
     "after_bounce_sec": 0.3,           # After: bounce duration
 
-    # Enhancement (gap maximization)
+    # Enhancement (gap maximization) — aggressive for clear Before/After contrast
     "enhance_enabled": True,
     "enhance_before": {
-        "brightness": 0.90,
-        "color": 0.85,
-        "contrast": 0.95,
+        "brightness": 0.82,
+        "color": 0.70,
+        "contrast": 0.90,
     },
     "enhance_after": {
-        "brightness": 1.08,
-        "color": 1.10,
-        "contrast": 1.10,
+        "brightness": 1.12,
+        "color": 1.20,
+        "contrast": 1.15,
     },
 
     # Quality gate thresholds
