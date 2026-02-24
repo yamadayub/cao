@@ -59,9 +59,9 @@ CONFIG = {
 
     # Motion settings
     "motion_style": "zoom",            # "zoom" only for now
-    "before_zoom_scale": 1.08,         # Before: zoom in to this scale
-    "after_bounce_scale": 1.05,        # After: bounce starts at this scale
-    "after_zoom_out_scale": 0.97,      # After: zoom out to this scale
+    "before_zoom_scale": 1.15,         # Before: zoom in to this scale (15% zoom)
+    "after_bounce_scale": 1.12,        # After: bounce starts at this scale (12% pop)
+    "after_zoom_out_scale": 0.92,      # After: zoom out to this scale (8% pull back)
     "after_bounce_sec": 0.3,           # After: bounce duration
 
     # Enhancement (gap maximization) — aggressive for clear Before/After contrast
