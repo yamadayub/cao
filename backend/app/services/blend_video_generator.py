@@ -64,13 +64,15 @@ CONFIG = {
     "transition_style": "flash",       # "flash", "blur", "snap"
     "blur_kernel_max": 51,             # Max Gaussian blur kernel for blur transition
 
-    # Motion settings — all scales >= 1.0 to avoid black borders
-    # "Zoom out" = going from zoomed-in back to 1.0 (perceived pull-back)
+    # Motion settings — all zoom scales >= 1.0 to avoid black borders
     "motion_style": "zoom",                # "zoom" only for now
     "before_zoom_end_scale": 1.08,         # Before: zoom in to this scale (8%)
-    "after_bounce_start_scale": 1.12,      # After: bounce pop-in scale (12%)
-    "after_bounce_settle_scale": 1.05,     # After: bounce settles here
+    "after_bounce_start_scale": 1.12,      # After: bounce pop-in zoom scale (12%)
+    "after_bounce_settle_scale": 1.05,     # After: bounce zoom settles here
     "after_zoom_out_end_scale": 1.00,      # After: zoom out ends at natural (1.0)
+
+    # Vertical bounce (Phase C) — dramatic up/down spring
+    "bounce_amplitude_px": 80,             # Peak vertical displacement (pixels)
 
     # Enhancement (gap maximization) — dialed back to natural levels
     "enhance_enabled": True,
@@ -311,6 +313,21 @@ class BlendVideoGenerator:
             cropped = img[y0 : y0 + new_h, x0 : x0 + new_w]
             return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
+    @staticmethod
+    def _apply_translate_y(img: np.ndarray, offset_y: float) -> np.ndarray:
+        """Shift image vertically. Positive = down, negative = up.
+
+        Uses BORDER_REPLICATE to fill exposed edges (no black borders).
+        """
+        if abs(offset_y) < 0.5:
+            return img
+        h, w = img.shape[:2]
+        M = np.float32([[1, 0, 0], [0, 1, offset_y]])
+        return cv2.warpAffine(
+            img, M, (w, h),
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
     # ── easing functions ────────────────────
 
     @staticmethod
@@ -324,20 +341,15 @@ class BlendVideoGenerator:
         return 1.0 - (1.0 - t) * (1.0 - t)
 
     @staticmethod
-    def _bounce_scale(t: float, start: float, settle: float) -> float:
-        """Spring-bounce easing for after reveal.
+    def _bounce_spring(t: float) -> float:
+        """Damped spring returning a factor that starts at 1.0 and settles at 0.0.
 
-        Damped cosine spring oscillating from start toward settle.
-          t=0.0 → start  (e.g. 1.12, the pop-in)
-          t≈0.35 → undershoot past settle (e.g. ~1.034)
-          t=1.0 → ~settle (e.g. ~1.05)
-
-        All returned values stay above 1.0 to avoid black borders.
+        Used for both zoom-settle and vertical bounce.
+        freq=2.5π ensures cos(freq*1.0)≈0 → clean settle at t=1.0.
         """
-        amplitude = start - settle  # e.g. 0.07
-        frequency = 8.0   # ~1.3 full oscillations in [0, 1]
-        decay = 4.0       # strong damping — settles by t=1.0
-        return settle + amplitude * math.cos(frequency * t) * math.exp(-decay * t)
+        frequency = 2.5 * math.pi  # ≈ 7.854
+        decay = 2.5
+        return math.cos(frequency * t) * math.exp(-decay * t)
 
     # ── transition helpers ──────────────────
 
@@ -491,18 +503,21 @@ class BlendVideoGenerator:
                 # Default: flash transition with asymmetrical hold
                 frame = self._flash_transition(before_zoomed, after_bounced, t)
 
-        # ── Phase C: After spring-bounce ──
+        # ── Phase C: After spring-bounce (vertical + zoom settle) ──
         elif frame_index < e_c:
             bt = (frame_index - e_b) / max(f_bounce - 1, 1)
 
             if motion_style == "zoom":
-                # Spring: 1.12 → oscillate → settle ~1.05
-                scale = self._bounce_scale(
-                    bt,
-                    cfg["after_bounce_start_scale"],
-                    cfg["after_bounce_settle_scale"],
-                )
+                spring = self._bounce_spring(bt)
+
+                # Zoom: settle from bounce_start → bounce_settle
+                zoom_amp = cfg["after_bounce_start_scale"] - cfg["after_bounce_settle_scale"]
+                scale = cfg["after_bounce_settle_scale"] + zoom_amp * spring
                 frame = self._apply_zoom(after, max(scale, 1.001))
+
+                # Vertical bounce: dramatic up/down spring
+                offset_y = -cfg["bounce_amplitude_px"] * spring
+                frame = self._apply_translate_y(frame, offset_y)
             else:
                 frame = after.copy()
 
