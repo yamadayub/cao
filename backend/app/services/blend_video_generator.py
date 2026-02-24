@@ -1,14 +1,18 @@
-"""Blend reveal video generator — Gap-maximized TikTok slideshow with motion.
+"""Blend reveal video generator v8 — 4-phase timeline with detailed flash & bounce.
 
-Timeline (~5.3s, no loop bridge — ends on After):
-  Before hold with zoom-in (2.5s) → Flash transition (0.3s)
-  → After with bounce + zoom-out (2.5s)
+Timeline (~5.5s, no loop bridge — ends on After):
+  Phase A: Before zoom-in (2.0s)
+  Phase B: White flash with hold (0.5s)
+  Phase C: After spring-bounce (0.5s)
+  Phase D: After zoom-out (2.5s)
 
 Features:
 - Gap maximization via PIL ImageEnhance (Before darker/desaturated, After brighter/saturated)
 - Quality gate: measures face diff, warns if too small
-- Image motion: Before slow zoom-in, After bounce + slow zoom-out
-- Transition styles: flash (default), blur, snap
+- Image motion: Before slow zoom-in, After spring-bounce + slow zoom-out
+- Asymmetrical white flash with "hold" at peak (~0.1s pure white)
+- Spring-bounce easing (damped sine wave: 1.06 → 0.99 → 1.01 → 1.00)
+- Zoom-out border fix: pre-scale image to avoid black borders
 - Cao watermark (60px, 30% opacity, bottom-right)
 - NO loop bridge — video ends on After frame (TikTok jump cut on loop)
 - High quality encoding (CRF 18, ~800-1200kbps)
@@ -19,6 +23,7 @@ Uses 720x1280 @ 30fps to fit within Heroku's 512MB / 30s limits.
 """
 
 import logging
+import math
 import os
 import subprocess
 import tempfile
@@ -48,33 +53,35 @@ _LOGO_PATH = os.path.join(
 
 # ── Configuration (all parameters in one place) ─
 CONFIG = {
-    # Timing
-    "before_hold_sec": 2.5,
-    "transition_sec": 0.3,
-    "after_hold_sec": 2.5,
+    # Timing — 4-phase timeline
+    "before_hold_sec": 2.0,       # Phase A: Before zoom-in
+    "flash_sec": 0.5,             # Phase B: White flash with hold
+    "bounce_sec": 0.5,            # Phase C: After spring-bounce
+    "after_hold_sec": 2.5,        # Phase D: After zoom-out
+    # Total: 5.5s
 
     # Transition settings
     "transition_style": "flash",       # "flash", "blur", "snap"
     "blur_kernel_max": 51,             # Max Gaussian blur kernel for blur transition
 
     # Motion settings
-    "motion_style": "zoom",            # "zoom" only for now
-    "before_zoom_scale": 1.15,         # Before: zoom in to this scale (15% zoom)
-    "after_bounce_scale": 1.12,        # After: bounce starts at this scale (12% pop)
-    "after_zoom_out_scale": 0.92,      # After: zoom out to this scale (8% pull back)
-    "after_bounce_sec": 0.3,           # After: bounce duration
+    "motion_style": "zoom",                # "zoom" only for now
+    "before_zoom_end_scale": 1.08,         # Before: zoom in to this scale (8%)
+    "after_bounce_start_scale": 1.06,      # After: bounce starts at this scale (6% pop)
+    "after_bounce_overshoot": 0.99,        # After: spring undershoot
+    "after_zoom_out_end_scale": 0.96,      # After: zoom out to this scale (4% pull back)
 
-    # Enhancement (gap maximization) — aggressive for clear Before/After contrast
+    # Enhancement (gap maximization) — dialed back to natural levels
     "enhance_enabled": True,
     "enhance_before": {
-        "brightness": 0.82,
-        "color": 0.70,
-        "contrast": 0.90,
+        "brightness": 0.90,
+        "color": 0.85,
+        "contrast": 0.95,
     },
     "enhance_after": {
-        "brightness": 1.12,
-        "color": 1.20,
-        "contrast": 1.15,
+        "brightness": 1.08,
+        "color": 1.10,
+        "contrast": 1.10,
     },
 
     # Quality gate thresholds
@@ -100,9 +107,10 @@ BLEND_WIDTH, BLEND_HEIGHT = CONFIG["output_resolution"]
 BLEND_FPS = CONFIG["fps"]
 TOTAL_DURATION = (
     CONFIG["before_hold_sec"]
-    + CONFIG["transition_sec"]
+    + CONFIG["flash_sec"]
+    + CONFIG["bounce_sec"]
     + CONFIG["after_hold_sec"]
-)  # 5.3s
+)  # 5.5s
 
 # Only codecs that work on Heroku's opencv-python-headless.
 BLEND_CODEC_CHAIN: List[Tuple[str, str, str]] = [
@@ -270,28 +278,37 @@ class BlendVideoGenerator:
     def _apply_zoom(img: np.ndarray, scale: float) -> np.ndarray:
         """Zoom into the center of the image by the given scale factor.
 
-        scale > 1.0: zoom in (crop center)
-        scale < 1.0: zoom out (pad with black, then crop)
+        scale > 1.0: zoom in (crop center region, then upscale)
+        scale < 1.0: zoom out — first upscale image by 1/scale, then
+                     center-crop back to original size. This ensures no
+                     black borders appear at edges.
         scale == 1.0: no change
         """
         if abs(scale - 1.0) < 0.001:
             return img
 
         h, w = img.shape[:2]
-        new_h = int(h / scale)
-        new_w = int(w / scale)
 
-        # Clamp to image bounds
-        new_h = max(1, min(h, new_h))
-        new_w = max(1, min(w, new_w))
-
-        # Center crop
-        y0 = (h - new_h) // 2
-        x0 = (w - new_w) // 2
-        cropped = img[y0 : y0 + new_h, x0 : x0 + new_w]
-
-        # Resize back to original dimensions
-        return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        if scale < 1.0:
+            # Zoom-out: upscale image first so we have extra pixels to crop
+            up_scale = 1.0 / scale  # e.g. 1/0.96 ≈ 1.042
+            up_w = int(w * up_scale)
+            up_h = int(h * up_scale)
+            upscaled = cv2.resize(img, (up_w, up_h), interpolation=cv2.INTER_LANCZOS4)
+            # Center-crop back to original size
+            x0 = (up_w - w) // 2
+            y0 = (up_h - h) // 2
+            return np.ascontiguousarray(upscaled[y0 : y0 + h, x0 : x0 + w])
+        else:
+            # Zoom-in: crop center region, then resize back
+            new_h = int(h / scale)
+            new_w = int(w / scale)
+            new_h = max(1, min(h, new_h))
+            new_w = max(1, min(w, new_w))
+            y0 = (h - new_h) // 2
+            x0 = (w - new_w) // 2
+            cropped = img[y0 : y0 + new_h, x0 : x0 + new_w]
+            return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LANCZOS4)
 
     # ── easing functions ────────────────────
 
@@ -305,6 +322,24 @@ class BlendVideoGenerator:
         """Ease-out (quadratic): fast start → decelerate."""
         return 1.0 - (1.0 - t) * (1.0 - t)
 
+    @staticmethod
+    def _bounce_easing(t: float) -> float:
+        """Spring-bounce easing for after reveal.
+
+        Damped sine wave: starts at amplitude, oscillates to settle at 0.
+        Returns offset from target (1.0), so:
+          t=0.0: returns after_bounce_start_scale offset (e.g. +0.06)
+          t≈0.4: undershoots to after_bounce_overshoot (e.g. -0.01)
+          t=1.0: settles at 0.0 (target scale 1.0)
+
+        The actual scale = 1.0 + _bounce_easing(t) * amplitude
+        """
+        # Damped cosine: cos(freq * t) * exp(-decay * t)
+        # Tuned so: t=0 → 1.0, t≈0.5 → ~0, t≈0.7 → slight negative, t=1.0 → ~0.0
+        frequency = 3.2  # oscillation rate
+        decay = 5.0      # aggressive damping — settles to ~0 by t=1.0
+        return math.cos(frequency * t) * math.exp(-decay * t)
+
     # ── transition helpers ──────────────────
 
     @staticmethod
@@ -313,20 +348,25 @@ class BlendVideoGenerator:
         img_to: np.ndarray,
         progress: float,
     ) -> np.ndarray:
-        """White flash → reveal transition.
+        """Asymmetrical white flash with hold at peak.
 
-        0.0-0.5: img_from fades to white (flash builds)
-        0.5-1.0: white fades to img_to (after reveals)
+        3 sub-phases within progress [0.0, 1.0]:
+          0.0–0.4: Before fades to white (overlay 0% → 100%)
+          0.4–0.6: Pure white hold (溜め/anticipation)
+          0.6–1.0: After fades in from white (overlay 100% → 0%)
         """
-        if progress <= 0.5:
-            # Flash builds: from → white
-            flash_t = progress / 0.5  # 0→1
+        if progress <= 0.4:
+            # Before → white
+            flash_t = progress / 0.4  # 0→1
             frame_f = img_from.astype(np.float32)
             frame_f += (255.0 - frame_f) * flash_t
             return frame_f.clip(0, 255).astype(np.uint8)
+        elif progress <= 0.6:
+            # White hold — pure white frames
+            return np.full_like(img_from, 255)
         else:
-            # After reveals: white → to
-            reveal_t = (progress - 0.5) / 0.5  # 0→1
+            # White → After reveal
+            reveal_t = (progress - 0.6) / 0.4  # 0→1
             frame_f = img_to.astype(np.float32)
             white_amount = 1.0 - reveal_t
             frame_f += (255.0 - frame_f) * white_amount
@@ -402,43 +442,46 @@ class BlendVideoGenerator:
         transition_style: str,
         motion_style: str,
     ) -> np.ndarray:
-        """Render a single frame with motion and transition.
+        """Render a single frame with 4-phase timeline.
 
-        Timeline (at 30fps, total 159 frames = 5.3s):
-        - Frames 0-74 (2.5s): Before with slow zoom-in
-        - Frames 75-83 (0.3s): Transition (flash/blur/snap)
-        - Frames 84-158 (2.5s): After with bounce + zoom-out
+        Timeline (at 30fps, total 165 frames = 5.5s):
+          Phase A: Frames 0-59   (2.0s) Before with slow zoom-in
+          Phase B: Frames 60-74  (0.5s) White flash with hold
+          Phase C: Frames 75-89  (0.5s) After spring-bounce
+          Phase D: Frames 90-164 (2.5s) After slow zoom-out
         """
         cfg = CONFIG
         fps = cfg["fps"]
 
         # Phase boundaries (in frames)
-        f_before = int(cfg["before_hold_sec"] * fps)       # 75
-        f_transition = int(cfg["transition_sec"] * fps)     # 9
-        f_after = total_frames - f_before - f_transition    # 75
+        f_before = int(cfg["before_hold_sec"] * fps)   # 60
+        f_flash = int(cfg["flash_sec"] * fps)           # 15
+        f_bounce = int(cfg["bounce_sec"] * fps)         # 15
+        # f_after = remaining frames
 
-        e1 = f_before                        # 75: transition starts
-        e2 = e1 + f_transition              # 84: after starts
+        e_a = f_before                              # 60: flash starts
+        e_b = e_a + f_flash                         # 75: bounce starts
+        e_c = e_b + f_bounce                        # 90: zoom-out starts
 
-        # ── Before phase: zoom in ──
-        if frame_index < e1:
+        # ── Phase A: Before zoom-in ──
+        if frame_index < e_a:
             t = frame_index / max(f_before - 1, 1)
             eased_t = self._ease_in(t)  # slow start → accelerate
 
             if motion_style == "zoom":
-                scale = 1.0 + (cfg["before_zoom_scale"] - 1.0) * eased_t
+                scale = 1.0 + (cfg["before_zoom_end_scale"] - 1.0) * eased_t
                 frame = self._apply_zoom(before, scale)
             else:
                 frame = before.copy()
 
-        # ── Transition phase ──
-        elif frame_index < e2:
-            t = (frame_index - e1) / max(f_transition - 1, 1)
+        # ── Phase B: White flash ──
+        elif frame_index < e_b:
+            t = (frame_index - e_a) / max(f_flash - 1, 1)
 
             # Apply zoom to source frames for continuity
-            before_zoomed = self._apply_zoom(before, cfg["before_zoom_scale"]) \
+            before_zoomed = self._apply_zoom(before, cfg["before_zoom_end_scale"]) \
                 if motion_style == "zoom" else before
-            after_bounced = self._apply_zoom(after, cfg["after_bounce_scale"]) \
+            after_bounced = self._apply_zoom(after, cfg["after_bounce_start_scale"]) \
                 if motion_style == "zoom" else after
 
             if transition_style == "snap":
@@ -446,26 +489,29 @@ class BlendVideoGenerator:
             elif transition_style == "blur":
                 frame = self._blur_transition(before_zoomed, after_bounced, t)
             else:
-                # Default: flash transition
+                # Default: flash transition with asymmetrical hold
                 frame = self._flash_transition(before_zoomed, after_bounced, t)
 
-        # ── After phase: bounce + zoom-out ──
-        else:
-            t = (frame_index - e2) / max(f_after - 1, 1)
-            bounce_frames = int(cfg["after_bounce_sec"] * fps)  # 9
-            frames_into_after = frame_index - e2
+        # ── Phase C: After spring-bounce ──
+        elif frame_index < e_c:
+            bt = (frame_index - e_b) / max(f_bounce - 1, 1)
 
             if motion_style == "zoom":
-                if frames_into_after < bounce_frames:
-                    # Bounce: scale from after_bounce_scale → 1.0
-                    bt = frames_into_after / max(bounce_frames - 1, 1)
-                    eased_bt = self._ease_out(bt)
-                    scale = cfg["after_bounce_scale"] + (1.0 - cfg["after_bounce_scale"]) * eased_bt
-                else:
-                    # Zoom out: scale from 1.0 → after_zoom_out_scale
-                    remaining = f_after - bounce_frames
-                    zt = (frames_into_after - bounce_frames) / max(remaining - 1, 1)
-                    scale = 1.0 + (cfg["after_zoom_out_scale"] - 1.0) * zt
+                # Spring-bounce: 1.06 → 0.99 → 1.01 → 1.00
+                amplitude = cfg["after_bounce_start_scale"] - 1.0  # 0.06
+                spring_offset = self._bounce_easing(bt) * amplitude
+                scale = 1.0 + spring_offset
+                frame = self._apply_zoom(after, scale)
+            else:
+                frame = after.copy()
+
+        # ── Phase D: After zoom-out ──
+        else:
+            f_after = total_frames - e_c
+            zt = (frame_index - e_c) / max(f_after - 1, 1)
+
+            if motion_style == "zoom":
+                scale = 1.0 + (cfg["after_zoom_out_end_scale"] - 1.0) * zt
                 frame = self._apply_zoom(after, scale)
             else:
                 frame = after.copy()
@@ -498,13 +544,17 @@ class BlendVideoGenerator:
         crf = str(cfg["crf"])
         ffmpeg_bin = get_ffmpeg_path()
 
-        # Metadata for beat sync
+        # Metadata for beat sync — 4-phase timeline markers
         flash_start = cfg["before_hold_sec"]
-        after_reveal = flash_start + cfg["transition_sec"]
+        flash_peak = flash_start + cfg["flash_sec"] * 0.4  # white hold begins
+        after_reveal = flash_start + cfg["flash_sec"]
+        bounce_end = after_reveal + cfg["bounce_sec"]
         metadata: Dict = {
             "loop_friendly": False,
             "flash_start": flash_start,
+            "flash_peak": flash_peak,
             "after_reveal": after_reveal,
+            "bounce_end": bounce_end,
             "transition_style": transition_style,
             "motion_style": motion_style,
             "quality_check": quality,

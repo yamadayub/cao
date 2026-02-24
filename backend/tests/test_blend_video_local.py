@@ -1,4 +1,4 @@
-"""Local test for blend video generator — v7 Gap-maximized with motion."""
+"""Local test for blend video generator — v8 4-phase timeline."""
 import json
 import sys
 sys.path.insert(0, "/Users/yosuke/dev/cao/backend")
@@ -24,15 +24,16 @@ def main():
     print(f"Fitted after shape: {after_img.shape}, dtype: {after_img.dtype}")
 
     # Print config
-    print(f"\n=== Configuration ===")
-    print(f"Timeline: Before {CONFIG['before_hold_sec']}s → Transition {CONFIG['transition_sec']}s "
-          f"→ After {CONFIG['after_hold_sec']}s")
+    print(f"\n=== Configuration (v8) ===")
+    print(f"Timeline: Before {CONFIG['before_hold_sec']}s → Flash {CONFIG['flash_sec']}s "
+          f"→ Bounce {CONFIG['bounce_sec']}s → After {CONFIG['after_hold_sec']}s")
     print(f"Total duration: {TOTAL_DURATION}s (no loop bridge)")
     print(f"FPS: {CONFIG['fps']}, CRF: {CONFIG['crf']}")
     print(f"Transition style: {CONFIG['transition_style']}")
     print(f"Motion style: {CONFIG['motion_style']}")
-    print(f"Before zoom: 1.0 → {CONFIG['before_zoom_scale']}")
-    print(f"After bounce: {CONFIG['after_bounce_scale']} → 1.0 → {CONFIG['after_zoom_out_scale']}")
+    print(f"Before zoom: 1.0 → {CONFIG['before_zoom_end_scale']}")
+    print(f"After bounce: {CONFIG['after_bounce_start_scale']} → {CONFIG['after_bounce_overshoot']} → 1.0")
+    print(f"After zoom-out: 1.0 → {CONFIG['after_zoom_out_end_scale']}")
     print(f"Enhancement before: {CONFIG['enhance_before']}")
     print(f"Enhancement after: {CONFIG['enhance_after']}")
 
@@ -51,15 +52,22 @@ def main():
     print(f"Enhanced before mean: {enhanced_before.mean():.1f} (original: {before_img.mean():.1f})")
     print(f"Enhanced after mean: {enhanced_after.mean():.1f} (original: {after_img.mean():.1f})")
 
-    # Test zoom
+    # Test zoom (including zoom-out border fix)
     print(f"\n=== Zoom Test ===")
     zoomed = gen._apply_zoom(before_img, 1.08)
     print(f"Zoom 1.08x shape: {zoomed.shape}")
-    zoomed_out = gen._apply_zoom(after_img, 0.97)
-    print(f"Zoom 0.97x shape: {zoomed_out.shape}")
+    zoomed_out = gen._apply_zoom(after_img, 0.96)
+    print(f"Zoom 0.96x shape: {zoomed_out.shape} (no black borders)")
+
+    # Test bounce easing
+    print(f"\n=== Bounce Easing Test ===")
+    for t in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]:
+        val = gen._bounce_easing(t)
+        scale = 1.0 + val * (CONFIG['after_bounce_start_scale'] - 1.0)
+        print(f"  t={t:.1f}: easing={val:.4f}, scale={scale:.4f}")
 
     # Generate video with flash transition (default)
-    print(f"\n=== Generating flash transition + zoom motion video ===")
+    print(f"\n=== Generating v8 flash transition + zoom motion video ===")
     video_result = gen.generate(current, None, result, transition_style="flash", motion_style="zoom")
     print(f"Video: {len(video_result.data)} bytes, type={video_result.content_type}, ext={video_result.extension}")
     print(f"Duration: {video_result.duration}s")
@@ -90,15 +98,15 @@ def main():
 
     print(f"\nDone! Inspect the output video:")
     print(f"  {out_path}")
-    print(f"\nChecklist:")
-    print(f"  [ ] Before with slow zoom-in 0s-2.5s (scale 1.0→1.08)")
-    print(f"  [ ] White flash transition at 2.5s (0.3s)")
-    print(f"  [ ] After appears with bounce at 2.8s (scale 1.05→1.0)")
-    print(f"  [ ] After slow zoom-out 3.1s-5.3s (scale 1.0→0.97)")
-    print(f"  [ ] Video ENDS on After frame (no loop bridge)")
-    print(f"  [ ] Gap maximization: Before darker/desaturated, After brighter/saturated")
+    print(f"\nChecklist (v8):")
+    print(f"  [ ] Before zoom-in 0.0–2.0s (scale 1.0 → 1.08, ease-in)")
+    print(f"  [ ] White flash 2.0–2.5s with white 'hold' (~0.1s pure white)")
+    print(f"  [ ] After bounce 2.5–3.0s (scale 1.06 → 0.99 → 1.0 spring)")
+    print(f"  [ ] After zoom-out 3.0–5.5s (scale 1.0 → 0.96, no black borders)")
+    print(f"  [ ] Final frame is After image (NOT Before)")
+    print(f"  [ ] Enhancement: Before darker/desaturated, After brighter/saturated (natural)")
+    print(f"  [ ] Watermark bottom-right, 60px, 30% opacity")
     print(f"  [ ] NO text labels")
-    print(f"  [ ] Watermark at bottom-right (60px, 30% opacity)")
     print(f"  [ ] Bitrate >= 800kbps (got {bitrate_kbps:.0f}kbps)")
     print(f"  [ ] Quality gate verdict: {quality['verdict']}")
 
