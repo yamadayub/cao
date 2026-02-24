@@ -59,7 +59,7 @@ test.describe('ナビゲーション', () => {
       await page.waitForTimeout(2000)
 
       // Then: ログインボタンが表示される
-      const loginButton = page.locator('button:has-text("ログイン"), a:has-text("ログイン")')
+      const loginButton = page.locator('button:has-text("ログイン"), a:has-text("ログイン")').first()
       await expect(loginButton).toBeVisible({ timeout: 10000 })
     })
   })
