@@ -56,8 +56,8 @@ CONFIG = {
     # Timing — 4-phase timeline
     "before_hold_sec": 2.0,       # Phase A: Before zoom-in
     "flash_sec": 0.5,             # Phase B: White flash with hold
-    "bounce_sec": 0.5,            # Phase C: After spring-bounce
-    "after_hold_sec": 2.5,        # Phase D: After zoom-out
+    "bounce_sec": 0.7,            # Phase C: After spring-bounce
+    "after_hold_sec": 2.3,        # Phase D: After zoom-out
     # Total: 5.5s
 
     # Transition settings
@@ -66,13 +66,13 @@ CONFIG = {
 
     # Motion settings — all zoom scales >= 1.0 to avoid black borders
     "motion_style": "zoom",                # "zoom" only for now
-    "before_zoom_end_scale": 1.08,         # Before: zoom in to this scale (8%)
-    "after_bounce_start_scale": 1.12,      # After: bounce pop-in zoom scale (12%)
-    "after_bounce_settle_scale": 1.05,     # After: bounce zoom settles here
+    "before_zoom_end_scale": 1.12,         # Before: zoom in to this scale (12%)
+    "after_bounce_start_scale": 1.20,      # After: bounce pop-in zoom scale (20%)
+    "after_bounce_settle_scale": 1.08,     # After: bounce zoom settles here
     "after_zoom_out_end_scale": 1.00,      # After: zoom out ends at natural (1.0)
 
     # Vertical bounce (Phase C) — dramatic up/down spring
-    "bounce_amplitude_px": 80,             # Peak vertical displacement (pixels)
+    "bounce_amplitude_px": 140,            # Peak vertical displacement (pixels)
 
     # Enhancement (gap maximization) — dialed back to natural levels
     "enhance_enabled": True,
